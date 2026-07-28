@@ -21,9 +21,10 @@ Total: `34 + 30720 + 1312 = 32066` — matches every shipped `.pip` file's unpac
 16-pixel group**: for each of 192 rows × 20 word-groups (16px each), 4 consecutive source
 words appear in plane order 0,1,2,3 (8 bytes), then the next 16-pixel group's 4 plane-words,
 and so on. No AND-mask plane — appropriate for an always-opaque background image (unlike
-sprites, a full-screen picture never needs transparency). Same fixed default EGA palette as
-`.pak` (see `docs/formats/pak.md` — no custom palette exists anywhere in the binary), **but
-note the plane→color-bit assignment is *not* the naive textbook EGA convention** — see below.
+sprites, a full-screen picture never needs transparency). Uses the same real, code-derived
+per-world VGA palette as `.pak` sprites (see `docs/memory-map.md`'s "Palette setting" section
+and `tools/palette.js` — the game does set a custom palette, on the `'C'`/"Colour VGA" driver
+path). The plane→index-bit assembly is the identity mapping — see below.
 
 ## Verification (and where the plane/color mapping bug was actually found and fixed)
 
@@ -67,8 +68,10 @@ matching the screenshot almost exactly (same blue-lavender walls, green roofs, o
 the world-1 thumbnail). This makes physical sense: the plane read order (confirmed from
 disassembly as the Sequencer Map Mask cycling `0x01,0x02,0x04,0x08`) directly *is* the index-bit
 order, with no hardware-level relabeling — the earlier `[1,0,3,2]` detour was chasing a palette
-bug, not a real plane-mapping bug. `tools/ega.js`'s `assembleIndex` should be simplified to drop
-`PLANE_TO_INDEX_BIT` once `.pak`'s equivalent bug (see `docs/formats/pak.md`) is also resolved.
+bug, not a real plane-mapping bug. This was independently confirmed a second way: tracing
+`Gfx_BlitSpriteMasked`'s disassembly directly (see `docs/formats/pak.md`) shows the same
+identity relationship between on-disk plane chunks and hardware planes, and `tools/ega.js` now
+uses `PLANE_TO_INDEX_BIT = [0,1,2,3]` (identity) for both `.pak` and `.pip`.
 
 ## Open questions
 

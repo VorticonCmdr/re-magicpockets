@@ -2,7 +2,7 @@
   "program": "GAMEU.EXE",
   "note": "Manually exported from Ghidra (GHIDRA_MCP_ALLOW_SCRIPTS is off in this environment, so the planned automated export script cannot run yet -- see docs/memory-map.md). Regenerate/extend this file at the end of each RE session by querying search_functions_by_tag for 'verified' and 'guess', plus get_function_documentation per address, and merging the results here.",
   "totalFunctions": 440,
-  "namedFunctions": 80,
+  "namedFunctions": 85,
   "note2": "See docs/engine.md for the full main-loop architecture writeup (this file only indexes; engine.md has the narrative).",
   "functions": [
     {
@@ -742,6 +742,51 @@
         "gfx"
       ],
       "summary": "Trampoline into AltBuild_BuildBitRotateTable."
+    },
+    {
+      "name": "Level_RewriteAnimatedTileIndex",
+      "address": "1000:02e2",
+      "tags": [
+        "verified",
+        "engine"
+      ],
+      "summary": "Level_UpdateAnimatedTiles' per-tile callback. Rewrites the tile-index byte (and sometimes neighboring bytes) in the level map buffer based on current world and old value -- an animation state machine over tile INDICES, not a pixel-drawing function. Ruled out as the blocks*.pak tile-blit consumer."
+    },
+    {
+      "name": "Gfx_ClearFramebufferRegion",
+      "address": "1000:0fc6",
+      "tags": [
+        "verified",
+        "gfx"
+      ],
+      "summary": "REP STOSW zero-fills two 1408-word regions of the current video page at fixed offsets 0x580/0x1760. Called from Gfx_DrawObject and two CGA fallback functions -- a HUD/text-area clear utility, not a tile blitter."
+    },
+    {
+      "name": "Gfx_ResetGraphicsControllerRegs",
+      "address": "1000:8580",
+      "tags": [
+        "verified",
+        "gfx"
+      ],
+      "summary": "Resets GC registers 0-5 to defaults plus Color Don't Care/Bit Mask. Cleanup utility called by several Fx_UpdateTransition sub-handlers and Gfx_ClearFramebufferRegion; not a blitter."
+    },
+    {
+      "name": "Gfx_ResetGraphicsControllerRegsAlt",
+      "address": "1000:bcd8",
+      "tags": [
+        "verified",
+        "gfx"
+      ],
+      "summary": "Resets Map Mask/GC Mode/Color Compare/Data Rotate to defaults, only on the non-alt-build driver path. Cleanup utility, not a blitter."
+    },
+    {
+      "name": "AltBuild_CopyCgaFramebufferPage",
+      "address": "1000:b28e",
+      "tags": [
+        "verified",
+        "gfx"
+      ],
+      "summary": "Tandy/CGA-banking page copy (port 0x3DF bit twiddling from [0xf95b], word-copy loop, calls FUN_1ffb_0c12). Part of the alt-build hardware path, not the main .pak tile blitter."
     }
   ],
   "openQuestions": [
@@ -757,11 +802,12 @@
     "Confirm the guessed main-loop functions (Camera_UpdateScroll, Level_UpdateAnimatedTiles, Fx_UpdateTransition, Level_UpdateEventQueue, Entity_UpdateAll) -- structure is solid, semantic role inferred; see docs/engine.md.",
     "Exact disambiguation of Gfx_BlitSpriteMaskedWide vs WideB's distinct roles (both cover the same row width).",
     "Full 24-bank palette dump only spot-checked (banks 0,7,19,20,21 + the 0-17 ramp shape) -- worth a dedicated docs/formats/palette.md with all 24 banks decoded.",
-    "tools/ega.js still hardcodes a generic default EGA palette; the empirically-guessed PLANE_TO_INDEX_BIT mapping in docs/formats/pak.md/pip.md was validated against that wrong reference and needs re-checking against the real per-world palettes now found in Video_ApplyVgaPalette / docs/memory-map.md.",
     "Which .pak/.pap files correspond to which world (1-4) palette bank is not yet mapped -- needed before re-rendering sprites/levels with correct colors.",
     "AltBuild_MainLoopEntry (1ffb:0000) is a near-complete duplicate of the main-segment runtime -- segment 1ffb is an entire alternate build, not just a CGA/Tandy driver module. When exactly it activates (DAT_1000_22d7 sentinel source) and how much of the rest of 1ffb mirrors 1000 is unexplored -- good target for a dedicated session.",
     "Fx_FadePaletteLoop29 vs Fx_FadeInWorldPalette: both loop Video_SelectAndLoadPalette but for different frame counts (29 vs 22) and only one has the CGA-tint branch. Purpose distinction not yet nailed down.",
     "Fx_RunCallbackSequenceThenFade's dynamic callback ([8c29]) and FUN_1000_be02 not traced -- likely an intro/cutscene sequencer, possibly the new.pip level-select screen animation.",
-    "AltBuild_TintCgaFramebuffer's composite-artifact-color hypothesis is unverified -- would need a dosbox-x composite CGA monitor emulation comparison."
+    "AltBuild_TintCgaFramebuffer's composite-artifact-color hypothesis is unverified -- would need a dosbox-x composite CGA monitor emulation comparison.",
+    "blocks1-4.pak (level background tiles) is NOT consumed by Gfx_BlitSpriteMasked despite fitting the same 640-byte tile size arithmetic -- confirmed by disassembly (plane order/index mapping proven correct via kidx1.pak/nasty1.pak rendering cleanly) and by blocks1.pak still rendering as noise through the identical pipeline. Ruled out as candidates: Level_RewriteAnimatedTileIndex, FUN_1000_73a5, Gfx_ClearFramebufferRegion, Gfx_ResetGraphicsControllerRegs(Alt), AltBuild_CopyCgaFramebufferPage. The real background-tile blit function is still unidentified -- HIGH VALUE target for a dedicated future session. Start from wherever the column-major map buffer at 6de3:4200 gets read for rendering (not just Camera_UpdateScroll's scroll math).",
+    "Gfx_BlitSpriteMaskedWide's disassembly was checked directly: it is NOT a 48px-wide source format (still reads 2 words/4 bytes per row per plane like the regular path); 'Wide' refers to a 5-byte destination footprint from sub-pixel ROR-shift spill. The hypothesized second/wider tile size for the 'wide sprite class' remains unlocated."
   ]
 }

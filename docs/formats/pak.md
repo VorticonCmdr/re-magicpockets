@@ -38,17 +38,15 @@ destination to 0, ready for the OR-color passes).
 
 **Color-plane read order**: confirmed from disassembly — `Gfx_BlitSpriteMasked` cycles the
 Sequencer Map Mask register through `0x01,0x02,0x04,0x08` in that exact sequence, reading/
-writing the 4 color planes 0..3 in the same temporal order. **Which plane feeds which bit of
-the final 4-bit palette index is a separate question**, and empirically does *not* match the
-naive textbook EGA convention (plane0=Blue,1=Green,2=Red,3=Intensity — that assignment produced
-visibly wrong colors when tested against a decoded `.pip` screen). The mapping that looked
-correct on visual inspection is `PLANE_TO_INDEX_BIT = [1,0,3,2]` in `tools/ega.js` — i.e. index
-bit 0 comes from plane 1, bit 1 from plane 0, bit 2 from plane 3, bit 3 from plane 2. This was
-selected by generating several candidate permutations and eye-balling the result (see
-`docs/formats/pip.md`), not derived from a definitive reference — treat as **tentatively
-confirmed**, not certain. Since no custom palette is ever set (see `docs/memory-map.md`), the
-resulting index maps directly to the fixed default EGA/VGA 16-colour palette — see
-`tools/ega.js::EGA_PALETTE`.
+writing the 4 color planes 0..3 in the same temporal order, **matching the on-disk chunk order
+exactly (chunk 1 = plane 0, chunk 2 = plane 1, etc, no reordering)**. The plane→index-bit
+assembly is the **identity mapping** (`PLANE_TO_INDEX_BIT = [0,1,2,3]` in `tools/ega.js`) —
+confirmed both by this disassembly trace and empirically, by `kidx1.pak`/`nasty1.pak` rendering
+as clean sprite art once the real per-world palette was used (see "RESOLVED" section below; an
+earlier `[1,0,3,2]` guess had been tuned against a wrong hardcoded default-EGA palette and was
+never actually correct). The game **does** set a real custom palette per world — see
+`docs/memory-map.md`'s "Palette setting" section and `tools/palette.js` — the index resolves
+through that, not a fixed default.
 
 ## Tile counts per file (all confirmed exact — no remainder)
 
@@ -60,46 +58,67 @@ resulting index maps directly to the fixed default EGA/VGA 16-colour palette —
 
 ## Verification
 
-`node tools/extract-pak.js build/raw/<file>.pak.raw` produces a PNG sprite sheet. Every file
-extracts cleanly (exact division by 640, no leftover bytes). Visual inspection of the produced
-sheets (sent to the user directly) shows recognizable, coherent game art — rounded platform
-tiles, character sprites, enemy sprites — not noise, confirming the format end-to-end.
+`node tools/extract-pak.js build/raw/<file>.pak.raw --palette worldN` produces a PNG sprite
+sheet. Every file extracts cleanly (exact division by 640, no leftover bytes) and, with the real
+per-world palette and identity plane mapping, `kidx1-4.pak`/`nasty1-4.pak`/`special1-4.pak`/
+`extrax1-4.pak`/`bitkid.pak`/`ape.pak`/`extras.pak` render as clean, coherent sprite art —
+character/enemy sprites with multiple readable animation frames, correct colors, no artifacts.
 
-## STILL BROKEN — real palette confirmed the plane assembly is wrong for `.pak` specifically
+**`blocks1-4.pak` is the one exception** — it does not render correctly through this same,
+now-confirmed pipeline. See the "RESOLVED" section below: this is a separate, still-open format
+question (background tiles aren't consumed by `Gfx_BlitSpriteMasked` at all), not a regression
+in the mapping/palette work.
 
-A real, code-derived per-world 16-colour palette was found on the `'C'` ("Colour VGA") driver
-path — see `docs/memory-map.md`'s "Palette setting" section and `tools/palette.js`. Re-rendering
-`.pak` sprite sheets with the real world-1 palette instead of the old default-EGA guess produced
-**pure per-pixel noise for every one of the 24 possible plane→index-bit permutations** — including
-the identity mapping that turned out to be exactly correct for `.pip` (see `docs/formats/pip.md`).
+## RESOLVED — identity plane mapping confirmed by disassembly AND clean renders; `blocks*.pak` is a separate, still-open format question
 
-This means the bug isn't the 4-bit index assembly at all (that question is now closed — identity,
-no relabeling) but something specific to how `.pak`'s color planes are being read. Prime suspects,
-not yet checked:
-- The assumed on-disk plane order (four separate contiguous 128-byte blocks = planes 0,1,2,3 in
-  that exact order) may be wrong even though the file dividing evenly by 640 bytes/tile and the
-  mask plane's ASCII-art silhouette check both came back clean — **the mask-plane check does not
-  validate anything about the 4 color planes**, so "coherent art" was never actually confirmed
-  for color data, only for the mask.
-- Possible row/column transpose bug in the color planes analogous to the one found and fixed in
-  `.pap` (`Level_TransposeMapToColumnMajor`) earlier this project — worth re-deriving directly
-  from `Gfx_BlitSpriteMasked`'s exact addressing rather than guessing from ASCII art again.
-- Worth double-checking the very first tile's raw bytes by hand against `Gfx_AndMaskRow`/
-  `Gfx_OrPlaneRow`'s disassembly before trying more permutations blind.
+Traced directly from `Gfx_BlitSpriteMasked`'s disassembly (`1000:7ea0`), not guessed: the four
+color-plane chunks in a tile record are consumed under Sequencer Map Mask `0x01, 0x02, 0x04,
+0x08` **in that literal file order** — chunk 1 (bytes 128-255) is hardware plane 0, chunk 2
+is plane 1, chunk 3 is plane 2, chunk 4 is plane 3. No reordering anywhere. Combined with the
+real per-world palette (`tools/palette.js`, see `docs/memory-map.md`), this means the
+plane→index-bit assembly is the **identity mapping** — the same one confirmed for `.pip` (see
+`docs/formats/pip.md`). `Gfx_AndMaskRow`/`Gfx_OrPlaneRow`'s byte-aligned path also confirms
+straightforward, non-swapped, 4-bytes/row source reads (2x `LODSW`, each byte written to the
+matching destination byte in order) — ruling out a `.pip`-style byte-order bug too.
 
-**Not yet resolved** — `.pak` sprite sheets currently cannot be trusted at all until this is
-fixed; do not re-share them as "could be correct" again.
+**Proof this is right**: re-rendering `kidx1.pak` and `nasty1.pak` (character/enemy sprite
+banks, same 640-byte masked-tile format) with the real world-1 palette and identity mapping now
+produces clean, fully coherent sprite art — multiple readable animation frames, correct colors,
+no artifacts. `tools/ega.js`'s `PLANE_TO_INDEX_BIT` is now `[0,1,2,3]` (identity) and the whole
+plane-mapping question from earlier in this project is closed.
+
+**`blocks1-4.pak` (level background/terrain tiles) still renders as pure noise** through this
+exact same, now-confirmed-correct pipeline. Since `kidx`/`nasty` (same code path, same 640-byte
+tile format) work perfectly, the `.pak` decode itself is not the bug — `blocks*.pak` is simply
+**not consumed by `Gfx_BlitSpriteMasked`/this 640-byte tile format at all**, despite its file
+size dividing evenly by 640 (30720/640=48, purely coincidental — it also divides evenly by other
+plausible tile sizes). The mask-plane ASCII-art check that "confirmed" this format back at the
+start of the project was only ever run against `special1.pak`, never against `blocks1.pak` --
+so `blocks*.pak`'s layout was never actually independently verified, only assumed by analogy.
+
+Searched for the real `blocks*.pak` consumer and ruled out several candidates: `FUN_1000_02e2`
+(renamed `Level_RewriteAnimatedTileIndex` -- rewrites a tile-index byte in the map buffer for
+animation, does not draw pixels), `FUN_1000_73a5` (walks the entity list into `Gfx_DrawObject`,
+not tiles), `Gfx_ClearFramebufferRegion`/`Gfx_ResetGraphicsControllerRegs(Alt)`/
+`AltBuild_CopyCgaFramebufferPage` (video-state cleanup / CGA-banking utilities, not blitters).
+The actual function that blits background tiles from the `.pap` tile-index map into the
+framebuffer has **not yet been located** — good target for a dedicated future session (start
+from wherever the column-major map buffer at `6de3:4200` gets read for rendering, not just for
+`Camera_UpdateScroll`'s scroll math).
 
 ## Open questions
 
 - **Sprite *placement/identity* metadata** (which tile index means what, animation frame
   groupings, hotspots) lives elsewhere — likely in the `.pap` level-map files or in code tables,
   not in the `.pak` files themselves. Not yet traced.
-- **The "wide" sprite class** (`Gfx_BlitSpriteMaskedWide`/`WideB`, 48px/6-byte rows) implies a
-  second tile size (48×32 or similar) must exist somewhere — not yet located in any `.pak` file
-  examined so far (all confirmed files so far use the 32px/640-byte layout). Worth checking
-  `bitkid.pak`/`ape.pak`/`extras.pak` (the "60 tile" class) more closely, or the `.pip` files,
-  once those are understood.
+- **CORRECTION**: `Gfx_BlitSpriteMaskedWide`'s disassembly was checked directly — it is NOT a
+  48-pixel-wide *source* format. It reads the same 2 words (4 bytes) per row per plane as the
+  regular byte-aligned path; "Wide" refers to a 5-byte *destination* footprint from sub-pixel
+  ROR-shift spill (the same mechanism as `Gfx_BlitSpriteMasked`'s CL!=0 branch), not a different
+  on-disk tile geometry. The hypothesized second/wider tile size has **not** been located anywhere
+  yet — open question, not resolved by this correction.
+- **`blocks1-4.pak`'s real format and consumer function are unresolved** — see the "RESOLVED"
+  section above. This is now the single highest-value open question for this format.
 - `.pip` full-screen images do **not** use this same fixed-tile-array layout (unpacked sizes
   like 32066 don't divide evenly by 640 or by any obvious plane-count assumption) — still
   unresolved, see the note in `tools/extract-pak.js`'s history / next session's open items.

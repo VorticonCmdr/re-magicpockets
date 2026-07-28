@@ -1,27 +1,32 @@
 // EGA/VGA planar bitmap helpers.
 //
-// The game never programs a custom palette anywhere (see docs/memory-map.md "Sprite
-// rendering" -- confirmed by an exhaustive port/interrupt search), so we use the fixed
-// default 16-colour EGA/VGA palette.
+// Real per-world palettes are set via Video_ApplyVgaPalette (see tools/palette.js and
+// docs/memory-map.md's "Palette setting" section) -- the game DOES program a custom palette,
+// on the 'C' ("Colour VGA") driver path this project's own pockets.ini selects. EGA_PALETTE
+// below is only a fallback default; real extraction should pass a palette from palette.js.
 //
 // Plane read/write ORDER (which source plane is processed 1st/2nd/3rd/4th) is confirmed from
-// disassembly: both Gfx_BlitSpriteMasked and Gfx_DrawFullScreenPicture cycle the Sequencer Map
-// Mask register through 0x01,0x02,0x04,0x08 in that exact sequence, reading/writing the 4
-// source planes in the same 0..3 temporal order. That part is not in question.
+// disassembly: Gfx_BlitSpriteMasked, Gfx_AndMaskRow/Gfx_OrPlaneRow, and Gfx_DrawFullScreenPicture
+// all cycle the Sequencer Map Mask register through 0x01,0x02,0x04,0x08 in that exact sequence,
+// AND the on-disk plane chunks are consumed in that same literal file order (confirmed directly
+// from Gfx_BlitSpriteMasked's disassembly: the first contiguous 128-byte color-plane chunk after
+// the mask is written under Map Mask=0x01, the second under 0x02, third under 0x04, fourth under
+// 0x08 -- no reordering at any point).
 //
-// The mapping from "which plane" to "which bit of the palette index" is a separate question --
-// nominally a fixed EGA/VGA hardware convention (plane0=Blue,1=Green,2=Red,3=Intensity), but
-// empirically the game's actual pictures only looked correct once the sample bits were
-// reassigned as PLANE_TO_INDEX_BIT below (confirmed against a decoded .pip screen by direct
-// visual inspection -- see docs/formats/pip.md). Left unexplained why this differs from the
-// textbook hardware default; worth revisiting if a definitive reference for this specific game
-// build turns up.
+// The mapping from "which plane" to "which bit of the palette index" is therefore the IDENTITY
+// mapping -- plane N feeds index bit N directly, no relabeling. This was confirmed by decoding
+// new.pip with the real world-1 palette (tools/palette.js) and comparing directly against a
+// user-supplied DOSBox screenshot of the actual level-select screen: identity matched almost
+// exactly, while every one of the other 23 possible 4-bit permutations (including an earlier,
+// wrong [1,0,3,2] guess made against a hardcoded default-EGA palette) looked visibly off. See
+// docs/formats/pip.md and docs/formats/pak.md for the full trail.
 
 'use strict';
 
-const PLANE_TO_INDEX_BIT = [1, 0, 3, 2]; // index bit k = source plane PLANE_TO_INDEX_BIT[k]
+const PLANE_TO_INDEX_BIT = [0, 1, 2, 3]; // identity -- index bit k = source plane k, confirmed
 
 // Standard default EGA/VGA 16-colour palette (index = intensity<<3 | red<<2 | green<<1 | blue).
+// Fallback only -- prefer a real palette from tools/palette.js when one is known.
 const EGA_PALETTE = [
   [0x00, 0x00, 0x00], // 0 black
   [0x00, 0x00, 0xaa], // 1 blue
