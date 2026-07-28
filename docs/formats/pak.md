@@ -36,11 +36,19 @@ byte = leftmost pixel), **no row padding** — this is the source-side stride
 nothing-here-so-original-stays behaviour); bit = 0 → opaque sprite pixel (mask AND clears the
 destination to 0, ready for the OR-color passes).
 
-**Color-plane bit order**: plane 0/1/2/3 → Blue/Green/Red/Intensity, forming a standard 4-bit
-EGA palette index (`intensity<<3 | red<<2 | green<<1 | blue`). This matches the Sequencer Map
-Mask cycling order (`0x01,0x02,0x04,0x08`) confirmed in `Gfx_BlitSpriteMasked`'s disassembly.
-Since no custom palette is ever set (see `docs/memory-map.md`), the index maps directly to the
-fixed default EGA/VGA 16-colour palette — see `tools/ega.js::EGA_PALETTE`.
+**Color-plane read order**: confirmed from disassembly — `Gfx_BlitSpriteMasked` cycles the
+Sequencer Map Mask register through `0x01,0x02,0x04,0x08` in that exact sequence, reading/
+writing the 4 color planes 0..3 in the same temporal order. **Which plane feeds which bit of
+the final 4-bit palette index is a separate question**, and empirically does *not* match the
+naive textbook EGA convention (plane0=Blue,1=Green,2=Red,3=Intensity — that assignment produced
+visibly wrong colors when tested against a decoded `.pip` screen). The mapping that looked
+correct on visual inspection is `PLANE_TO_INDEX_BIT = [1,0,3,2]` in `tools/ega.js` — i.e. index
+bit 0 comes from plane 1, bit 1 from plane 0, bit 2 from plane 3, bit 3 from plane 2. This was
+selected by generating several candidate permutations and eye-balling the result (see
+`docs/formats/pip.md`), not derived from a definitive reference — treat as **tentatively
+confirmed**, not certain. Since no custom palette is ever set (see `docs/memory-map.md`), the
+resulting index maps directly to the fixed default EGA/VGA 16-colour palette — see
+`tools/ega.js::EGA_PALETTE`.
 
 ## Tile counts per file (all confirmed exact — no remainder)
 

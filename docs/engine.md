@@ -23,8 +23,8 @@ confirmed, semantic role inferred — tagged `guess` in Ghidra, not `verified`).
 
 | # | Function | Confidence | Role |
 |---|---|---|---|
-| 1 | `Camera_UpdateScroll` | guess | Reads a scroll-target struct, negates X/Y, splits into whole-tile (÷32/÷16) + sub-tile pixel remainder. Sub-tile X remainder → `[8b69]`, later fed to the EGA pixel-panning register by `Video_FlipAndScroll`. |
-| 2 | `Level_UpdateAnimatedTiles` | guess | Skipped for world 4. Walks an 11×14 visible-tile grid (0x80-byte row stride) from the scroll-computed screen offset, calling `FUN_1000_02e2` for tiles with a flag bit set. |
+| 1 | `Camera_UpdateScroll` | **confirmed** | Reads a scroll-target struct, negates X/Y, splits into whole-tile (÷32/÷16) + sub-tile pixel remainder. Sub-tile X remainder → `[8b69]`, later fed to the EGA pixel-panning register by `Video_FlipAndScroll`. Computes the read pointer into the column-major level-map buffer at `6de3:4200` — see `docs/formats/pap.md`. |
+| 2 | `Level_UpdateAnimatedTiles` | **confirmed** | Skipped for world 4. Walks an 11×14 visible-tile grid (0x80-byte row stride) from the scroll-computed screen offset, calling `FUN_1000_02e2` for tiles with a flag bit set. |
 | 3 | `FUN_1000_73a5` → `Gfx_DrawObject` | confirmed | The render pass — see `docs/memory-map.md` "Sprite rendering". |
 | 4 | `Video_FlipAndScroll` | **confirmed** | Page-flip (A000/A300 alternation) + **EGA pixel-panning register write (Attribute Controller index `0x13`)** for hardware fine-scroll. Also services the loaded sound driver via a computed far call. This is the *other* AC-index write in the whole binary besides the CGA palette-select — not a palette write, refining the "no palette setter" finding. |
 | 5 | `Fx_UpdateTransition` | guess | Dispatches on `[8ba2]` ("transition/effect ID"); likely a screen wipe/fade between levels. |
@@ -40,6 +40,11 @@ confirmed, semantic role inferred — tagged `guess` in Ghidra, not `verified`).
 
 ## Cross-cutting findings from this pass
 
+- **`.pap` level maps and `.pip` full-screen pictures are both fully decoded and extractable**
+  (`tools/extract-pap.js`, `tools/extract-pip.js`) — see `docs/formats/pap.md`/`pip.md`.
+  `Level_LoadMapIntoScrollBuffer`/`Level_TransposeMapToColumnMajor` transpose the row-major
+  on-disk `.pap` file into the column-major buffer `Camera_UpdateScroll` reads from.
+  `Gfx_DrawFullScreenPicture` is the `.pip` renderer — found by tracing `new.pip`'s load site.
 - **The demo/attract-mode system is real and fully located** (`Demo_PlaybackInput` +
   `Demo_RecordInput`), sharing one RLE-encoded input buffer at `[8ba6]`.
 - **The level-select cheat code system is fully located** (`Debug_HandleCheatInput`), reusing

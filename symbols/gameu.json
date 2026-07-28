@@ -2,20 +2,38 @@
   "program": "GAMEU.EXE",
   "note": "Manually exported from Ghidra (GHIDRA_MCP_ALLOW_SCRIPTS is off in this environment, so the planned automated export script cannot run yet -- see docs/memory-map.md). Regenerate/extend this file at the end of each RE session by querying search_functions_by_tag for 'verified' and 'guess', plus get_function_documentation per address, and merging the results here.",
   "totalFunctions": 440,
-  "namedFunctions": 57,
+  "namedFunctions": 60,
   "note2": "See docs/engine.md for the full main-loop architecture writeup (this file only indexes; engine.md has the narrative).",
   "functions": [
     {
       "name": "Camera_UpdateScroll",
       "address": "1000:0221",
-      "tags": ["guess", "spine", "engine"],
-      "summary": "GUESS: main-loop call #1. Computes scroll/camera position, splits into tile+sub-tile components. Sub-tile X -> [8b69], consumed by Video_FlipAndScroll for EGA pixel-panning."
+      "tags": ["verified", "spine", "engine"],
+      "summary": "Main-loop call #1. Computes scroll/camera position, splits into tile+sub-tile components. Sub-tile X -> [8b69], consumed by Video_FlipAndScroll for EGA pixel-panning. Computes the read pointer (0x4200 + tileX*0x80 + tileY) into the in-memory column-major level-map buffer built by Level_LoadMapIntoScrollBuffer."
     },
     {
       "name": "Level_UpdateAnimatedTiles",
       "address": "1000:02a3",
-      "tags": ["guess", "spine", "engine"],
-      "summary": "GUESS: main-loop call #2. Walks an 11x14 visible-tile grid, calling FUN_1000_02e2 for flagged (animated?) tiles. Skipped for world 4."
+      "tags": ["verified", "spine", "engine"],
+      "summary": "Main-loop call #2. Walks the 11x14 visible tile window of the column-major map buffer at [8c13], calling FUN_1000_02e2 for flagged (animated?) tiles. Skipped for world 4."
+    },
+    {
+      "name": "Level_LoadMapIntoScrollBuffer",
+      "address": "1000:1259",
+      "tags": ["verified", "engine"],
+      "summary": "Called at the end of every World1-4_LoadBanks after the .pap Load_PackedFile call. FUN_1000_1230 (plain copy) then Level_TransposeMapToColumnMajor."
+    },
+    {
+      "name": "Level_TransposeMapToColumnMajor",
+      "address": "1000:1291",
+      "tags": ["verified", "engine"],
+      "summary": "dest[0x4200+col*128+row] = source[row*128+col] -- transposes the row-major .pap file (confirmed on-disk format, see docs/formats/pap.md) into a column-major in-memory buffer at 6de3:4200 for fast per-column scrolling access."
+    },
+    {
+      "name": "Gfx_DrawFullScreenPicture",
+      "address": "1000:bd64",
+      "tags": ["verified", "gfx"],
+      "summary": "The .pip full-screen picture blitter. Direct (unmasked) 320x192 4-plane EGA image, plane-words interleaved per 16px group, picture data starting at file offset 0x22. Plane read order (0,1,2,3 per Map Mask cycling) confirmed from disassembly; plane-to-color-bit mapping does NOT match the textbook EGA convention -- empirically corrected to PLANE_TO_INDEX_BIT=[1,0,3,2] (tools/ega.js) via user visual comparison of candidate permutations, applies to Gfx_BlitSpriteMasked's sprites too. See docs/formats/pip.md."
     },
     {
       "name": "Video_FlipAndScroll",

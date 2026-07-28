@@ -2,14 +2,24 @@
 //
 // The game never programs a custom palette anywhere (see docs/memory-map.md "Sprite
 // rendering" -- confirmed by an exhaustive port/interrupt search), so we use the fixed
-// default 16-colour EGA/VGA palette. Plane-to-color-bit order (0=Blue,1=Green,2=Red,
-// 3=Intensity) matches the Sequencer Map Mask cycling order confirmed in
-// Gfx_BlitSpriteMasked (1000:7ea0): the OR passes select planes via mask values
-// 0x01,0x02,0x04,0x08 in that exact sequence, and the on-disk sprite/tile format stores
-// planes in the same 0..3 order immediately after the AND-mask plane (see
-// docs/formats/pak.md).
+// default 16-colour EGA/VGA palette.
+//
+// Plane read/write ORDER (which source plane is processed 1st/2nd/3rd/4th) is confirmed from
+// disassembly: both Gfx_BlitSpriteMasked and Gfx_DrawFullScreenPicture cycle the Sequencer Map
+// Mask register through 0x01,0x02,0x04,0x08 in that exact sequence, reading/writing the 4
+// source planes in the same 0..3 temporal order. That part is not in question.
+//
+// The mapping from "which plane" to "which bit of the palette index" is a separate question --
+// nominally a fixed EGA/VGA hardware convention (plane0=Blue,1=Green,2=Red,3=Intensity), but
+// empirically the game's actual pictures only looked correct once the sample bits were
+// reassigned as PLANE_TO_INDEX_BIT below (confirmed against a decoded .pip screen by direct
+// visual inspection -- see docs/formats/pip.md). Left unexplained why this differs from the
+// textbook hardware default; worth revisiting if a definitive reference for this specific game
+// build turns up.
 
 'use strict';
+
+const PLANE_TO_INDEX_BIT = [1, 0, 3, 2]; // index bit k = source plane PLANE_TO_INDEX_BIT[k]
 
 // Standard default EGA/VGA 16-colour palette (index = intensity<<3 | red<<2 | green<<1 | blue).
 const EGA_PALETTE = [
@@ -30,6 +40,14 @@ const EGA_PALETTE = [
   [0xff, 0xff, 0x55], // 14 yellow
   [0xff, 0xff, 0xff], // 15 white
 ];
+
+function assembleIndex(planeBitsInOrder) {
+  let index = 0;
+  for (let bit = 0; bit < 4; bit++) {
+    if (planeBitsInOrder[PLANE_TO_INDEX_BIT[bit]]) index |= 1 << bit;
+  }
+  return index;
+}
 
 /**
  * Decode a masked EGA sprite/tile: one AND-mask bitplane followed by four OR-color
@@ -63,11 +81,8 @@ function decodeMaskedTile(buf, offset, widthBytes, heightRows) {
         rgba[pixelOffset + 3] = 0; // alpha 0, RGB left as 0
         continue;
       }
-      let index = 0;
-      for (let plane = 0; plane < 4; plane++) {
-        if (colorPlanes[plane][byteIdx] & bitMask) index |= 1 << plane;
-      }
-      const [r, g, b] = EGA_PALETTE[index];
+      const planeBits = colorPlanes.map((p) => (p[byteIdx] & bitMask ? 1 : 0));
+      const [r, g, b] = EGA_PALETTE[assembleIndex(planeBits)];
       rgba[pixelOffset] = r;
       rgba[pixelOffset + 1] = g;
       rgba[pixelOffset + 2] = b;
@@ -77,4 +92,47 @@ function decodeMaskedTile(buf, offset, widthBytes, heightRows) {
   return rgba;
 }
 
-module.exports = { EGA_PALETTE, decodeMaskedTile };
+/**
+ * Decode a full-screen EGA picture in the "direct" (no mask, opaque) format used by .pip
+ * files -- confirmed from FUN_1000_bd64's disassembly. Unlike sprites, planes are NOT stored
+ * as 4 separate contiguous blocks; instead each group of 16 pixels (one destination word) has
+ * its 4 plane-words interleaved together: [plane0, plane1, plane2, plane3] (8 bytes), then the
+ * next 16-pixel group's 4 plane-words, etc, row by row. `widthWords` = groups of 16px per row.
+ *
+ * Returns an RGBA Buffer of (widthWords*16) x heightRows pixels.
+ */
+function decodeDirectPicture(buf, offset, widthWords, heightRows) {
+  const width = widthWords * 16;
+  const rgba = Buffer.alloc(width * heightRows * 4);
+  let src = offset;
+  for (let row = 0; row < heightRows; row++) {
+    for (let wordGroup = 0; wordGroup < widthWords; wordGroup++) {
+      // Each plane's 16-pixel group is 2 physical bytes; process them in memory order
+      // (byte 0 = pixels 0-7 MSB-first, byte 1 = pixels 8-15 MSB-first) -- NOT as a combined
+      // 16-bit little-endian integer, which would swap the two bytes' pixel order (byte 1's
+      // bits would be read before byte 0's).
+      const planeBytes = [
+        [buf[src], buf[src + 1]],
+        [buf[src + 2], buf[src + 3]],
+        [buf[src + 4], buf[src + 5]],
+        [buf[src + 6], buf[src + 7]],
+      ];
+      src += 8;
+      for (let bit = 0; bit < 16; bit++) {
+        const byteInPair = bit >> 3; // 0 for pixels 0-7, 1 for pixels 8-15
+        const bitMask = 0x80 >> (bit & 7);
+        const planeBits = planeBytes.map((p) => (p[byteInPair] & bitMask ? 1 : 0));
+        const col = wordGroup * 16 + bit;
+        const [r, g, b] = EGA_PALETTE[assembleIndex(planeBits)];
+        const pixelOffset = (row * width + col) * 4;
+        rgba[pixelOffset] = r;
+        rgba[pixelOffset + 1] = g;
+        rgba[pixelOffset + 2] = b;
+        rgba[pixelOffset + 3] = 255;
+      }
+    }
+  }
+  return rgba;
+}
+
+module.exports = { EGA_PALETTE, decodeMaskedTile, decodeDirectPicture };
