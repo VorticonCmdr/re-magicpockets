@@ -2,8 +2,50 @@
   "program": "GAMEU.EXE",
   "note": "Manually exported from Ghidra (GHIDRA_MCP_ALLOW_SCRIPTS is off in this environment, so the planned automated export script cannot run yet -- see docs/memory-map.md). Regenerate/extend this file at the end of each RE session by querying search_functions_by_tag for 'verified' and 'guess', plus get_function_documentation per address, and merging the results here.",
   "totalFunctions": 440,
-  "namedFunctions": 26,
+  "namedFunctions": 33,
   "functions": [
+    {
+      "name": "Gfx_BlitSpriteMaskedWide",
+      "address": "1000:81ad",
+      "tags": ["verified", "gfx"],
+      "summary": "Same AND-mask-then-4xOR-plane template as Gfx_BlitSpriteMasked but 3 words (48px)/row, inline sub-pixel shift. Called from Gfx_DrawObject for left-partial-off-screen X positions."
+    },
+    {
+      "name": "Gfx_BlitSpriteMaskedWideB",
+      "address": "1000:832c",
+      "tags": ["verified", "gfx"],
+      "summary": "Same template, 3-word row width, via Gfx_AndMaskRowWide/Gfx_OrPlaneRowWide helpers. Called from Gfx_DrawObject for right-edge (X>=0x140) positions. Exact relationship to Gfx_BlitSpriteMaskedWide not fully disambiguated."
+    },
+    {
+      "name": "Gfx_BlitSpriteMaskedLeftClip",
+      "address": "1000:843a",
+      "tags": ["verified", "gfx"],
+      "summary": "Starts writing at DI+2/+3 (skips first dest word) and reads source one word later -- confirmed left-screen-edge-clip variant. Called from Gfx_DrawObject when X straddles the left edge."
+    },
+    {
+      "name": "Gfx_AndMaskRowWide",
+      "address": "1000:83dc",
+      "tags": ["verified", "gfx"],
+      "summary": "AND-mask row primitive for the 3-word/row (wide) sprite class, +44 bytes/row."
+    },
+    {
+      "name": "Gfx_OrPlaneRowWide",
+      "address": "1000:840f",
+      "tags": ["verified", "gfx"],
+      "summary": "OR-plane row primitive for the 3-word/row (wide) sprite class, +44 bytes/row."
+    },
+    {
+      "name": "Gfx_AndMaskRowLeftClip",
+      "address": "1000:84ed",
+      "tags": ["verified", "gfx"],
+      "summary": "AND-mask row primitive that skips the leading source/dest word -- used for sprites straddling the left screen edge."
+    },
+    {
+      "name": "Gfx_OrPlaneRowLeftClip",
+      "address": "1000:852f",
+      "tags": ["verified", "gfx"],
+      "summary": "OR-plane row primitive, leading-word-skipped counterpart to Gfx_OrPlaneRow, for left-edge-straddling sprites."
+    },
     {
       "name": "Video_SetModeCga",
       "address": "1000:1472",

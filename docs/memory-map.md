@@ -136,15 +136,28 @@ setup — two independent findings agreeing exactly.
 `Gfx_DrawObject` (`1000:7419`), called from `FUN_1000_73a5` (one of `entry`'s main-loop calls,
 confirming it's the per-frame render path), is the top-level per-object draw dispatcher. It
 switches on a "shape type" byte at object-record offset `+0x16` to one of: masked-bitmap draw
-(clipped, via a family of edge-clip-case helpers `FUN_1000_843a`/`81ad`/`832c`/`8568`/`7db4`/
-`7dcd`/`7e81`/`7e9b` — each very likely a clip-case-specialized sibling of
-`Gfx_BlitSpriteMasked`/`Alt`), a probable text/font-string renderer (case `0x0a`, loops a
-NUL-terminated string), or a sign-magnitude-transformed bitmap variant (the numeric default
-case). See its plate comment in Ghidra for the full per-case breakdown and the object-record
-field offsets identified so far (`+2`=type/shape-class, `+4`=sub-type, `+6`/`+8`=X/Y, `+0xa`,
-`+0x10`, `+0x12`, `+0x14`, `+0x16`=shape-type). **Next highest-value naming target**: the
-edge-clip-case helper family above — each is presumably `Gfx_BlitSpriteMasked` specialized for
-one of {fully off-left, straddling-left, on-screen, straddling-right, fully off-right}.
+(clipped, via a family of edge-clip-case helpers — see below), a probable text/font-string
+renderer (case `0x0a`, loops a NUL-terminated string), or a sign-magnitude-transformed bitmap
+variant (the numeric default case, callers `FUN_1000_7db4`/`7dcd`/`7e81`/`7e9b`/`8568` — not yet
+named, likely another clip-case family for that different bitmap encoding). See its plate
+comment in Ghidra for the full per-case breakdown and the object-record field offsets identified
+so far (`+2`=type/shape-class, `+4`=sub-type, `+6`/`+8`=X/Y, `+0xa`, `+0x10`, `+0x12`, `+0x14`,
+`+0x16`=shape-type).
+
+**Edge-clip-case blitter family** (all confirmed: identical GC/SEQ register-programming
+template to `Gfx_BlitSpriteMasked`, just different row widths / start offsets):
+
+| Function | Row width | Notes |
+|---|---|---|
+| `Gfx_BlitSpriteMasked` | 2 words (32px) | Base case, byte-aligned or via `Gfx_AndMaskRow`/`Gfx_OrPlaneRow` |
+| `Gfx_BlitSpriteMaskedAlt` | 2 words (32px) | Same, with inline sub-pixel shift |
+| `Gfx_BlitSpriteMaskedWide` | 3 words (48px) | Wider sprite class, inline sub-pixel shift |
+| `Gfx_BlitSpriteMaskedWideB` | 3 words (48px) | Wider class, via `Gfx_AndMaskRowWide`/`Gfx_OrPlaneRowWide` (handle shift internally); called for right-edge X positions in `Gfx_DrawObject` |
+| `Gfx_BlitSpriteMaskedLeftClip` | 3 words (48px), first word skipped | Via `Gfx_AndMaskRowLeftClip`/`Gfx_OrPlaneRowLeftClip`; called for left-edge-straddling X positions |
+
+Exact disambiguation of `Gfx_BlitSpriteMaskedWide` vs `WideB`'s distinct roles (both cover the
+same row width) is still open — worth revisiting once dosbox-x tracing is underway. Right-edge
+clip is confirmed via `Gfx_DrawObject`'s call-site X-range guard (`WideB` used when X `>= 0x140`).
 
 ## Open questions for Phase 2
 
