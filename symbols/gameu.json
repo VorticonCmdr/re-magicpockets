@@ -2,7 +2,7 @@
   "program": "GAMEU.EXE",
   "note": "Manually exported from Ghidra (GHIDRA_MCP_ALLOW_SCRIPTS is off in this environment, so the planned automated export script cannot run yet -- see docs/memory-map.md). Regenerate/extend this file at the end of each RE session by querying search_functions_by_tag for 'verified' and 'guess', plus get_function_documentation per address, and merging the results here.",
   "totalFunctions": 440,
-  "namedFunctions": 85,
+  "namedFunctions": 97,
   "note2": "See docs/engine.md for the full main-loop architecture writeup (this file only indexes; engine.md has the narrative).",
   "functions": [
     {
@@ -407,7 +407,7 @@
         "gfx",
         "partial"
       ],
-      "summary": "Top-level per-object/sprite draw dispatcher, called from FUN_1000_73a5 (one of entry()'s main-loop calls -- confirmed per-frame render path). Switches on object-record byte [SI+0x16] to masked-bitmap draw (clipped, via an unnamed family of edge-clip-case helpers), a probable text/string renderer, or other variants. See Ghidra plate comment for full breakdown; edge-clip helper family (FUN_1000_843a/81ad/832c/8568/7db4/7dcd/7e81/7e9b) is the next naming target."
+      "summary": "Top-level per-object/sprite draw dispatcher, called from FUN_1000_73a5 (one of entry()'s main-loop calls -- confirmed per-frame render path). Switches on object-record byte [SI+0x16] to masked-bitmap draw (clipped, via an unnamed family of edge-clip-case helpers), a probable text/string renderer, or other variants. See Ghidra plate comment for full breakdown; edge-clip helper family (FUN_1000_843a/81ad/832c/8568/7db4/7dcd/7e81/7e9b) is the next naming target. UPDATE: [8c13] confirmed to be a reused scratch pointer, not a stable level-map pointer -- Camera_UpdateScroll writes it for scroll purposes, but by the time the HUD-text default case runs later in the frame it's been repurposed as a glyph-string source pointer. Exhaustively searched for the blocks*.pak background-tile-blit consumer via every reader of the map buffer/[8c13]/Gfx_BlitSpriteMasked's caller graph/World*_LoadBanks post-load helpers -- NOT FOUND. See plate comment for the full search and the entity-record hypothesis."
     },
     {
       "name": "World2_LoadBanks",
@@ -787,6 +787,114 @@
         "gfx"
       ],
       "summary": "Tandy/CGA-banking page copy (port 0x3DF bit twiddling from [0xf95b], word-copy loop, calls FUN_1ffb_0c12). Part of the alt-build hardware path, not the main .pak tile blitter."
+    },
+    {
+      "name": "AltBuild_ConvertTileBank",
+      "address": "1000:ae6b",
+      "tags": [
+        "guess",
+        "gfx"
+      ],
+      "summary": "Alt-build-only (no-op on main VGA path). Sets a countdown/pointer pair from a just-loaded buffer then calls AltBuild_ConvertTileBankRows, which copies/rotates 64-word blocks with a 2-phase toggle. Likely a CGA/Tandy tile-format conversion pass, unrelated to blocks*.pak's VGA-path rendering mystery."
+    },
+    {
+      "name": "AltBuild_ConvertTileBankWide",
+      "address": "1000:adb8",
+      "tags": [
+        "guess",
+        "gfx"
+      ],
+      "summary": "Same shape as AltBuild_ConvertTileBank but processes 256-word blocks via AltBuild_ConvertTileBankRowsWide with a 4-phase toggle -- plausibly a wider/taller tile class's alt-build conversion."
+    },
+    {
+      "name": "AltBuild_ConvertTileBankRows",
+      "address": "1000:ae96",
+      "tags": [
+        "guess",
+        "gfx"
+      ],
+      "summary": "Core copy/rotate loop for AltBuild_ConvertTileBank."
+    },
+    {
+      "name": "AltBuild_ConvertTileBankRowsWide",
+      "address": "1000:ade3",
+      "tags": [
+        "guess",
+        "gfx"
+      ],
+      "summary": "Core copy/rotate loop for AltBuild_ConvertTileBankWide, larger block/iteration counts."
+    },
+    {
+      "name": "World_LoadAltBuildBank",
+      "address": "1000:b861",
+      "tags": [
+        "verified",
+        "engine"
+      ],
+      "summary": "Loads an additional file then calls AltBuild_ConvertTileBankWide. Part of World1_LoadBanks' load sequence."
+    },
+    {
+      "name": "World_LoadAltBuildBankVariant",
+      "address": "1000:b883",
+      "tags": [
+        "verified",
+        "engine"
+      ],
+      "summary": "Sets a driver-dependent filename near-pointer then calls AltBuild_ConvertTileBank."
+    },
+    {
+      "name": "World_LoadAltBuildBankAlt",
+      "address": "1000:b8ab",
+      "tags": [
+        "verified",
+        "engine"
+      ],
+      "summary": "Thin wrapper calling AltBuild_ConvertTileBankWide."
+    },
+    {
+      "name": "World_ResetGraphicsAfterLoad",
+      "address": "1000:b6d7",
+      "tags": [
+        "verified",
+        "gfx"
+      ],
+      "summary": "Thin wrapper calling Gfx_ResetGraphicsControllerRegs. Called during World*_LoadBanks and Fx_TransitionStep."
+    },
+    {
+      "name": "World_InitDefaultByteTable",
+      "address": "1000:b50c",
+      "tags": [
+        "guess",
+        "engine"
+      ],
+      "summary": "Fills 40 bytes at 1000:9066 with constant 8. Called once per World*_LoadBanks. Purpose not traced further -- ruled out as the blocks*.pak tile-render consumer (no tile/map data touched)."
+    },
+    {
+      "name": "World_FlashScreenAfterLoad",
+      "address": "1000:bbae",
+      "tags": [
+        "guess",
+        "engine"
+      ],
+      "summary": "Calls FUN_1000_8667 (an Fx_UpdateTransition opcode handler) before and after Video_FlipAndScroll. Last step of every World*_LoadBanks -- plausibly a visual flash/settle finishing touch, not a tile-render trigger. Ruled out as the blocks*.pak consumer."
+    },
+    {
+      "name": "Gfx_DrawObjectHudCaseCgaA",
+      "address": "1000:9929",
+      "tags": [
+        "guess",
+        "gfx"
+      ],
+      "summary": "CGA/Tandy fallback for Gfx_DrawObject's 0x0b shape-type case. Reads [8c13] (the same reused scratch pointer as the VGA path's HUD-text case) and runs a 10-row scanline loop -- consistent with being the CGA/Tandy HUD/score-digit renderer, not a background-tile blitter."
+    },
+    {
+      "name": "Gfx_DrawObjectHudCaseCgaB",
+      "address": "1000:9a4c",
+      "tags": [
+        "guess",
+        "gfx"
+      ],
+      "summary": "CGA/Tandy fallback for Gfx_DrawObject's 0x0b case, paired with Gfx_DrawObjectHudCaseCgaA. Not individually decompiled -- assumed parallel structure by analogy with other CGA/Tandy fallback pairs."
     }
   ],
   "openQuestions": [
@@ -807,7 +915,7 @@
     "Fx_FadePaletteLoop29 vs Fx_FadeInWorldPalette: both loop Video_SelectAndLoadPalette but for different frame counts (29 vs 22) and only one has the CGA-tint branch. Purpose distinction not yet nailed down.",
     "Fx_RunCallbackSequenceThenFade's dynamic callback ([8c29]) and FUN_1000_be02 not traced -- likely an intro/cutscene sequencer, possibly the new.pip level-select screen animation.",
     "AltBuild_TintCgaFramebuffer's composite-artifact-color hypothesis is unverified -- would need a dosbox-x composite CGA monitor emulation comparison.",
-    "blocks1-4.pak (level background tiles) is NOT consumed by Gfx_BlitSpriteMasked despite fitting the same 640-byte tile size arithmetic -- confirmed by disassembly (plane order/index mapping proven correct via kidx1.pak/nasty1.pak rendering cleanly) and by blocks1.pak still rendering as noise through the identical pipeline. Ruled out as candidates: Level_RewriteAnimatedTileIndex, FUN_1000_73a5, Gfx_ClearFramebufferRegion, Gfx_ResetGraphicsControllerRegs(Alt), AltBuild_CopyCgaFramebufferPage. The real background-tile blit function is still unidentified -- HIGH VALUE target for a dedicated future session. Start from wherever the column-major map buffer at 6de3:4200 gets read for rendering (not just Camera_UpdateScroll's scroll math).",
-    "Gfx_BlitSpriteMaskedWide's disassembly was checked directly: it is NOT a 48px-wide source format (still reads 2 words/4 bytes per row per plane like the regular path); 'Wide' refers to a 5-byte destination footprint from sub-pixel ROR-shift spill. The hypothesized second/wider tile size for the 'wide sprite class' remains unlocated."
+    "Gfx_BlitSpriteMaskedWide's disassembly was checked directly: it is NOT a 48px-wide source format (still reads 2 words/4 bytes per row per plane like the regular path); 'Wide' refers to a 5-byte destination footprint from sub-pixel ROR-shift spill. The hypothesized second/wider tile size for the 'wide sprite class' remains unlocated.",
+    "blocks*.pak's real render consumer is STILL not located after an exhaustive trace of every reader of the level-map buffer (6de3:4200 and the scroll-computed [8c13] pointer), Gfx_BlitSpriteMasked's only caller (Gfx_DrawObject, entity-list-driven, not a tile-grid loop), and every World*_LoadBanks post-load helper (all either alt-build-only CGA conversion routines or simple resets). Working hypothesis: background/level geometry may be built from placed ENTITY RECORDS at load time rather than raster-blitted from the .pap grid directly -- needs a dosbox-x trace of what populates the entity list (0x9090-0x91a8) at level load, and/or resolving DAT_1000_b152's near-pointer filename table to identify which loaded file blocks*.pak's data lands in."
   ]
 }

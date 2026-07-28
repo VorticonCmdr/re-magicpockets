@@ -89,6 +89,13 @@ confirmed, semantic role inferred — tagged `guess` in Ghidra, not `verified`).
 
 ## Open threads for a future session
 
+- **The `blocks*.pak` background-tile render consumer is still unlocated**, despite an exhaustive
+  trace of every reader of the level-map buffer (`6de3:4200`/`[8c13]`), `Gfx_BlitSpriteMasked`'s
+  full caller graph (only `Gfx_DrawObject`, which is entity-list-driven), and every
+  `World*_LoadBanks` post-load helper. Working hypothesis: background geometry is built from
+  placed entity records at load time rather than raster-blitted from the `.pap` grid — see
+  `docs/formats/pak.md` for the full search trail. Needs a dosbox-x trace of entity-list
+  population at level load to confirm or refute.
 - **`Entity_UpdateBehavior`**'s ~600 lines of per-type/per-state gameplay logic — the single
   highest-value remaining target; this is literally "how the game plays."
 - **`Entity_RunScript`'s opcode jump table** (`1000:2383`, 256 entries) — decoding this reveals

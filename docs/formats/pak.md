@@ -96,15 +96,33 @@ plausible tile sizes). The mask-plane ASCII-art check that "confirmed" this form
 start of the project was only ever run against `special1.pak`, never against `blocks1.pak` --
 so `blocks*.pak`'s layout was never actually independently verified, only assumed by analogy.
 
-Searched for the real `blocks*.pak` consumer and ruled out several candidates: `FUN_1000_02e2`
-(renamed `Level_RewriteAnimatedTileIndex` -- rewrites a tile-index byte in the map buffer for
-animation, does not draw pixels), `FUN_1000_73a5` (walks the entity list into `Gfx_DrawObject`,
-not tiles), `Gfx_ClearFramebufferRegion`/`Gfx_ResetGraphicsControllerRegs(Alt)`/
-`AltBuild_CopyCgaFramebufferPage` (video-state cleanup / CGA-banking utilities, not blitters).
-The actual function that blits background tiles from the `.pap` tile-index map into the
-framebuffer has **not yet been located** — good target for a dedicated future session (start
-from wherever the column-major map buffer at `6de3:4200` gets read for rendering, not just for
-`Camera_UpdateScroll`'s scroll math).
+Searched for the real `blocks*.pak` consumer, exhaustively this time — every reader of both the
+raw buffer address (`6de3:4200`) and the scroll-computed read pointer (`[8c13]`) was traced:
+
+- `Level_RewriteAnimatedTileIndex` (`Level_UpdateAnimatedTiles`'s callback) — rewrites a
+  tile-index byte for animation, does not draw pixels.
+- `Gfx_DrawObject`'s HUD-text default case reads `[8c13]` too — but it turns out `[8c13]` is a
+  **reused scratch global**, not a stable "level-map pointer": `Camera_UpdateScroll` writes it
+  for scroll purposes early in the frame, but by the time this HUD case runs later in the same
+  frame it's been repurposed as a glyph-string source pointer. Its CGA/Tandy fallbacks
+  (`Gfx_DrawObjectHudCaseCgaA`/`B`) do the same thing.
+- `Gfx_BlitSpriteMasked`'s **only caller in the whole binary is `Gfx_DrawObject`**, which is
+  entity-list-driven (walks a linked list at `0x9090`-`0x91a8` via `FUN_1000_73a5`) — there is no
+  separate tile-grid-walking blit loop anywhere.
+- Every `World*_LoadBanks` post-load helper was checked too: `World_LoadAltBuildBank(Variant/Alt)`
+  and `AltBuild_ConvertTileBank(Wide)` are alt-build-only CGA/Tandy tile-format conversion
+  routines (no-ops on the main VGA path); `World_ResetGraphicsAfterLoad`/
+  `World_InitDefaultByteTable`/`World_FlashScreenAfterLoad` are simple GC-register resets/table
+  inits — none touch tile or map data.
+
+**No dedicated background-tile-blit function exists anywhere in the traced call graph.** Working
+hypothesis for a future session: background/level geometry may be built from **placed ENTITY
+RECORDS** at load time (each referencing a specific `.pak` tile via its shape-type fields,
+rendered through the exact same `Gfx_DrawObject`/`Gfx_BlitSpriteMasked` pipeline as sprites)
+rather than raster-blitted from the `.pap` tile-index grid directly. This would neatly explain
+why there's no separate blitter to find. Unconfirmed — needs a dosbox-x trace of what populates
+the entity list at level load, and/or resolving `DAT_1000_b152`'s near-pointer filename table to
+identify exactly which loaded file `blocks*.pak`'s data lands in and who actually reads it.
 
 ## Open questions
 
