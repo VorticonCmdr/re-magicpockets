@@ -53,13 +53,38 @@ confirmed, semantic role inferred — tagged `guess` in Ghidra, not `verified`).
   pending removal" (consistent across `Entity_UpdateAll`, `Gfx_DrawObject`, and other object-init
   sites seen earlier in the session).
 
+## The entity system
+
+`Entity_UpdateAll` dispatches each live entity to one of three functions, now all named:
+
+- **`Entity_RunScript`** (confirmed) — a genuine **bytecode VM**. Entities can carry a script
+  pointer (`+0xc`); if unset, it's initialized from a default-script table at `0xcd88`. Each
+  iteration reads one opcode byte and, unless it's a terminator (`-1`/`-0x52`) or the special op
+  `-4` (→ `FUN_1000_2659`), calls through a **256-entry function-pointer jump table at
+  `1000:2383`** — i.e. entity behaviors are authored as opcode sequences, not hardcoded
+  per-type branches. Decoding that jump table is a rich, self-contained target for a future
+  session — it would reveal the actual scripting language driving enemy/object behavior.
+- **`Entity_UpdateBehavior`** (guess — structure confirmed, *not* decoded branch-by-branch) — the
+  dense, hardcoded-per-type gameplay rules dispatcher: switches on a "kind" field (`+4`) and
+  nested sub-type/state fields, implementing movement, collision response, and (via `[8b6b]`,
+  `Rng_NextValue`'s output) randomized behavior choices. This is genuinely where the gameplay
+  rules live, but at ~600 decompiled lines of entity-specific magic numbers, it was deliberately
+  **not** decoded further in this pass — the effort/payoff ratio favors a dedicated future
+  session, ideally with dosbox-x behavioral verification rather than reading magic numbers cold.
+- **`Entity_FreeSlot`** (confirmed) — removes a dead entity from a **~140-slot entity-pointer
+  array at `1000:9090`–`0x91a8`** via linear scan + compaction (classic dense-array free-list
+  removal). Confirms `Entity_UpdateAll`'s list walk (`0x91be`) operates over this same array.
+
 ## Open threads for a future session
 
+- **`Entity_UpdateBehavior`**'s ~600 lines of per-type/per-state gameplay logic — the single
+  highest-value remaining target; this is literally "how the game plays."
+- **`Entity_RunScript`'s opcode jump table** (`1000:2383`, 256 entries) — decoding this reveals
+  the entity scripting language.
 - Name `Gfx_DrawObject`'s render pass caller context more precisely (`FUN_1000_73a5` itself).
-- `FUN_1000_22da`/`FUN_1000_ca6d`/`FUN_1000_c961` — the actual per-entity physics/AI/removal
-  logic called by `Entity_UpdateAll`. This is where gameplay rules live.
 - `FUN_1000_02e2` (animated-tile callback), `FUN_1000_c2f3` (event-queue callback).
 - The world/sub-level struct passed around as `[8b89]`/`[8b8b]` — worth formalizing as a Ghidra
   struct once its full field layout is known.
-- Resolving the entity record layout fully (only `+0x40` is confirmed; `Gfx_DrawObject`'s
-  comment lists several other offsets seen but not yet named).
+- Resolving the entity record layout fully — confirmed so far: `+2`=type/shape-class,
+  `+4`=kind, `+6`/`+8`=X/Y, `+0xc`=script pointer, `+0x40`=state (`0x19`="dead/remove"). Many
+  other offsets appear in `Entity_UpdateBehavior` but aren't named yet.
