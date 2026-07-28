@@ -15,15 +15,31 @@ const fs = require('fs');
 const path = require('path');
 const { decodeDirectPicture } = require('./ega.js');
 const { encodePng } = require('./png.js');
+const { WORLD_PALETTES } = require('./palette.js');
 
 const PICTURE_OFFSET = 0x22;
 const WIDTH_WORDS = 20; // 320px
 const HEIGHT_ROWS = 192;
 
 function main() {
-  const [inputPath, outputArg] = process.argv.slice(2);
+  const argv = process.argv.slice(2);
+  let paletteName = 'world1';
+  const rest = [];
+  for (let i = 0; i < argv.length; i++) {
+    if (argv[i] === '--palette') {
+      paletteName = argv[++i];
+    } else {
+      rest.push(argv[i]);
+    }
+  }
+  const [inputPath, outputArg] = rest;
   if (!inputPath) {
-    console.error('Usage: node tools/extract-pip.js <file.pip.raw> [out.png]');
+    console.error('Usage: node tools/extract-pip.js <file.pip.raw> [out.png] [--palette worldN]');
+    process.exit(1);
+  }
+  const palette = WORLD_PALETTES[paletteName];
+  if (!palette) {
+    console.error(`Unknown --palette '${paletteName}'. Options: ${Object.keys(WORLD_PALETTES).join(', ')}`);
     process.exit(1);
   }
   const buf = fs.readFileSync(inputPath);
@@ -37,12 +53,12 @@ function main() {
     );
   }
 
-  const rgba = decodeDirectPicture(buf, PICTURE_OFFSET, WIDTH_WORDS, HEIGHT_ROWS);
+  const rgba = decodeDirectPicture(buf, PICTURE_OFFSET, WIDTH_WORDS, HEIGHT_ROWS, palette);
   fs.writeFileSync(outputPath, encodePng(WIDTH_WORDS * 16, HEIGHT_ROWS, rgba));
 
   const trailingBytes = buf.length - expectedEnd;
   console.log(
-    `${path.basename(inputPath)}: 320x192 picture -> ${outputPath}` +
+    `${path.basename(inputPath)}: 320x192 picture -> ${outputPath} (palette=${paletteName})` +
       (trailingBytes > 0 ? ` (${trailingBytes} trailing bytes unaccounted for -- see docs/formats/pip.md)` : '')
   );
 }

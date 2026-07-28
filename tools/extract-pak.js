@@ -15,6 +15,7 @@ const fs = require('fs');
 const path = require('path');
 const { decodeMaskedTile } = require('./ega.js');
 const { encodePng } = require('./png.js');
+const { WORLD_PALETTES } = require('./palette.js');
 
 const TILE_WIDTH_BYTES = 4; // 32px
 const TILE_HEIGHT = 32;
@@ -23,10 +24,12 @@ const TILE_SIZE = PLANE_SIZE * 5; // 640 (1 mask + 4 color planes)
 const TILE_PIXELS = TILE_WIDTH_BYTES * 8; // 32
 
 function parseArgs(argv) {
-  const args = { cols: 0, files: [] };
+  const args = { cols: 0, files: [], palette: 'world1' };
   for (let i = 0; i < argv.length; i++) {
     if (argv[i] === '--cols') {
       args.cols = parseInt(argv[++i], 10);
+    } else if (argv[i] === '--palette') {
+      args.palette = argv[++i];
     } else {
       args.files.push(argv[i]);
     }
@@ -45,9 +48,16 @@ function extractSheet(buf) {
 }
 
 function main() {
-  const { cols, files } = parseArgs(process.argv.slice(2));
+  const { cols, files, palette: paletteName } = parseArgs(process.argv.slice(2));
   if (files.length === 0) {
-    console.error('Usage: node tools/extract-pak.js <file.pak.raw> [out.png] [--cols N]');
+    console.error(
+      'Usage: node tools/extract-pak.js <file.pak.raw> [out.png] [--cols N] [--palette worldN]'
+    );
+    process.exit(1);
+  }
+  const palette = WORLD_PALETTES[paletteName];
+  if (!palette) {
+    console.error(`Unknown --palette '${paletteName}'. Options: ${Object.keys(WORLD_PALETTES).join(', ')}`);
     process.exit(1);
   }
 
@@ -63,7 +73,7 @@ function main() {
   const sheet = Buffer.alloc(sheetWidth * sheetHeight * 4);
 
   tiles.forEach((offset, i) => {
-    const tileRgba = decodeMaskedTile(buf, offset, TILE_WIDTH_BYTES, TILE_HEIGHT);
+    const tileRgba = decodeMaskedTile(buf, offset, TILE_WIDTH_BYTES, TILE_HEIGHT, palette);
     const tileCol = i % sheetCols;
     const tileRow = Math.floor(i / sheetCols);
     const destX = tileCol * TILE_PIXELS;
@@ -78,7 +88,7 @@ function main() {
   fs.writeFileSync(outputPath, encodePng(sheetWidth, sheetHeight, sheet));
   console.log(
     `${path.basename(inputPath)}: ${tileCount} tiles (32x32) -> ${outputPath} ` +
-      `(${sheetWidth}x${sheetHeight}, ${sheetCols}x${sheetRows} grid)`
+      `(${sheetWidth}x${sheetHeight}, ${sheetCols}x${sheetRows} grid, palette=${paletteName})`
   );
 }
 

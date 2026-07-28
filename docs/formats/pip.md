@@ -51,13 +51,24 @@ mapping — that step genuinely needed a human looking at the picture.
 
 `node tools/extract-pip.js build/raw/<file>.pip.raw` produces the final decode.
 
-## CORRECTION pending — same palette caveat as `.pak`
+## Palette correction — RESOLVED for `.pip`: index-bit assembly is the identity mapping
 
-See `docs/formats/pak.md`'s new correction note and `docs/memory-map.md`'s "Palette setting"
-section: a real, code-derived palette-setting mechanism (`Video_ApplyVgaPalette` on the `'C'`
-"Colour VGA" driver path — what this project's shipped `pockets.ini` actually selects) was found
-after this file's color-mapping work was done against a hardcoded default EGA palette. The
-`PLANE_TO_INDEX_BIT` "confirmation" here needs re-validation against the real palette.
+`docs/memory-map.md`'s "Palette setting" section found a real, code-derived palette-setting
+mechanism (`Video_ApplyVgaPalette` on the `'C'` "Colour VGA" driver path — what this project's
+shipped `pockets.ini` actually selects). Re-rendering `new.pip` with the real world-1 palette
+(`tools/palette.js`) using the previously-guessed `PLANE_TO_INDEX_BIT=[1,0,3,2]` mapping produced
+noisy garbage — that mapping had been tuned to compensate for the wrong (default EGA) palette
+and was never actually correct.
+
+Re-testing all 24 possible plane→index-bit permutations against the real palette and comparing
+directly to a user-supplied DOSBox screenshot of the actual level-select screen: **the identity
+mapping (`[0,1,2,3]` — no relabeling at all, plane N feeds index bit N)** produces a clean image
+matching the screenshot almost exactly (same blue-lavender walls, green roofs, orange trim on
+the world-1 thumbnail). This makes physical sense: the plane read order (confirmed from
+disassembly as the Sequencer Map Mask cycling `0x01,0x02,0x04,0x08`) directly *is* the index-bit
+order, with no hardware-level relabeling — the earlier `[1,0,3,2]` detour was chasing a palette
+bug, not a real plane-mapping bug. `tools/ega.js`'s `assembleIndex` should be simplified to drop
+`PLANE_TO_INDEX_BIT` once `.pak`'s equivalent bug (see `docs/formats/pak.md`) is also resolved.
 
 ## Open questions
 

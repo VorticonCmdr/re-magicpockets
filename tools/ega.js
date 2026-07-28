@@ -59,7 +59,7 @@ function assembleIndex(planeBitsInOrder) {
  * matches the AND semantics (mask bit 1 leaves the destination unchanged, bit 0 clears it
  * for the following OR pass).
  */
-function decodeMaskedTile(buf, offset, widthBytes, heightRows) {
+function decodeMaskedTile(buf, offset, widthBytes, heightRows, palette = EGA_PALETTE) {
   const width = widthBytes * 8;
   const planeSize = widthBytes * heightRows;
   const maskPlane = buf.subarray(offset, offset + planeSize);
@@ -82,7 +82,7 @@ function decodeMaskedTile(buf, offset, widthBytes, heightRows) {
         continue;
       }
       const planeBits = colorPlanes.map((p) => (p[byteIdx] & bitMask ? 1 : 0));
-      const [r, g, b] = EGA_PALETTE[assembleIndex(planeBits)];
+      const [r, g, b] = palette[assembleIndex(planeBits)];
       rgba[pixelOffset] = r;
       rgba[pixelOffset + 1] = g;
       rgba[pixelOffset + 2] = b;
@@ -101,7 +101,7 @@ function decodeMaskedTile(buf, offset, widthBytes, heightRows) {
  *
  * Returns an RGBA Buffer of (widthWords*16) x heightRows pixels.
  */
-function decodeDirectPicture(buf, offset, widthWords, heightRows) {
+function decodeDirectPicture(buf, offset, widthWords, heightRows, palette = EGA_PALETTE) {
   const width = widthWords * 16;
   const rgba = Buffer.alloc(width * heightRows * 4);
   let src = offset;
@@ -123,7 +123,7 @@ function decodeDirectPicture(buf, offset, widthWords, heightRows) {
         const bitMask = 0x80 >> (bit & 7);
         const planeBits = planeBytes.map((p) => (p[byteInPair] & bitMask ? 1 : 0));
         const col = wordGroup * 16 + bit;
-        const [r, g, b] = EGA_PALETTE[assembleIndex(planeBits)];
+        const [r, g, b] = palette[assembleIndex(planeBits)];
         const pixelOffset = (row * width + col) * 4;
         rgba[pixelOffset] = r;
         rgba[pixelOffset + 1] = g;

@@ -2,7 +2,7 @@
   "program": "GAMEU.EXE",
   "note": "Manually exported from Ghidra (GHIDRA_MCP_ALLOW_SCRIPTS is off in this environment, so the planned automated export script cannot run yet -- see docs/memory-map.md). Regenerate/extend this file at the end of each RE session by querying search_functions_by_tag for 'verified' and 'guess', plus get_function_documentation per address, and merging the results here.",
   "totalFunctions": 440,
-  "namedFunctions": 66,
+  "namedFunctions": 80,
   "note2": "See docs/engine.md for the full main-loop architecture writeup (this file only indexes; engine.md has the narrative).",
   "functions": [
     {
@@ -616,6 +616,132 @@
         "gfx"
       ],
       "summary": "Default-case body of Fx_UpdateTransition. Increments [8ba2] once per frame and drives Video_SelectAndLoadPalette through its 24-bank fade-ramp table -- confirms Fx_UpdateTransition is a palette-fade transition system, not a screen wipe. Other opcode values (-5/-4/-3/-2/-1) handle camera re-center, mode re-init (Video_SetMode), and input-gated waits around level transitions."
+    },
+    {
+      "name": "Video_SelectAndLoadPaletteFar",
+      "address": "1000:8f33",
+      "tags": [
+        "verified",
+        "gfx"
+      ],
+      "summary": "Thin far-call trampoline wrapper around Video_SelectAndLoadPalette."
+    },
+    {
+      "name": "Fx_FadeInWorldPalette",
+      "address": "1000:be66",
+      "tags": [
+        "verified",
+        "gfx"
+      ],
+      "summary": "Called directly by all four World*_LoadBanks. Loops Video_SelectAndLoadPalette once/frame (plus AltBuild_TintCgaFramebuffer when the alt-build sentinel is active) until the frame counter reaches 22 -- the fade from black into this world's target palette transition."
+    },
+    {
+      "name": "Fx_FadePaletteLoop29",
+      "address": "1000:be90",
+      "tags": [
+        "guess",
+        "gfx"
+      ],
+      "summary": "Structurally identical to Fx_FadeInWorldPalette but runs 29 frames with no CGA-tint branch. Only known caller: Fx_RunCallbackSequenceThenFade. Purpose vs. Fx_FadeInWorldPalette not yet distinguished."
+    },
+    {
+      "name": "Fx_RunCallbackSequenceThenFade",
+      "address": "1000:bea2",
+      "tags": [
+        "guess",
+        "gfx"
+      ],
+      "summary": "Runs a dynamic callback ([8c29]) 5 times with 11-frame waits (alternating with FUN_1000_be02), then finishes with Fx_FadePaletteLoop29. Plausibly an intro/cutscene sequencer (e.g. the level-select screen animation seen in new.pip)."
+    },
+    {
+      "name": "AltBuild_MainLoopEntry",
+      "address": "1ffb:0000",
+      "tags": [
+        "guess",
+        "engine"
+      ],
+      "summary": "MAJOR STRUCTURAL FINDING: a near-complete duplicate of Fx_TransitionStep's dispatch AND the entire 14-call main loop, living in segment 1ffb (previously known only for CGA/Tandy credits text). Segment 1ffb is an entire alternate build of the runtime, reached when sentinel DAT_1000_22d7 is -1 or 0xff. Worth a dedicated future session."
+    },
+    {
+      "name": "AltBuild_SelectPalette",
+      "address": "1ffb:052c",
+      "tags": [
+        "guess",
+        "gfx"
+      ],
+      "summary": "Alt-build mirror of Video_SelectAndLoadPalette: reads bank index from [8c0d], flags mid-fade state for banks 8-17, looks up a pointer from a table at 1ffb:0x618 by bank."
+    },
+    {
+      "name": "AltBuild_ApplyPalette",
+      "address": "1ffb:0378",
+      "tags": [
+        "guess",
+        "gfx"
+      ],
+      "summary": "Alt-build mirror of Video_ApplyVgaPalette for Tandy/PCjr hardware: loops 16x polling port 0x3DAh then writing one byte to port 0x3DEh from a per-bank table at 1ffb:0x4f0."
+    },
+    {
+      "name": "AltBuild_TintCgaFramebuffer",
+      "address": "1ffb:057e",
+      "tags": [
+        "guess",
+        "gfx"
+      ],
+      "summary": "ORs a fixed bit pattern (5) into a 96x80-byte CGA/Tandy framebuffer region, striding by 0x2000 (classic CGA even/odd-bank split). Plausibly the undocumented CGA mode for very slow machines composite-artifact trick mentioned in the 1ffb credits string. Called only from Fx_FadeInWorldPalette when the alt-build sentinel is active."
+    },
+    {
+      "name": "AltBuild_BuildBitRotateTable",
+      "address": "1ffb:0a02",
+      "tags": [
+        "guess",
+        "gfx"
+      ],
+      "summary": "Builds a 256-entry bit rotation/interleave lookup table (one of two algorithms, flag-selected). Likely feeds AltBuild_TintCgaFramebuffer; exact relationship not traced."
+    },
+    {
+      "name": "AltBuild_SelectPaletteThunk",
+      "address": "1000:8f09",
+      "tags": [
+        "verified",
+        "gfx"
+      ],
+      "summary": "Trampoline into AltBuild_SelectPalette, called from Video_ApplyVgaPalette when DAT_1000_22d7==-1."
+    },
+    {
+      "name": "AltBuild_ApplyPaletteThunk",
+      "address": "1000:8f03",
+      "tags": [
+        "verified",
+        "gfx"
+      ],
+      "summary": "Trampoline into AltBuild_ApplyPalette, called from Video_ApplyVgaPalette when DAT_1000_22d7==0xff."
+    },
+    {
+      "name": "AltBuild_MainLoopEntryThunkA",
+      "address": "1000:8f0f",
+      "tags": [
+        "verified",
+        "gfx"
+      ],
+      "summary": "Trampoline into AltBuild_MainLoopEntry."
+    },
+    {
+      "name": "AltBuild_MainLoopEntryThunkB",
+      "address": "1000:8f15",
+      "tags": [
+        "verified",
+        "gfx"
+      ],
+      "summary": "Trampoline into AltBuild_MainLoopEntry (second call site, different sentinel branch)."
+    },
+    {
+      "name": "AltBuild_BuildBitRotateTableThunk",
+      "address": "1000:8f49",
+      "tags": [
+        "verified",
+        "gfx"
+      ],
+      "summary": "Trampoline into AltBuild_BuildBitRotateTable."
     }
   ],
   "openQuestions": [
@@ -632,6 +758,10 @@
     "Exact disambiguation of Gfx_BlitSpriteMaskedWide vs WideB's distinct roles (both cover the same row width).",
     "Full 24-bank palette dump only spot-checked (banks 0,7,19,20,21 + the 0-17 ramp shape) -- worth a dedicated docs/formats/palette.md with all 24 banks decoded.",
     "tools/ega.js still hardcodes a generic default EGA palette; the empirically-guessed PLANE_TO_INDEX_BIT mapping in docs/formats/pak.md/pip.md was validated against that wrong reference and needs re-checking against the real per-world palettes now found in Video_ApplyVgaPalette / docs/memory-map.md.",
-    "Which .pak/.pap files correspond to which world (1-4) palette bank is not yet mapped -- needed before re-rendering sprites/levels with correct colors."
+    "Which .pak/.pap files correspond to which world (1-4) palette bank is not yet mapped -- needed before re-rendering sprites/levels with correct colors.",
+    "AltBuild_MainLoopEntry (1ffb:0000) is a near-complete duplicate of the main-segment runtime -- segment 1ffb is an entire alternate build, not just a CGA/Tandy driver module. When exactly it activates (DAT_1000_22d7 sentinel source) and how much of the rest of 1ffb mirrors 1000 is unexplored -- good target for a dedicated session.",
+    "Fx_FadePaletteLoop29 vs Fx_FadeInWorldPalette: both loop Video_SelectAndLoadPalette but for different frame counts (29 vs 22) and only one has the CGA-tint branch. Purpose distinction not yet nailed down.",
+    "Fx_RunCallbackSequenceThenFade's dynamic callback ([8c29]) and FUN_1000_be02 not traced -- likely an intro/cutscene sequencer, possibly the new.pip level-select screen animation.",
+    "AltBuild_TintCgaFramebuffer's composite-artifact-color hypothesis is unverified -- would need a dosbox-x composite CGA monitor emulation comparison."
   ]
 }

@@ -65,16 +65,30 @@ extracts cleanly (exact division by 640, no leftover bytes). Visual inspection o
 sheets (sent to the user directly) shows recognizable, coherent game art — rounded platform
 tiles, character sprites, enemy sprites — not noise, confirming the format end-to-end.
 
-## CORRECTION pending — a real palette exists and this file's color guess needs re-validation
+## STILL BROKEN — real palette confirmed the plane assembly is wrong for `.pak` specifically
 
 A real, code-derived per-world 16-colour palette was found on the `'C'` ("Colour VGA") driver
-path — see `docs/memory-map.md`'s "Palette setting" section. This project's own shipped
-`pockets.ini` selects exactly that driver. The `PLANE_TO_INDEX_BIT` mapping above was tuned by
-eyeballing candidates against a *hardcoded default EGA palette* that is very likely NOT what the
-game actually displays for any given world. The plane→index-bit assembly (which of the 4 planes
-feeds which bit of the 0-15 index) may still be right — that's a separate question from which
-RGB each index maps to — but the color-mapping "confirmation" needs to be redone against the
-real extracted palette, not the default one. Not yet done.
+path — see `docs/memory-map.md`'s "Palette setting" section and `tools/palette.js`. Re-rendering
+`.pak` sprite sheets with the real world-1 palette instead of the old default-EGA guess produced
+**pure per-pixel noise for every one of the 24 possible plane→index-bit permutations** — including
+the identity mapping that turned out to be exactly correct for `.pip` (see `docs/formats/pip.md`).
+
+This means the bug isn't the 4-bit index assembly at all (that question is now closed — identity,
+no relabeling) but something specific to how `.pak`'s color planes are being read. Prime suspects,
+not yet checked:
+- The assumed on-disk plane order (four separate contiguous 128-byte blocks = planes 0,1,2,3 in
+  that exact order) may be wrong even though the file dividing evenly by 640 bytes/tile and the
+  mask plane's ASCII-art silhouette check both came back clean — **the mask-plane check does not
+  validate anything about the 4 color planes**, so "coherent art" was never actually confirmed
+  for color data, only for the mask.
+- Possible row/column transpose bug in the color planes analogous to the one found and fixed in
+  `.pap` (`Level_TransposeMapToColumnMajor`) earlier this project — worth re-deriving directly
+  from `Gfx_BlitSpriteMasked`'s exact addressing rather than guessing from ASCII art again.
+- Worth double-checking the very first tile's raw bytes by hand against `Gfx_AndMaskRow`/
+  `Gfx_OrPlaneRow`'s disassembly before trying more permutations blind.
+
+**Not yet resolved** — `.pak` sprite sheets currently cannot be trusted at all until this is
+fixed; do not re-share them as "could be correct" again.
 
 ## Open questions
 

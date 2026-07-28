@@ -12,7 +12,7 @@ value at runtime and stashes it at `DAT_1000_b39f = 0x7db2`.
 | Block | Range | Role |
 |---|---|---|
 | `CODE_0` | `1000:0000–ffaf` | Main engine. ~410 of the 440 functions. |
-| `CODE_1` | `1ffb:0000–0edf` | Secondary code. Contains the CGA/Tandy credits string (`1ffb:0c4c`) crediting Chris Wood — likely the CGA/Tandy video driver module. |
+| `CODE_1` | `1ffb:0000–0edf` | **An entire alternate build of the runtime**, not just a driver module (corrected — see below). Contains the CGA/Tandy credits string (`1ffb:0c4c`) crediting Chris Wood, `AltBuild_MainLoopEntry` (a near-complete duplicate of the main segment's transition dispatcher + 14-call main loop), and Tandy/CGA-specific palette/framebuffer functions. |
 | `CODE_2` | `20e9:0000–95ff` | **No functions decompiled — runtime load buffer.** |
 | `CODE_3` | `2a49:0000–95ff` | Runtime load buffer. Target of world-1 loader (`FUN_1000_b56b`). |
 | `CODE_4` | `33a9:0000–50df` | Runtime load buffer. |
@@ -168,6 +168,30 @@ the full 24-bank dump if that thread gets picked back up — **not yet done**: r
 palette, and the empirically-guessed `PLANE_TO_INDEX_BIT` mapping in `docs/formats/pak.md` /
 `pip.md` was tuned against that *wrong* reference palette, so it needs to be re-validated against
 these real, per-world colours).
+
+## `CODE_1` (segment `1ffb`) is an alternate build of the runtime, not just a driver module
+
+Found while tracing `Video_ApplyVgaPalette`'s `DAT_1000_22d7` sentinel branches (`-1`/`0xff`),
+which delegate to thin trampolines (`AltBuild_SelectPaletteThunk`/`AltBuild_ApplyPaletteThunk`/
+`AltBuild_MainLoopEntryThunkA`/`B`/`AltBuild_BuildBitRotateTableThunk`, all `1000:8f0x`-`8f4x`)
+into segment `1ffb`. Following those turned up **`AltBuild_MainLoopEntry`** (`1ffb:0000`) — a
+near-complete duplicate of `Fx_TransitionStep`'s dispatch *and* the entire 14-call main loop
+(identical call sequence to `entry`'s). This means `1ffb` isn't merely "the CGA/Tandy driver" as
+previously assumed — it's an **entire alternate build of the game**, selected whenever
+`DAT_1000_22d7` is `-1` or `0xff`. Supporting cast, all mirroring main-segment equivalents for
+Tandy/PCjr-class hardware:
+
+- `AltBuild_SelectPalette` (`1ffb:052c`) — mirrors `Video_SelectAndLoadPalette`'s bank-index
+  lookup against its own 24-bank-style pointer table at `1ffb:0x618`.
+- `AltBuild_ApplyPalette` (`1ffb:0378`) — mirrors `Video_ApplyVgaPalette`, but writes to Tandy/
+  PCjr port `0x3DEh` (gated by port `0x3DAh` retrace polls) instead of the VGA DAC.
+- `AltBuild_TintCgaFramebuffer` (`1ffb:057e`) / `AltBuild_BuildBitRotateTable` (`1ffb:0a02`) —
+  OR a fixed bit pattern across a CGA-bank-strided framebuffer region using a generated
+  bit-rotation table; plausibly the "undocumented CGA mode ... for very slow machines"
+  composite-artifact-color trick referenced in the `1ffb:0c4c` credits string (not yet proven).
+
+**Open for a future session**: exactly what selects the alt build at runtime (where
+`DAT_1000_22d7` gets set to `-1`/`0xff`), and how much of the rest of `1ffb` mirrors `1000`.
 
 ## Sprite rendering (found via `MOV DX,0x3ce`/`0x3c4` port sweeps)
 
