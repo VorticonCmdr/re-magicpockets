@@ -1,0 +1,99 @@
+{
+  "program": "GAMEU.EXE",
+  "note": "Manually exported from Ghidra (GHIDRA_MCP_ALLOW_SCRIPTS is off in this environment, so the planned automated export script cannot run yet -- see docs/memory-map.md). Regenerate/extend this file at the end of each RE session by querying search_functions_by_tag for 'verified' and 'guess', plus get_function_documentation per address, and merging the results here.",
+  "totalFunctions": 440,
+  "namedFunctions": 14,
+  "functions": [
+    {
+      "name": "entry",
+      "address": "1000:0010",
+      "tags": ["verified", "spine"],
+      "summary": "Program entry point. Reads PSP command tail, sets SS:SP=6d83:05fe (the real stack), DS=ES=6de3, runs init chain, dispatches to World_Dispatch or falls through, then runs the main loop (~14 subsystem calls per iteration)."
+    },
+    {
+      "name": "Video_SetMode",
+      "address": "1000:133b",
+      "tags": ["verified", "spine"],
+      "summary": "Dispatches on driver-selector byte [8a5a]: 'E'=EGA/VGA16 (reference mode), 'i'=mode 0Dh, 'C'=allocates a 0x800-para buffer once + mode set, 'T'=Tandy (mode 09h, B800, port 3DFh), '4'/'0'=CGA (incl. the undocumented high-speed CGA mode from the 1ffb credits string)."
+    },
+    {
+      "name": "App_FatalExit",
+      "address": "1000:197f",
+      "tags": ["verified", "spine"],
+      "summary": "Unconditional cleanup path (video/keyboard restore, DOS vector restore, close open handles). Reached from entry() when the early init chain fails (<0 return)."
+    },
+    {
+      "name": "App_ExitOrReset",
+      "address": "1000:1987",
+      "tags": ["verified", "spine"],
+      "summary": "Polls exit-reason byte [8b60] for 0x1E (quit to DOS, full cleanup) or 0x13 (re-enter game: reset video mode, reload a bank). Reached from Load_PackedFile's DOS-error path and World_Dispatch's default branch."
+    },
+    {
+      "name": "Sys_RestoreState",
+      "address": "1000:1a26",
+      "tags": ["verified", "spine"],
+      "summary": "Shared cleanup: restore video mode / keyboard state / an INT vector (calls FUN_1000_1dae/0142/2061), then closes handles at [8c9e]/[8ca2] if set. Used by both exit paths above (and inlined again at their tails)."
+    },
+    {
+      "name": "World_Dispatch",
+      "address": "1000:b51e",
+      "tags": ["verified", "spine"],
+      "summary": "Switches on global word [8b89] (current world 1..4) to the matching bank loader: 1->World1_LoadBanks, 2->FUN_1000_b6f0, 3->FUN_1000_b8b7, 4->FUN_1000_ba3c. Default calls FUN_1000_b56b then reloads segment 6de3 twice."
+    },
+    {
+      "name": "World1_LoadBanks",
+      "address": "1000:b56b",
+      "tags": ["verified", "spine"],
+      "summary": "Loads world 1's resource banks via Load_PackedFile into segments 2a49,4353,5c53,20e9,3bc3,6a63,6de3 (skipped if already resident per [8c11]). TODO: resolve each DAT_1000_b152 near-pointer to its filename string."
+    },
+    {
+      "name": "Load_PackedFile",
+      "address": "1000:bbbd",
+      "tags": ["verified", "spine"],
+      "summary": "LoadPackedFile(DX=near ptr filename, DI=dest offset) -> CX=size. DOS open/read/close into segment [8c75]; if signature 'RN' detected, calls Rnc_Depack in place. Fatal-exits via App_ExitOrReset on any DOS error."
+    },
+    {
+      "name": "Rnc_Depack",
+      "address": "1000:fcc4",
+      "tags": ["verified", "rnc"],
+      "summary": "RNC ProPack method-1 decompressor entry point. Validates 'RNC\\x01' signature, reads chunk count from header+0x11, drives the per-chunk Huffman-table-build + literal/match decode loop. Fully ported to tools/rnc.js in the project repo (see docs/formats/rnc.md); validated against all 60 shipped data files via CRC16."
+    },
+    {
+      "name": "Rnc_GetHeaderWordSwapped",
+      "address": "1000:fe6a",
+      "tags": ["verified", "rnc"],
+      "summary": "Reads a big-endian header field and byte-swaps it. Only used by Rnc_Depack's DOS in-place-expansion overlap-safety shuffle -- irrelevant to a flat-buffer port."
+    },
+    {
+      "name": "Rnc_BytesToParasRoundUp",
+      "address": "1000:fe73",
+      "tags": ["verified", "rnc"],
+      "summary": "Converts a byte count to a rounded-up paragraph (16-byte) count. Only used by the same DOS overlap-safety shuffle as Rnc_GetHeaderWordSwapped."
+    },
+    {
+      "name": "Rnc_DecodeSymbol",
+      "address": "1000:fe86",
+      "tags": ["verified", "rnc"],
+      "summary": "Decodes one Huffman-coded value: linear-scans table for (bitwindow&mask)==code, advances the stream by codeLen bits (discarding that result), then returns classIndex directly if <2, else GetBits(classIndex-1)|(1<<(classIndex-1)). Returns via CX, not AX -- see plate comment for the register-preservation subtlety that this depended on."
+    },
+    {
+      "name": "Rnc_GetBits",
+      "address": "1000:fec2",
+      "tags": ["verified", "rnc"],
+      "summary": "GetBits(AL=n): consumes n bits (0..16) LSB-first from the two-register (fcbb/fcbd) sliding bit window, refilling from the compressed stream only when needed."
+    },
+    {
+      "name": "Rnc_BuildHuffTable",
+      "address": "1000:ff22",
+      "tags": ["verified", "rnc"],
+      "summary": "Reads a canonical Huffman table (count via GetBits(5), then count 4-bit code lengths) and builds bit-reversed (mask,code) pairs plus a per-symbol classIndex used by Rnc_DecodeSymbol. Called 3x per chunk (raw-length, distance, length tables)."
+    }
+  ],
+  "openQuestions": [
+    "Resolve DAT_1000_b152 near-pointer values to actual filename strings for all 4 worlds' load lists.",
+    "Identify the sprite blit routine (reachable from Video_SetMode's call graph).",
+    "Identify the palette-set routine (INT 10h AH=10h or direct attribute-controller writes).",
+    "Name World2/3/4 loaders: FUN_1000_b6f0, FUN_1000_b8b7, FUN_1000_ba3c.",
+    "Confirm whether segment 6d83 (the stack, see docs/memory-map.md) has any secondary use, now that the decompiler-noise source is understood."
+  ]
+}

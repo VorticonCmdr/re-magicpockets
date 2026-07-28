@@ -1,0 +1,21 @@
+# Original game content — kept locally only, not committed.
+data/
+*.EXE
+*.exe
+*.COM
+*.com
+*.pak
+*.pap
+*.pip
+*.pin
+*.ini
+!pockets.ini.example
+
+# Ghidra project files (large, binary, machine-specific)
+*.gzf
+*.rep/
+
+# Derived/build output
+build/
+
+.DS_Store
