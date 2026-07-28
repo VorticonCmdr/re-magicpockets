@@ -2,8 +2,14 @@
   "program": "GAMEU.EXE",
   "note": "Manually exported from Ghidra (GHIDRA_MCP_ALLOW_SCRIPTS is off in this environment, so the planned automated export script cannot run yet -- see docs/memory-map.md). Regenerate/extend this file at the end of each RE session by querying search_functions_by_tag for 'verified' and 'guess', plus get_function_documentation per address, and merging the results here.",
   "totalFunctions": 440,
-  "namedFunctions": 33,
+  "namedFunctions": 34,
   "functions": [
+    {
+      "name": "Sys_DetectCpuSpeed",
+      "address": "1ffb:0b79",
+      "tags": ["verified", "spine"],
+      "summary": "First function entry() calls. Polls port 3DAh (vsync status) counting reads across a vsync cycle to classify the machine fast/slow -- likely selects the undocumented high-speed CGA path. NOTE: appears in disassembly as a far call to CS:2000:0b29 due to real-mode segment:offset aliasing (same linear address as 1ffb:0b79)."
+    },
     {
       "name": "Gfx_BlitSpriteMaskedWide",
       "address": "1000:81ad",

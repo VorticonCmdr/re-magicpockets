@@ -159,11 +159,37 @@ Exact disambiguation of `Gfx_BlitSpriteMaskedWide` vs `WideB`'s distinct roles (
 same row width) is still open — worth revisiting once dosbox-x tracing is underway. Right-edge
 clip is confirmed via `Gfx_DrawObject`'s call-site X-range guard (`WideB` used when X `>= 0x140`).
 
+## Segment aliasing gotcha
+
+Far calls sometimes show as e.g. `CALLF 0x2000:0be9` in disassembly even though segment `2000`
+isn't one of ours — in real mode `segment:offset` pairs alias, and `0x2000:0be9` is the exact
+same physical address as `0x1ffb:0c39` (both = linear `0x20be9`). Always compute the linear
+address before concluding a far call targets unmapped memory (this tripped up an earlier pass
+on `Video_SetModeCga`, now corrected).
+
+## `Sys_DetectCpuSpeed` (`1ffb:0b79`)
+
+The first function `entry` calls, before anything else (appears as `CALLF 0x2000:0b29` in
+disassembly — same aliasing trick, resolves to `1ffb:0b79`). Polls port `3DAh` (CGA/EGA Input
+Status Register 1, bit 3 = vertical retrace) counting reads across a full
+vsync-inactive→active→inactive cycle, comparing the two inactive-phase counts to classify the
+machine fast/slow. Almost certainly what selects the "undocumented CGA mode... for very slow
+CGA machines" path referenced in the `1ffb:0c4c` credits string. Keyboard input has not yet
+been located — no direct port `0x60` reads and no `INT 9h`/`INT 16h` anywhere in the binary,
+so it must be handled via a hooked `INT 9h` vector (installed somewhere in the init chain,
+not yet traced) rather than polling.
+
 ## Open questions for Phase 2
 
 - Resolve the `DAT_1000_b152` near-pointer values to actual filename strings for all 4
   worlds' load lists.
-- Identify the sprite blit routine (reachable from video init call graph).
-- Identify the palette-set routine (INT 10h AH=10h or direct attribute-controller writes).
-- Confirm whether `CODE_12` (`6d83`) is genuinely stack, or a second small load buffer, once
-  the stack-frame fix (Phase 1) is in place.
+- ~~Identify the sprite blit routine~~ — done, see "Sprite rendering" above.
+- ~~Identify the palette-set routine~~ — done: none exists, see "Sprite rendering" above.
+- ~~Confirm whether `CODE_12` (`6d83`) is genuinely stack~~ — confirmed yes, `entry` sets
+  `SS:SP=6d83:05fe` explicitly at `1000:0026`.
+- Locate the keyboard input handler (likely a hooked `INT 9h` vector — search for `INT 21h
+  AH=25h` DOS "set interrupt vector" calls with vector number 9, or direct interrupt-vector-
+  table writes at `0000:0024`).
+- Name the `Gfx_DrawObject` edge-clip-case helper family for the *other* bitmap encoding
+  (`FUN_1000_7db4`/`7dcd`/`7e81`/`7e9b`/`8568`, reached via the numeric-default case's
+  sign-magnitude byte transform).
