@@ -2,8 +2,44 @@
   "program": "GAMEU.EXE",
   "note": "Manually exported from Ghidra (GHIDRA_MCP_ALLOW_SCRIPTS is off in this environment, so the planned automated export script cannot run yet -- see docs/memory-map.md). Regenerate/extend this file at the end of each RE session by querying search_functions_by_tag for 'verified' and 'guess', plus get_function_documentation per address, and merging the results here.",
   "totalFunctions": 440,
-  "namedFunctions": 17,
+  "namedFunctions": 26,
   "functions": [
+    {
+      "name": "Video_SetModeCga",
+      "address": "1000:1472",
+      "tags": ["verified", "spine"],
+      "summary": "Actual target of Video_SetMode's '4'/'0'/default branches (corrects an earlier mis-description). CGA 320x200 mode set + the only palette-related call in the whole binary (INT 10h AH=0Bh CGA palette-select). See memory-map.md 'Sprite rendering' section for the no-palette-setter finding."
+    },
+    {
+      "name": "Gfx_BlitSpriteMasked",
+      "address": "1000:7ea0",
+      "tags": ["verified", "gfx"],
+      "summary": "The confirmed EGA sprite blitter: AND an inverted silhouette mask into all 4 bitplanes (Gfx_AndMaskRow), then OR each colour plane in separately (Gfx_OrPlaneRow x4, cycling Sequencer Map Mask). -44 bytes/row, matching the 352px virtual screen width."
+    },
+    {
+      "name": "Gfx_BlitSpriteMaskedAlt",
+      "address": "1000:7ff2",
+      "tags": ["verified", "gfx"],
+      "summary": "Same algorithm as Gfx_BlitSpriteMasked, inlined, with sub-byte pixel-shift support for non-8-pixel-aligned X positions. Loop bound differs (0x10 vs 0x20) -- likely a different sprite height class, not yet confirmed."
+    },
+    {
+      "name": "Gfx_AndMaskRow",
+      "address": "1000:7f67",
+      "tags": ["verified", "gfx"],
+      "summary": "ANDs a mask-bitmap row into all write-enabled bitplanes, -44 bytes/row, with sub-byte shift support via BL/BH edge masks."
+    },
+    {
+      "name": "Gfx_OrPlaneRow",
+      "address": "1000:7fb4",
+      "tags": ["verified", "gfx"],
+      "summary": "ORs one bitplane's colour-data row into the destination (Map Mask selects which plane beforehand), -44 bytes/row, same shift support."
+    },
+    {
+      "name": "Gfx_DrawObject",
+      "address": "1000:7419",
+      "tags": ["spine", "gfx", "partial"],
+      "summary": "Top-level per-object/sprite draw dispatcher, called from FUN_1000_73a5 (one of entry()'s main-loop calls -- confirmed per-frame render path). Switches on object-record byte [SI+0x16] to masked-bitmap draw (clipped, via an unnamed family of edge-clip-case helpers), a probable text/string renderer, or other variants. See Ghidra plate comment for full breakdown; edge-clip helper family (FUN_1000_843a/81ad/832c/8568/7db4/7dcd/7e81/7e9b) is the next naming target."
+    },
     {
       "name": "World2_LoadBanks",
       "address": "1000:b6f0",
@@ -112,6 +148,9 @@
     "Identify the sprite blit routine (reachable from Video_SetMode's call graph).",
     "Identify the palette-set routine (INT 10h AH=10h or direct attribute-controller writes).",
     "Resolve DAT_1000_b152 near-pointers to filenames for World2/3/4Load_Banks -- requires a dosbox-x breakpoint + memory dump per call site, since the pointed-at segment (6de3) is dynamically overwritten before these near-pointers are set, and reads as all-zero in the static file image.",
-    "Confirm whether segment 6d83 (the stack, see docs/memory-map.md) has any secondary use, now that the decompiler-noise source is understood."
+    "Confirm whether segment 6d83 (the stack, see docs/memory-map.md) has any secondary use, now that the decompiler-noise source is understood.",
+    "Name the Gfx_DrawObject edge-clip-case helper family: FUN_1000_843a, FUN_1000_81ad, FUN_1000_832c, FUN_1000_8568, FUN_1000_7db4, FUN_1000_7dcd, FUN_1000_7e81, FUN_1000_7e9b -- each is likely Gfx_BlitSpriteMasked/Alt specialized for one screen-edge-clipping case.",
+    "Understand Gfx_DrawObject's case 0x0a (probable text/font renderer, FUN_1000_b42e per glyph) and the numeric-default case's sign-magnitude byte transform (possibly a mirrored or delta-coded sprite variant).",
+    "Confirm actual .pak sprite frame header layout (width/height/hotspot) now that the blit primitives are known -- needed before tools/ can extract real sprite sheets."
   ]
 }

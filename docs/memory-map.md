@@ -117,6 +117,35 @@ Dispatches on driver byte `[6de3:8a5a]`:
 - `'4'`/`'0'` (CGA variants incl. the undocumented high-speed mode mentioned in the credits
   string at `1ffb:0c4c`): defaults to `'4'` if unrecognised.
 
+## Sprite rendering (found via `MOV DX,0x3ce`/`0x3c4` port sweeps)
+
+**No palette-setting code exists anywhere in the binary.** Exhaustive instruction search for
+`OUT 3C0h/3C8h/3C9h` and `INT 10h AH=10h` returned zero matches (the only palette-adjacent call
+at all is `Video_SetModeCga`'s single `INT 10h AH=0Bh` CGA palette-select). The EGA/VGA path
+relies entirely on the BIOS-default 16-colour EGA palette. **`tools/ega.js` can hardcode the
+standard EGA palette — there is nothing to extract.**
+
+`Gfx_BlitSpriteMasked` (`1000:7ea0`) is the confirmed sprite blitter: the classic EGA masked
+blit (AND an inverted silhouette mask into all 4 bitplanes at once via `Gfx_AndMaskRow`, then OR
+each of the 4 colour planes in separately via `Gfx_OrPlaneRow`, cycling the Sequencer Map Mask
+register 3C4h between planes). `Gfx_BlitSpriteMaskedAlt` (`1000:7ff2`) is the same algorithm
+with inline sub-byte pixel-shift support (for X positions not on an 8-pixel boundary). Both
+step **-44 bytes/row**, confirming the 352px virtual-screen width from `Video_SetMode`'s CRTC
+setup — two independent findings agreeing exactly.
+
+`Gfx_DrawObject` (`1000:7419`), called from `FUN_1000_73a5` (one of `entry`'s main-loop calls,
+confirming it's the per-frame render path), is the top-level per-object draw dispatcher. It
+switches on a "shape type" byte at object-record offset `+0x16` to one of: masked-bitmap draw
+(clipped, via a family of edge-clip-case helpers `FUN_1000_843a`/`81ad`/`832c`/`8568`/`7db4`/
+`7dcd`/`7e81`/`7e9b` — each very likely a clip-case-specialized sibling of
+`Gfx_BlitSpriteMasked`/`Alt`), a probable text/font-string renderer (case `0x0a`, loops a
+NUL-terminated string), or a sign-magnitude-transformed bitmap variant (the numeric default
+case). See its plate comment in Ghidra for the full per-case breakdown and the object-record
+field offsets identified so far (`+2`=type/shape-class, `+4`=sub-type, `+6`/`+8`=X/Y, `+0xa`,
+`+0x10`, `+0x12`, `+0x14`, `+0x16`=shape-type). **Next highest-value naming target**: the
+edge-clip-case helper family above — each is presumably `Gfx_BlitSpriteMasked` specialized for
+one of {fully off-left, straddling-left, on-screen, straddling-right, fully off-right}.
+
 ## Open questions for Phase 2
 
 - Resolve the `DAT_1000_b152` near-pointer values to actual filename strings for all 4
