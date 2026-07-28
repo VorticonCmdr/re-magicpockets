@@ -63,8 +63,15 @@ Each preceded by setting `DAT_1000_b152` to a small near-pointer (`0xa778`, `0xa
 These near-pointers need to be resolved to actual string data (Phase 2 loader task) to build
 the complete file → segment table for all 4 worlds.
 
-World 2/3/4 dispatch to `FUN_1000_b6f0` / `FUN_1000_b8b7` / `FUN_1000_ba3c` respectively —
-not yet inspected in detail.
+World 2/3/4 (`World2_LoadBanks`/`World3_LoadBanks`/`World4_LoadBanks`) are structurally
+identical to `World1_LoadBanks` — same 7 target segments, same callee sequence, gated on
+`[8c11] != '2'/'3'/'4'` respectively — just with different `DAT_1000_b152` near-pointer
+values per world. **These near-pointers cannot be resolved statically**: the addresses they
+point at (e.g. `6de3:a778`, `6de3:acb8`, `6de3:a8f8`, ...) read as all-zero in the static file
+image, because segment `6de3` gets overwritten by `Load_PackedFile` calls earlier in the very
+same function — the filename table lives in dynamically-loaded content, not static resident
+data. Resolving the actual filenames requires a dosbox-x breakpoint + memory dump at each call
+site (see Verification section / task #6), not further static analysis.
 
 ## The RNC ProPack loader (`FUN_1000_bbbd`)
 

@@ -2,8 +2,26 @@
   "program": "GAMEU.EXE",
   "note": "Manually exported from Ghidra (GHIDRA_MCP_ALLOW_SCRIPTS is off in this environment, so the planned automated export script cannot run yet -- see docs/memory-map.md). Regenerate/extend this file at the end of each RE session by querying search_functions_by_tag for 'verified' and 'guess', plus get_function_documentation per address, and merging the results here.",
   "totalFunctions": 440,
-  "namedFunctions": 14,
+  "namedFunctions": 17,
   "functions": [
+    {
+      "name": "World2_LoadBanks",
+      "address": "1000:b6f0",
+      "tags": ["verified", "spine"],
+      "summary": "Structurally identical to World1_LoadBanks (same 7 target segments), gated on [8c11]!='2'. Own DAT_1000_b152 filename near-pointers, which cannot be resolved statically -- see openQuestions."
+    },
+    {
+      "name": "World3_LoadBanks",
+      "address": "1000:b8b7",
+      "tags": ["verified", "spine"],
+      "summary": "Structurally identical to World1_LoadBanks, gated on [8c11]!='3'. Own DAT_1000_b152 filename near-pointers -- see openQuestions."
+    },
+    {
+      "name": "World4_LoadBanks",
+      "address": "1000:ba3c",
+      "tags": ["verified", "spine"],
+      "summary": "Structurally identical to World1_LoadBanks, gated on [8c11]!='4'. Own DAT_1000_b152 filename near-pointers -- see openQuestions. Calls FUN_1000_bd0a only twice (World2/3 call it three times) -- minor structural difference, worth re-checking once filenames are known."
+    },
     {
       "name": "entry",
       "address": "1000:0010",
@@ -93,7 +111,7 @@
     "Resolve DAT_1000_b152 near-pointer values to actual filename strings for all 4 worlds' load lists.",
     "Identify the sprite blit routine (reachable from Video_SetMode's call graph).",
     "Identify the palette-set routine (INT 10h AH=10h or direct attribute-controller writes).",
-    "Name World2/3/4 loaders: FUN_1000_b6f0, FUN_1000_b8b7, FUN_1000_ba3c.",
+    "Resolve DAT_1000_b152 near-pointers to filenames for World2/3/4Load_Banks -- requires a dosbox-x breakpoint + memory dump per call site, since the pointed-at segment (6de3) is dynamically overwritten before these near-pointers are set, and reads as all-zero in the static file image.",
     "Confirm whether segment 6d83 (the stack, see docs/memory-map.md) has any secondary use, now that the decompiler-noise source is understood."
   ]
 }
