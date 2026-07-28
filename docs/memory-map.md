@@ -225,6 +225,43 @@ After parsing, it loads the sound-driver `.pin` file(s) into segment `38b7`/`33a
 `CALLF [0x202d]`) — confirming `.pin` files are loadable driver *modules* (a small plugin-style
 sound-driver architecture), not just data blobs.
 
+## Input subsystem — FOUND, complete (`Input_KeyboardIsr`, `Input_ReadKeyboardState`, `Input_ReadState`)
+
+The keyboard handler resisted every port/interrupt search because **Ghidra's auto-analysis
+never created a function boundary for it** — it sat as unanalyzed bytes in a 155-byte gap
+between `Sys_RestoreState` and `Config_ParseIniAndLoadSoundDriver` (found via
+`find_code_gaps`), reachable only through a raw IVT write (segment `0000` offset `0x24`) rather
+than a traceable `DOS AH=25h` "set vector" call. Manually defined as a function at `1000:1a5b`
+and named `Input_KeyboardIsr`.
+
+**`Input_KeyboardIsr`** (INT 9h handler, confirmed textbook ISR shape — `CLI`, register saves,
+body, register restores, `STI`, `IRET`):
+- Reads the scancode directly: `IN AL, 0x60`.
+- Tracks Ctrl-held state (`6de3:8c88`) and latches Ctrl+C / Ctrl+Q into `6de3:8c89`.
+- Writes the raw scancode (or 0 for break codes) to `6de3:8c87` **and `6de3:8b60`** — this is
+  the exact byte `App_ExitOrReset` polls for `0x1E`/`0x13` (scancodes for **'A'**/**'R'** —
+  now confirmed to be an Abort/Resume-or-Restart menu prompt, not an arbitrary pair of codes).
+- Looks up the scancode in the **same 512-word table** `Config_ParseIniAndLoadSoundDriver`
+  built at `1000:1e27` from `pockets.ini`'s key bindings. A nonzero entry means this scancode is
+  a bound game action: clears `8c87`/`8b60` (so bound keys don't also read as menu keys), then
+  ORs the action bit into `6de3:8c94` (edge accumulator) and `6de3:8c85` (held-state bitmask) on
+  make, or ANDs it out of `8c85` on break.
+- Standard keyboard-controller ack (port `0x61` bit-7 toggle) and 8259 PIC EOI (`OUT 0x20,0x20`).
+
+**`Input_ReadKeyboardState`** (`1000:190d`) — combines `8c94` (cleared after reading — an
+accumulator of events since the last poll) with `8c85` (persistent held-state, not cleared) via
+OR, applies an opposite-direction debounce (mask `0xa0a`: clears bit *i* whenever its pair bit
+is also set, preventing e.g. simultaneous up+down), and stores the result to `8c91`/`8c90`.
+
+**`Input_ReadState`** (`1000:18a4`) — the unified per-frame input reader. Always calls
+`Input_ReadKeyboardState` first (its return value also happens to trigger the joystick's RC
+timer via `OUT 0x201`), then calibrates the joystick axes via `Input_PollJoystickPort` (reads
+port `0x201` + vsync status `3DAh`, the same speed-independent-timing trick as
+`Sys_DetectCpuSpeed`). If `6de3:8c92 & 1 == 0` (**keyboard mode** — recall
+`Config_ParseIniAndLoadSoundDriver` sets `8c92`=2 for keyboard, 3 for joystick), the
+joystick-derived byte is discarded in favour of `8c91`. Final byte → `1000:8b5d` and
+`6de3:8c8f`.
+
 ## Open questions for Phase 2
 
 - Resolve the `DAT_1000_b152` near-pointer values to actual filename strings for all 4
@@ -233,10 +270,10 @@ sound-driver architecture), not just data blobs.
 - ~~Identify the palette-set routine~~ — done: none exists, see "Sprite rendering" above.
 - ~~Confirm whether `CODE_12` (`6d83`) is genuinely stack~~ — confirmed yes, `entry` sets
   `SS:SP=6d83:05fe` explicitly at `1000:0026`.
-- Locate the keyboard *polling/ISR* code that consults the `1000:1e27` key-code lookup table
-  built by `Config_ParseIniAndLoadSoundDriver` — confirmed no BIOS/port access is used anywhere,
-  so this must be reached some other way (worth checking the main-loop subsystem calls in
-  `entry` one by one, or the joystick-mode flag at `[8c92]` for a branch point).
+- ~~Locate the keyboard polling/ISR code~~ — done, see "Input subsystem" above:
+  `Input_KeyboardIsr` was sitting in an un-auto-analyzed gap, installed via a raw IVT write
+  (not yet located — the actual `MOV word ptr [0x24],...` install site is a minor remaining
+  item, low value now that the ISR itself is fully understood).
 - ~~Name the `Gfx_DrawObject` edge-clip-case helper family for the *other* bitmap encoding~~ —
   done, see "The other bitmap encoding" above. Still open: confirm the "HUD/text renderer"
   hypothesis and locate the font/digit source data.
