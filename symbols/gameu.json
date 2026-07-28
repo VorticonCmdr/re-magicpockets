@@ -2,8 +2,81 @@
   "program": "GAMEU.EXE",
   "note": "Manually exported from Ghidra (GHIDRA_MCP_ALLOW_SCRIPTS is off in this environment, so the planned automated export script cannot run yet -- see docs/memory-map.md). Regenerate/extend this file at the end of each RE session by querying search_functions_by_tag for 'verified' and 'guess', plus get_function_documentation per address, and merging the results here.",
   "totalFunctions": 440,
-  "namedFunctions": 42,
+  "namedFunctions": 54,
+  "note2": "See docs/engine.md for the full main-loop architecture writeup (this file only indexes; engine.md has the narrative).",
   "functions": [
+    {
+      "name": "Camera_UpdateScroll",
+      "address": "1000:0221",
+      "tags": ["guess", "spine", "engine"],
+      "summary": "GUESS: main-loop call #1. Computes scroll/camera position, splits into tile+sub-tile components. Sub-tile X -> [8b69], consumed by Video_FlipAndScroll for EGA pixel-panning."
+    },
+    {
+      "name": "Level_UpdateAnimatedTiles",
+      "address": "1000:02a3",
+      "tags": ["guess", "spine", "engine"],
+      "summary": "GUESS: main-loop call #2. Walks an 11x14 visible-tile grid, calling FUN_1000_02e2 for flagged (animated?) tiles. Skipped for world 4."
+    },
+    {
+      "name": "Video_FlipAndScroll",
+      "address": "1000:154a",
+      "tags": ["verified", "spine", "video"],
+      "summary": "Main-loop call #4. Page-flip (A000/A300) + EGA Attribute Controller index 0x13 write (pixel-panning register) for hardware fine-scroll -- the other AC-index write in the binary besides the CGA palette-select, refining the no-palette-setter finding. Also services the loaded sound driver per frame via computed far call."
+    },
+    {
+      "name": "Fx_UpdateTransition",
+      "address": "1000:1028",
+      "tags": ["guess", "spine", "engine"],
+      "summary": "GUESS: main-loop call #5. Dispatches on [8ba2] transition/effect ID; likely a screen wipe/fade."
+    },
+    {
+      "name": "Level_UpdateEventQueue",
+      "address": "1000:c28f",
+      "tags": ["guess", "spine", "engine"],
+      "summary": "GUESS: main-loop call #6. Walks an opcode/length script structure at [8bb5]; plausible scripted-event/trigger queue."
+    },
+    {
+      "name": "Demo_PlaybackInput",
+      "address": "1000:0159",
+      "tags": ["verified", "spine", "engine"],
+      "summary": "Main-loop call #7. When demo mode active, overrides input with RLE-encoded ([8ba6]) replayed input. See Demo_RecordInput for the write side."
+    },
+    {
+      "name": "Entity_UpdateAll",
+      "address": "1000:c91d",
+      "tags": ["guess", "spine", "engine"],
+      "summary": "GUESS: main-loop call #8. Walks a linked entity list from 0x91be, dispatching per-entity update (FUN_1000_22da) or a lighter step (FUN_1000_ca6d); +0x40==0x19 is the confirmed 'dead/remove' marker."
+    },
+    {
+      "name": "Demo_RecordInput",
+      "address": "1000:01d9",
+      "tags": ["verified", "spine", "engine"],
+      "summary": "Main-loop call #9. RLE-encodes current input into [8ba6] when not in playback mode. Pair with Demo_PlaybackInput implements attract-mode demo record/playback."
+    },
+    {
+      "name": "Debug_HandleCheatInput",
+      "address": "1000:088d",
+      "tags": ["verified", "spine", "engine"],
+      "summary": "Main-loop call #10. Debug console: 'p'=single-step, 'q'=vsync-skip, 'b'=hardcoded debug setup, digits 0-9 build a 4-char level-select CHEAT CODE matched against a table at 0xfc2a, warping into World1-4_LoadBanks at a given sub-level."
+    },
+    {
+      "name": "Hud_UpdateScoreDisplay",
+      "address": "1000:0b92",
+      "tags": ["verified", "spine", "engine"],
+      "summary": "Main-loop call #12. Converts [8b75] (score/distance) into custom-glyph HUD digits at buffer 0xe70e -- CONFIRMS the Gfx_DrawObject glyph-copy family's 'HUD renderer' hypothesis. Triggers periodic level-progress callbacks; world-3-specific secondary counter past sub-level 7."
+    },
+    {
+      "name": "Rng_NextValue",
+      "address": "1000:11fc",
+      "tags": ["verified", "spine", "engine"],
+      "summary": "Main-loop call #13. 16-bit LFSR pseudo-random generator, advanced once per frame ([8b71] state, [8b6b] output)."
+    },
+    {
+      "name": "Video_WaitVsyncAndCountFrame",
+      "address": "1000:0142",
+      "tags": ["verified", "spine", "video"],
+      "summary": "Main-loop call #14 (last). Busy-waits for vsync (port 3DAh), increments frame counter [89f6]."
+    },
     {
       "name": "Input_KeyboardIsr",
       "address": "1000:1a5b",
@@ -264,6 +337,9 @@
     "Name the remaining Gfx_DrawObject CGA/Tandy fallback callees (FUN_1000_95c5/976f/9f02/a0fc/9929/9a4c) -- low priority, EGA/VGA is the extraction reference mode.",
     "Understand Gfx_DrawObject's case 0x0a (probable font/text-string renderer, FUN_1000_b42e per glyph) and case 0x0b's secondary [0x8c34] dispatch.",
     "Find the raw IVT-write install site for Input_KeyboardIsr (MOV word ptr [0:0x24],...) -- low priority, the ISR itself is now fully understood via find_code_gaps.",
+    "Name the per-entity update callees Entity_UpdateAll dispatches to: FUN_1000_22da (main update/physics), FUN_1000_ca6d (lighter/inactive step), FUN_1000_c961 (removal) -- this is where gameplay rules live, highest-value remaining target.",
+    "Name FUN_1000_02e2 (animated-tile callback) and FUN_1000_c2f3 (level-event-queue callback).",
+    "Confirm the guessed main-loop functions (Camera_UpdateScroll, Level_UpdateAnimatedTiles, Fx_UpdateTransition, Level_UpdateEventQueue, Entity_UpdateAll) -- structure is solid, semantic role inferred; see docs/engine.md.",
     "Exact disambiguation of Gfx_BlitSpriteMaskedWide vs WideB's distinct roles (both cover the same row width)."
   ]
 }
