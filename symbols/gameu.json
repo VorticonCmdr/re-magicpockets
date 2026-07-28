@@ -2,8 +2,38 @@
   "program": "GAMEU.EXE",
   "note": "Manually exported from Ghidra (GHIDRA_MCP_ALLOW_SCRIPTS is off in this environment, so the planned automated export script cannot run yet -- see docs/memory-map.md). Regenerate/extend this file at the end of each RE session by querying search_functions_by_tag for 'verified' and 'guess', plus get_function_documentation per address, and merging the results here.",
   "totalFunctions": 440,
-  "namedFunctions": 34,
+  "namedFunctions": 36,
   "functions": [
+    {
+      "name": "Gfx_CopyGlyphCell",
+      "address": "1000:7db4",
+      "tags": ["guess", "gfx"],
+      "summary": "GUESS: straight CX-row x 4-byte copy, +44/row, no EGA port access. Called from Gfx_DrawObject's numeric-default case (glyph-string rendering, hypothesized HUD/text). See Gfx_CopyGlyphString for the multi-glyph sibling."
+    },
+    {
+      "name": "Gfx_CopyGlyphCellNarrow",
+      "address": "1000:7e81",
+      "tags": ["guess", "gfx"],
+      "summary": "GUESS: same as Gfx_CopyGlyphCell but 2 bytes/row (narrower/edge-clipped cell)."
+    },
+    {
+      "name": "Gfx_CopyGlyphCellNarrowAlias",
+      "address": "1000:7e9b",
+      "tags": ["verified", "gfx"],
+      "summary": "Verified pure tail-call alias for Gfx_CopyGlyphCellNarrow."
+    },
+    {
+      "name": "Gfx_CopyGlyphString",
+      "address": "1000:7dcd",
+      "tags": ["guess", "gfx"],
+      "summary": "GUESS: self-loops over multiple glyphs per call (16 rows x 4 bytes/glyph), decoding the next glyph inline via a sign-magnitude byte transform, decrementing DAT_6de3_8b9c (init 10 by Gfx_DrawObject). Fully-on-screen fast path for the hypothesized HUD/text renderer."
+    },
+    {
+      "name": "Gfx_NoOpStub",
+      "address": "1000:8568",
+      "tags": ["verified", "stub"],
+      "summary": "Confirmed empty function (immediate RET). Called once from Gfx_DrawObject at 1000:76c1 -- a deliberate no-op clip case."
+    },
     {
       "name": "Sys_DetectCpuSpeed",
       "address": "1ffb:0b79",
@@ -192,13 +222,12 @@
     }
   ],
   "openQuestions": [
-    "Resolve DAT_1000_b152 near-pointer values to actual filename strings for all 4 worlds' load lists.",
-    "Identify the sprite blit routine (reachable from Video_SetMode's call graph).",
-    "Identify the palette-set routine (INT 10h AH=10h or direct attribute-controller writes).",
-    "Resolve DAT_1000_b152 near-pointers to filenames for World2/3/4Load_Banks -- requires a dosbox-x breakpoint + memory dump per call site, since the pointed-at segment (6de3) is dynamically overwritten before these near-pointers are set, and reads as all-zero in the static file image.",
-    "Confirm whether segment 6d83 (the stack, see docs/memory-map.md) has any secondary use, now that the decompiler-noise source is understood.",
-    "Name the Gfx_DrawObject edge-clip-case helper family: FUN_1000_843a, FUN_1000_81ad, FUN_1000_832c, FUN_1000_8568, FUN_1000_7db4, FUN_1000_7dcd, FUN_1000_7e81, FUN_1000_7e9b -- each is likely Gfx_BlitSpriteMasked/Alt specialized for one screen-edge-clipping case.",
-    "Understand Gfx_DrawObject's case 0x0a (probable text/font renderer, FUN_1000_b42e per glyph) and the numeric-default case's sign-magnitude byte transform (possibly a mirrored or delta-coded sprite variant).",
-    "Confirm actual .pak sprite frame header layout (width/height/hotspot) now that the blit primitives are known -- needed before tools/ can extract real sprite sheets."
+    "Resolve DAT_1000_b152 near-pointers to filenames for World1/2/3/4LoadBanks -- requires a dosbox-x breakpoint + memory dump per call site, since the pointed-at segment (6de3) is dynamically overwritten before these near-pointers are set, and reads as all-zero in the static file image.",
+    "Confirm the 'HUD/text renderer' hypothesis for Gfx_DrawObject's numeric-default case (Gfx_CopyGlyphCell/CellNarrow/String/NoOpStub) and locate the actual font/digit source data they read from -- needs dosbox-x tracing during a HUD update.",
+    "Confirm actual .pak sprite frame header layout (width/height/hotspot) now that the blit primitives are known -- needed before tools/ can extract real sprite sheets.",
+    "Name the remaining Gfx_DrawObject CGA/Tandy fallback callees (FUN_1000_95c5/976f/9f02/a0fc/9929/9a4c) -- low priority, EGA/VGA is the extraction reference mode.",
+    "Understand Gfx_DrawObject's case 0x0a (probable font/text-string renderer, FUN_1000_b42e per glyph) and case 0x0b's secondary [0x8c34] dispatch.",
+    "Locate the keyboard input handler -- no port 0x60 reads or INT 9h/16h found anywhere; must be a hooked INT 9h vector, not yet traced.",
+    "Exact disambiguation of Gfx_BlitSpriteMaskedWide vs WideB's distinct roles (both cover the same row width)."
   ]
 }

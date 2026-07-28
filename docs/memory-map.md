@@ -159,6 +159,25 @@ Exact disambiguation of `Gfx_BlitSpriteMaskedWide` vs `WideB`'s distinct roles (
 same row width) is still open — worth revisiting once dosbox-x tracing is underway. Right-edge
 clip is confirmed via `Gfx_DrawObject`'s call-site X-range guard (`WideB` used when X `>= 0x140`).
 
+**The other bitmap encoding** — `Gfx_DrawObject`'s numeric-default case (reached when the
+shape-type byte doesn't match `0x0a/0x0b/0x0d/0x0e/0x0f`) decodes a *string* of small
+glyph-index bytes via a sign-magnitude transform (`b=(*src)-1; if(b<0) b=0xfe-b`), then draws
+each glyph cell through one of four helpers — confirmed by structure, **hypothesized** to be a
+HUD/score/text-digit renderer (not yet proven):
+
+| Function | Role |
+|---|---|
+| `Gfx_CopyGlyphCell` (`7db4`) | Straight `CX`-row × 4-byte copy, `+44`/row. No EGA port access at all — first function in this whole cluster that doesn't touch GC/SEQ registers. |
+| `Gfx_CopyGlyphCellNarrow` (`7e81`) / `...Alias` (`7e9b`, a pure tail-call of the former) | Same, 2 bytes/row — presumably an edge-clipped narrower cell. |
+| `Gfx_CopyGlyphString` (`7dcd`) | Self-loops over *multiple* glyphs per call (16 fixed rows × 4 bytes per glyph, then decodes the next glyph inline via the same sign-magnitude transform, decrementing `DAT_6de3_8b9c` — initialised to 10 by `Gfx_DrawObject`, a plausible "characters remaining" count). The fully-on-screen fast path. |
+| `Gfx_NoOpStub` (`8568`) | Confirmed empty function (immediate RET) — one clip case is a deliberate no-op. |
+
+None of these four touch EGA ports directly, unlike every function in the masked-sprite family
+— they must rely on Map Mask/Write Mode already set appropriately by the caller. **Confirming
+the "text renderer" hypothesis needs either a dosbox-x trace during a HUD update, or locating
+the actual font/digit source data these routines read from** — next step if this thread is
+picked back up.
+
 ## Segment aliasing gotcha
 
 Far calls sometimes show as e.g. `CALLF 0x2000:0be9` in disassembly even though segment `2000`
@@ -190,6 +209,10 @@ not yet traced) rather than polling.
 - Locate the keyboard input handler (likely a hooked `INT 9h` vector — search for `INT 21h
   AH=25h` DOS "set interrupt vector" calls with vector number 9, or direct interrupt-vector-
   table writes at `0000:0024`).
-- Name the `Gfx_DrawObject` edge-clip-case helper family for the *other* bitmap encoding
-  (`FUN_1000_7db4`/`7dcd`/`7e81`/`7e9b`/`8568`, reached via the numeric-default case's
-  sign-magnitude byte transform).
+- ~~Name the `Gfx_DrawObject` edge-clip-case helper family for the *other* bitmap encoding~~ —
+  done, see "The other bitmap encoding" above. Still open: confirm the "HUD/text renderer"
+  hypothesis and locate the font/digit source data.
+- Name the remaining `Gfx_DrawObject` clip-case CGA/Tandy fallbacks (`FUN_1000_95c5`/`976f`/
+  `9f02`/`a0fc`/`9929`/`9a4c`) — low priority, EGA/VGA is the extraction reference mode.
+- Understand `Gfx_DrawObject`'s `0x0a` case (probable font/text-string renderer, calls
+  `FUN_1000_b42e` per glyph) and its `0x0b` case's secondary `[0x8c34]` dispatch.
