@@ -193,10 +193,37 @@ disassembly — same aliasing trick, resolves to `1ffb:0b79`). Polls port `3DAh`
 Status Register 1, bit 3 = vertical retrace) counting reads across a full
 vsync-inactive→active→inactive cycle, comparing the two inactive-phase counts to classify the
 machine fast/slow. Almost certainly what selects the "undocumented CGA mode... for very slow
-CGA machines" path referenced in the `1ffb:0c4c` credits string. Keyboard input has not yet
-been located — no direct port `0x60` reads and no `INT 9h`/`INT 16h` anywhere in the binary,
-so it must be handled via a hooked `INT 9h` vector (installed somewhere in the init chain,
-not yet traced) rather than polling.
+CGA machines" path referenced in the `1ffb:0c4c` credits string.
+
+Exhaustive interrupt search (every `INT` instruction in the whole 18425-instruction program) —
+confirmed only `INT 10h` and `INT 21h` exist anywhere. No `INT 9h`/`16h`/`8h`/`15h`, no port
+`0x60` reads. Keyboard handling is not BIOS-mediated at all.
+
+## `pockets.ini` parsing and sound-driver loading (`Config_ParseIniAndLoadSoundDriver`, `1000:1af6`)
+
+The 4th function `entry` calls. Opens and parses `pockets.ini` line-by-line (via the
+`Config_SkipLine` helper), and this answers several previously-open questions at once:
+
+- **Line 1** → single char → `[6de3:8cab]`, the **sound driver selector** (`'A'`=Adlib,
+  `'R'`=Roland, `'S'`=SoundBlaster-compatible, `'B'`=Beeper, `'T'`=Tandy — matches the
+  `data\*.pin` filename table exactly).
+- **Line 2** → single char → **`[6de3:8a5a]`, the video driver selector `Video_SetMode` reads**
+  (`'M'` in the ini forces it to `'C'`; otherwise the char is stored as-is). This is where
+  `Video_SetMode`'s dispatch byte actually comes from.
+- **Line 3** → single char → `[8c92]` = 3 if `'J'` else 2 — almost certainly joystick-vs-keyboard
+  input mode (matches `pockets.ini`'s "Keyboard"/"Joystick" line).
+- **Lines 4–8** → exactly 5 key-binding entries, each a 5-ASCII-digit DOS key-code
+  (`scancode<<8 | ASCII`, e.g. `"18432"` = `0x4800` = extended Up-Arrow). Builds a **512-byte
+  lookup table at `1000:1e27`** (plus a bitwise-complement companion at `+0x100`):
+  `table[keycode] = action ID` (0=up/1=down/2=left/3=right/4=fire, in file order). **This is the
+  keyboard input configuration** — but the code that actually *consults* this table (the
+  key-polling loop or ISR) has still not been located.
+
+After parsing, it loads the sound-driver `.pin` file(s) into segment `38b7`/`33a9` via
+`Load_PackedFile`, and for Adlib/Roland/SoundBlaster (and the unrecognised-driver fallback)
+**invokes the just-loaded driver code via a computed far call** (`CALLF [0x2029]` /
+`CALLF [0x202d]`) — confirming `.pin` files are loadable driver *modules* (a small plugin-style
+sound-driver architecture), not just data blobs.
 
 ## Open questions for Phase 2
 
@@ -206,9 +233,10 @@ not yet traced) rather than polling.
 - ~~Identify the palette-set routine~~ — done: none exists, see "Sprite rendering" above.
 - ~~Confirm whether `CODE_12` (`6d83`) is genuinely stack~~ — confirmed yes, `entry` sets
   `SS:SP=6d83:05fe` explicitly at `1000:0026`.
-- Locate the keyboard input handler (likely a hooked `INT 9h` vector — search for `INT 21h
-  AH=25h` DOS "set interrupt vector" calls with vector number 9, or direct interrupt-vector-
-  table writes at `0000:0024`).
+- Locate the keyboard *polling/ISR* code that consults the `1000:1e27` key-code lookup table
+  built by `Config_ParseIniAndLoadSoundDriver` — confirmed no BIOS/port access is used anywhere,
+  so this must be reached some other way (worth checking the main-loop subsystem calls in
+  `entry` one by one, or the joystick-mode flag at `[8c92]` for a branch point).
 - ~~Name the `Gfx_DrawObject` edge-clip-case helper family for the *other* bitmap encoding~~ —
   done, see "The other bitmap encoding" above. Still open: confirm the "HUD/text renderer"
   hypothesis and locate the font/digit source data.
@@ -216,3 +244,4 @@ not yet traced) rather than polling.
   `9f02`/`a0fc`/`9929`/`9a4c`) — low priority, EGA/VGA is the extraction reference mode.
 - Understand `Gfx_DrawObject`'s `0x0a` case (probable font/text-string renderer, calls
   `FUN_1000_b42e` per glyph) and its `0x0b` case's secondary `[0x8c34]` dispatch.
+- Confirm the exact meaning of `[8c92]` (2 vs 3, keyboard vs joystick) and where it's consumed.

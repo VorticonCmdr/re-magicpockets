@@ -2,8 +2,20 @@
   "program": "GAMEU.EXE",
   "note": "Manually exported from Ghidra (GHIDRA_MCP_ALLOW_SCRIPTS is off in this environment, so the planned automated export script cannot run yet -- see docs/memory-map.md). Regenerate/extend this file at the end of each RE session by querying search_functions_by_tag for 'verified' and 'guess', plus get_function_documentation per address, and merging the results here.",
   "totalFunctions": 440,
-  "namedFunctions": 36,
+  "namedFunctions": 38,
   "functions": [
+    {
+      "name": "Config_ParseIniAndLoadSoundDriver",
+      "address": "1000:1af6",
+      "tags": ["verified", "spine"],
+      "summary": "4th function entry() calls. Opens/parses pockets.ini: line1->sound driver char [8cab], line2->video driver char [8a5a] (the byte Video_SetMode dispatches on), line3->joystick/keyboard mode [8c92], lines4-8->5 key bindings building a 512-byte keycode->action lookup table at 1000:1e27. Then loads and INVOKES the sound driver .pin file as executable code via a computed far call -- confirms .pin files are loadable driver modules. Keyboard polling/ISR code that consults the 1e27 table not yet located."
+    },
+    {
+      "name": "Config_SkipLine",
+      "address": "1000:1cc2",
+      "tags": ["verified", "spine"],
+      "summary": "Line-oriented text scanner: advances SI past the next LF, or backs up onto a NUL. Used repeatedly by Config_ParseIniAndLoadSoundDriver."
+    },
     {
       "name": "Gfx_CopyGlyphCell",
       "address": "1000:7db4",
@@ -227,7 +239,7 @@
     "Confirm actual .pak sprite frame header layout (width/height/hotspot) now that the blit primitives are known -- needed before tools/ can extract real sprite sheets.",
     "Name the remaining Gfx_DrawObject CGA/Tandy fallback callees (FUN_1000_95c5/976f/9f02/a0fc/9929/9a4c) -- low priority, EGA/VGA is the extraction reference mode.",
     "Understand Gfx_DrawObject's case 0x0a (probable font/text-string renderer, FUN_1000_b42e per glyph) and case 0x0b's secondary [0x8c34] dispatch.",
-    "Locate the keyboard input handler -- no port 0x60 reads or INT 9h/16h found anywhere; must be a hooked INT 9h vector, not yet traced.",
+    "Locate the keyboard polling/ISR code that consults the 512-byte keycode->action table Config_ParseIniAndLoadSoundDriver builds at 1000:1e27 -- exhaustive INT search confirms no INT 9h/16h/8h/15h or port 0x60 access anywhere in the binary, so it isn't BIOS-mediated; worth checking entry()'s main-loop subsystem calls one by one, or the joystick-mode flag [8c92] as a branch point.",
     "Exact disambiguation of Gfx_BlitSpriteMaskedWide vs WideB's distinct roles (both cover the same row width)."
   ]
 }
