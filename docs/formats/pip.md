@@ -51,6 +51,14 @@ mapping — that step genuinely needed a human looking at the picture.
 
 `node tools/extract-pip.js build/raw/<file>.pip.raw` produces the final decode.
 
+## CORRECTION pending — same palette caveat as `.pak`
+
+See `docs/formats/pak.md`'s new correction note and `docs/memory-map.md`'s "Palette setting"
+section: a real, code-derived palette-setting mechanism (`Video_ApplyVgaPalette` on the `'C'`
+"Colour VGA" driver path — what this project's shipped `pockets.ini` actually selects) was found
+after this file's color-mapping work was done against a hardcoded default EGA palette. The
+`PLANE_TO_INDEX_BIT` "confirmation" here needs re-validation against the real palette.
+
 ## Open questions
 
 - **The 34-byte leading region and 1312-byte trailing region.** Both unexplained. The trailing

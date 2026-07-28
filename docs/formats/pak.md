@@ -65,6 +65,17 @@ extracts cleanly (exact division by 640, no leftover bytes). Visual inspection o
 sheets (sent to the user directly) shows recognizable, coherent game art — rounded platform
 tiles, character sprites, enemy sprites — not noise, confirming the format end-to-end.
 
+## CORRECTION pending — a real palette exists and this file's color guess needs re-validation
+
+A real, code-derived per-world 16-colour palette was found on the `'C'` ("Colour VGA") driver
+path — see `docs/memory-map.md`'s "Palette setting" section. This project's own shipped
+`pockets.ini` selects exactly that driver. The `PLANE_TO_INDEX_BIT` mapping above was tuned by
+eyeballing candidates against a *hardcoded default EGA palette* that is very likely NOT what the
+game actually displays for any given world. The plane→index-bit assembly (which of the 4 planes
+feeds which bit of the 0-15 index) may still be right — that's a separate question from which
+RGB each index maps to — but the color-mapping "confirmation" needs to be redone against the
+real extracted palette, not the default one. Not yet done.
+
 ## Open questions
 
 - **Sprite *placement/identity* metadata** (which tile index means what, animation frame

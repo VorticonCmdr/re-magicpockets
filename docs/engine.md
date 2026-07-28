@@ -27,7 +27,7 @@ confirmed, semantic role inferred — tagged `guess` in Ghidra, not `verified`).
 | 2 | `Level_UpdateAnimatedTiles` | **confirmed** | Skipped for world 4. Walks an 11×14 visible-tile grid (0x80-byte row stride) from the scroll-computed screen offset, calling `FUN_1000_02e2` for tiles with a flag bit set. |
 | 3 | `FUN_1000_73a5` → `Gfx_DrawObject` | confirmed | The render pass — see `docs/memory-map.md` "Sprite rendering". |
 | 4 | `Video_FlipAndScroll` | **confirmed** | Page-flip (A000/A300 alternation) + **EGA pixel-panning register write (Attribute Controller index `0x13`)** for hardware fine-scroll. Also services the loaded sound driver via a computed far call. This is the *other* AC-index write in the whole binary besides the CGA palette-select — not a palette write, refining the "no palette setter" finding. |
-| 5 | `Fx_UpdateTransition` | guess | Dispatches on `[8ba2]` ("transition/effect ID"); likely a screen wipe/fade between levels. |
+| 5 | `Fx_UpdateTransition` | **confirmed** | Dispatches on `[8ba2]`; the default case (`Fx_TransitionStep`) increments it once per frame and feeds it straight into `Video_SelectAndLoadPalette`'s 24-bank fade table — this is a **palette-fade transition** system between levels/screens, not a screen wipe. See `docs/memory-map.md`. |
 | 6 | `Level_UpdateEventQueue` | guess | Walks an opcode/length-tagged script structure at `[8bb5]`; plausible scripted-event or timed-trigger queue. |
 | 7 | `Demo_PlaybackInput` | **confirmed** | If a demo recording is active, overrides this frame's input with replayed input from an RLE `(repeatCount, state)` buffer at `[8ba6]`. |
 | 8 | `Entity_UpdateAll` | guess | Walks a linked list of entity records from `0x91be`; dispatches per-entity update (`FUN_1000_22da`) or a lighter inactive-entity step (`FUN_1000_ca6d`), checking a `+0x40 == 0x19` "dead" marker throughout. |
@@ -40,6 +40,13 @@ confirmed, semantic role inferred — tagged `guess` in Ghidra, not `verified`).
 
 ## Cross-cutting findings from this pass
 
+- **CORRECTION: a real palette setter does exist** — on the `'C'` ("Colour VGA") driver path,
+  which is what this project's own shipped `pockets.ini` actually selects. See
+  `docs/memory-map.md`'s "Palette setting" section for the full trace
+  (`Video_SelectAndLoadPalette`, `Video_ApplyVgaPalette`, `Video_ScaleColorComponent`) and the
+  real, code-derived per-world 16-colour palettes. This means `tools/ega.js`'s hardcoded default
+  EGA palette and the empirically-guessed `PLANE_TO_INDEX_BIT` mapping in `docs/formats/pak.md`/
+  `pip.md` were tuned against the *wrong* reference colours and need re-validation.
 - **`.pap` level maps and `.pip` full-screen pictures are both fully decoded and extractable**
   (`tools/extract-pap.js`, `tools/extract-pip.js`) — see `docs/formats/pap.md`/`pip.md`.
   `Level_LoadMapIntoScrollBuffer`/`Level_TransposeMapToColumnMajor` transpose the row-major

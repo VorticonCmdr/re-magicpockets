@@ -2,368 +2,620 @@
   "program": "GAMEU.EXE",
   "note": "Manually exported from Ghidra (GHIDRA_MCP_ALLOW_SCRIPTS is off in this environment, so the planned automated export script cannot run yet -- see docs/memory-map.md). Regenerate/extend this file at the end of each RE session by querying search_functions_by_tag for 'verified' and 'guess', plus get_function_documentation per address, and merging the results here.",
   "totalFunctions": 440,
-  "namedFunctions": 60,
+  "namedFunctions": 66,
   "note2": "See docs/engine.md for the full main-loop architecture writeup (this file only indexes; engine.md has the narrative).",
   "functions": [
     {
       "name": "Camera_UpdateScroll",
       "address": "1000:0221",
-      "tags": ["verified", "spine", "engine"],
+      "tags": [
+        "verified",
+        "spine",
+        "engine"
+      ],
       "summary": "Main-loop call #1. Computes scroll/camera position, splits into tile+sub-tile components. Sub-tile X -> [8b69], consumed by Video_FlipAndScroll for EGA pixel-panning. Computes the read pointer (0x4200 + tileX*0x80 + tileY) into the in-memory column-major level-map buffer built by Level_LoadMapIntoScrollBuffer."
     },
     {
       "name": "Level_UpdateAnimatedTiles",
       "address": "1000:02a3",
-      "tags": ["verified", "spine", "engine"],
+      "tags": [
+        "verified",
+        "spine",
+        "engine"
+      ],
       "summary": "Main-loop call #2. Walks the 11x14 visible tile window of the column-major map buffer at [8c13], calling FUN_1000_02e2 for flagged (animated?) tiles. Skipped for world 4."
     },
     {
       "name": "Level_LoadMapIntoScrollBuffer",
       "address": "1000:1259",
-      "tags": ["verified", "engine"],
+      "tags": [
+        "verified",
+        "engine"
+      ],
       "summary": "Called at the end of every World1-4_LoadBanks after the .pap Load_PackedFile call. FUN_1000_1230 (plain copy) then Level_TransposeMapToColumnMajor."
     },
     {
       "name": "Level_TransposeMapToColumnMajor",
       "address": "1000:1291",
-      "tags": ["verified", "engine"],
+      "tags": [
+        "verified",
+        "engine"
+      ],
       "summary": "dest[0x4200+col*128+row] = source[row*128+col] -- transposes the row-major .pap file (confirmed on-disk format, see docs/formats/pap.md) into a column-major in-memory buffer at 6de3:4200 for fast per-column scrolling access."
     },
     {
       "name": "Gfx_DrawFullScreenPicture",
       "address": "1000:bd64",
-      "tags": ["verified", "gfx"],
+      "tags": [
+        "verified",
+        "gfx"
+      ],
       "summary": "The .pip full-screen picture blitter. Direct (unmasked) 320x192 4-plane EGA image, plane-words interleaved per 16px group, picture data starting at file offset 0x22. Plane read order (0,1,2,3 per Map Mask cycling) confirmed from disassembly; plane-to-color-bit mapping does NOT match the textbook EGA convention -- empirically corrected to PLANE_TO_INDEX_BIT=[1,0,3,2] (tools/ega.js) via user visual comparison of candidate permutations, applies to Gfx_BlitSpriteMasked's sprites too. See docs/formats/pip.md."
     },
     {
       "name": "Video_FlipAndScroll",
       "address": "1000:154a",
-      "tags": ["verified", "spine", "video"],
+      "tags": [
+        "verified",
+        "spine",
+        "video"
+      ],
       "summary": "Main-loop call #4. Page-flip (A000/A300) + EGA Attribute Controller index 0x13 write (pixel-panning register) for hardware fine-scroll -- the other AC-index write in the binary besides the CGA palette-select, refining the no-palette-setter finding. Also services the loaded sound driver per frame via computed far call."
     },
     {
       "name": "Fx_UpdateTransition",
       "address": "1000:1028",
-      "tags": ["guess", "spine", "engine"],
-      "summary": "GUESS: main-loop call #5. Dispatches on [8ba2] transition/effect ID; likely a screen wipe/fade."
+      "tags": [
+        "guess",
+        "spine",
+        "engine",
+        "verified"
+      ],
+      "summary": "Main-loop call #5. Dispatches on [8ba2] ('transition/effect ID'): the default case (Fx_TransitionStep) increments it once per frame and feeds it into Video_SelectAndLoadPalette's 24-bank palette-fade table -- CONFIRMED palette-fade transition system between levels/screens, not a screen wipe."
     },
     {
       "name": "Level_UpdateEventQueue",
       "address": "1000:c28f",
-      "tags": ["guess", "spine", "engine"],
+      "tags": [
+        "guess",
+        "spine",
+        "engine"
+      ],
       "summary": "GUESS: main-loop call #6. Walks an opcode/length script structure at [8bb5]; plausible scripted-event/trigger queue."
     },
     {
       "name": "Demo_PlaybackInput",
       "address": "1000:0159",
-      "tags": ["verified", "spine", "engine"],
+      "tags": [
+        "verified",
+        "spine",
+        "engine"
+      ],
       "summary": "Main-loop call #7. When demo mode active, overrides input with RLE-encoded ([8ba6]) replayed input. See Demo_RecordInput for the write side."
     },
     {
       "name": "Entity_UpdateAll",
       "address": "1000:c91d",
-      "tags": ["guess", "spine", "engine"],
+      "tags": [
+        "guess",
+        "spine",
+        "engine"
+      ],
       "summary": "GUESS: main-loop call #8. Walks a linked entity list from 0x91be, dispatching per-entity update (FUN_1000_22da) or a lighter step (FUN_1000_ca6d); +0x40==0x19 is the confirmed 'dead/remove' marker."
     },
     {
       "name": "Demo_RecordInput",
       "address": "1000:01d9",
-      "tags": ["verified", "spine", "engine"],
+      "tags": [
+        "verified",
+        "spine",
+        "engine"
+      ],
       "summary": "Main-loop call #9. RLE-encodes current input into [8ba6] when not in playback mode. Pair with Demo_PlaybackInput implements attract-mode demo record/playback."
     },
     {
       "name": "Debug_HandleCheatInput",
       "address": "1000:088d",
-      "tags": ["verified", "spine", "engine"],
+      "tags": [
+        "verified",
+        "spine",
+        "engine"
+      ],
       "summary": "Main-loop call #10. Debug console: 'p'=single-step, 'q'=vsync-skip, 'b'=hardcoded debug setup, digits 0-9 build a 4-char level-select CHEAT CODE matched against a table at 0xfc2a, warping into World1-4_LoadBanks at a given sub-level."
     },
     {
       "name": "Hud_UpdateScoreDisplay",
       "address": "1000:0b92",
-      "tags": ["verified", "spine", "engine"],
+      "tags": [
+        "verified",
+        "spine",
+        "engine"
+      ],
       "summary": "Main-loop call #12. Converts [8b75] (score/distance) into custom-glyph HUD digits at buffer 0xe70e -- CONFIRMS the Gfx_DrawObject glyph-copy family's 'HUD renderer' hypothesis. Triggers periodic level-progress callbacks; world-3-specific secondary counter past sub-level 7."
     },
     {
       "name": "Rng_NextValue",
       "address": "1000:11fc",
-      "tags": ["verified", "spine", "engine"],
+      "tags": [
+        "verified",
+        "spine",
+        "engine"
+      ],
       "summary": "Main-loop call #13. 16-bit LFSR pseudo-random generator, advanced once per frame ([8b71] state, [8b6b] output)."
     },
     {
       "name": "Entity_RunScript",
       "address": "1000:22da",
-      "tags": ["verified", "engine"],
+      "tags": [
+        "verified",
+        "engine"
+      ],
       "summary": "Bytecode VM for entity behavior scripts. Reads opcode bytes from a per-entity script pointer (+0xc), dispatching through a 256-entry function-pointer jump table at 1000:2383. -1/-0x52 terminators, -4 special op (FUN_1000_2659). Decoding the jump table would reveal the actual entity scripting language."
     },
     {
       "name": "Entity_UpdateBehavior",
       "address": "1000:ca6d",
-      "tags": ["guess", "engine"],
+      "tags": [
+        "guess",
+        "engine"
+      ],
       "summary": "GUESS (structure confirmed, NOT decoded branch-by-branch): the dense per-type/per-state gameplay rules dispatcher (~600 decompiled lines). Switches on entity 'kind' (+4) and nested sub-type/state fields; movement, collision, randomized behavior via Rng_NextValue's [8b6b] output. Highest-value remaining target -- this is the actual gameplay logic."
     },
     {
       "name": "Entity_FreeSlot",
       "address": "1000:c961",
-      "tags": ["verified", "engine"],
+      "tags": [
+        "verified",
+        "engine"
+      ],
       "summary": "Removes a dead entity from a ~140-slot pointer array at 1000:9090-0x91a8 via linear scan + array compaction. Confirms Entity_UpdateAll's list walk operates over this same array."
     },
     {
       "name": "Video_WaitVsyncAndCountFrame",
       "address": "1000:0142",
-      "tags": ["verified", "spine", "video"],
+      "tags": [
+        "verified",
+        "spine",
+        "video"
+      ],
       "summary": "Main-loop call #14 (last). Busy-waits for vsync (port 3DAh), increments frame counter [89f6]."
     },
     {
       "name": "Input_KeyboardIsr",
       "address": "1000:1a5b",
-      "tags": ["verified", "spine", "input"],
+      "tags": [
+        "verified",
+        "spine",
+        "input"
+      ],
       "summary": "The INT 9h keyboard ISR -- found via find_code_gaps, since Ghidra's auto-analysis never created a function boundary here (installed via a raw IVT write, not a traceable DOS set-vector call). Reads port 0x60, tracks Ctrl state, writes raw scancode to [8c87]/[8b60] (the byte App_ExitOrReset polls), looks up the scancode in the 512-word table Config_ParseIniAndLoadSoundDriver built at 1e27, updates [8c94]/[8c85] action bitmasks. This closes the long-standing 'where's the keyboard handler' question."
     },
     {
       "name": "Input_ReadKeyboardState",
       "address": "1000:190d",
-      "tags": ["verified", "spine", "input"],
+      "tags": [
+        "verified",
+        "spine",
+        "input"
+      ],
       "summary": "Combines [8c94] (edge accumulator, cleared after read) with [8c85] (held state) via OR, applies an opposite-direction debounce (mask 0xa0a), stores to [8c91]/[8c90]."
     },
     {
       "name": "Input_ReadState",
       "address": "1000:18a4",
-      "tags": ["verified", "spine", "input"],
+      "tags": [
+        "verified",
+        "spine",
+        "input"
+      ],
       "summary": "Unified per-frame input reader: calls Input_ReadKeyboardState (also triggers joystick port 0x201), calibrates joystick axes via Input_PollJoystickPort, uses [8c91] instead of joystick data when [8c92]&1==0 (keyboard mode). Result to [8b5d]/[8c8f]."
     },
     {
       "name": "Input_PollJoystickPort",
       "address": "1000:188d",
-      "tags": ["verified", "input"],
+      "tags": [
+        "verified",
+        "input"
+      ],
       "summary": "Single joystick-calibration-loop iteration: reads port 0x201 twice + vsync status 3DAh, same speed-independent timing trick as Sys_DetectCpuSpeed."
     },
     {
       "name": "Config_ParseIniAndLoadSoundDriver",
       "address": "1000:1af6",
-      "tags": ["verified", "spine"],
+      "tags": [
+        "verified",
+        "spine"
+      ],
       "summary": "4th function entry() calls. Opens/parses pockets.ini: line1->sound driver char [8cab], line2->video driver char [8a5a] (the byte Video_SetMode dispatches on), line3->joystick/keyboard mode [8c92], lines4-8->5 key bindings building a 512-byte keycode->action lookup table at 1000:1e27. Then loads and INVOKES the sound driver .pin file as executable code via a computed far call -- confirms .pin files are loadable driver modules. Keyboard polling/ISR code that consults the 1e27 table not yet located."
     },
     {
       "name": "Config_SkipLine",
       "address": "1000:1cc2",
-      "tags": ["verified", "spine"],
+      "tags": [
+        "verified",
+        "spine"
+      ],
       "summary": "Line-oriented text scanner: advances SI past the next LF, or backs up onto a NUL. Used repeatedly by Config_ParseIniAndLoadSoundDriver."
     },
     {
       "name": "Gfx_CopyGlyphCell",
       "address": "1000:7db4",
-      "tags": ["guess", "gfx"],
+      "tags": [
+        "guess",
+        "gfx"
+      ],
       "summary": "GUESS: straight CX-row x 4-byte copy, +44/row, no EGA port access. Called from Gfx_DrawObject's numeric-default case (glyph-string rendering, hypothesized HUD/text). See Gfx_CopyGlyphString for the multi-glyph sibling."
     },
     {
       "name": "Gfx_CopyGlyphCellNarrow",
       "address": "1000:7e81",
-      "tags": ["guess", "gfx"],
+      "tags": [
+        "guess",
+        "gfx"
+      ],
       "summary": "GUESS: same as Gfx_CopyGlyphCell but 2 bytes/row (narrower/edge-clipped cell)."
     },
     {
       "name": "Gfx_CopyGlyphCellNarrowAlias",
       "address": "1000:7e9b",
-      "tags": ["verified", "gfx"],
+      "tags": [
+        "verified",
+        "gfx"
+      ],
       "summary": "Verified pure tail-call alias for Gfx_CopyGlyphCellNarrow."
     },
     {
       "name": "Gfx_CopyGlyphString",
       "address": "1000:7dcd",
-      "tags": ["guess", "gfx"],
+      "tags": [
+        "guess",
+        "gfx"
+      ],
       "summary": "GUESS: self-loops over multiple glyphs per call (16 rows x 4 bytes/glyph), decoding the next glyph inline via a sign-magnitude byte transform, decrementing DAT_6de3_8b9c (init 10 by Gfx_DrawObject). Fully-on-screen fast path for the hypothesized HUD/text renderer."
     },
     {
       "name": "Gfx_NoOpStub",
       "address": "1000:8568",
-      "tags": ["verified", "stub"],
+      "tags": [
+        "verified",
+        "stub"
+      ],
       "summary": "Confirmed empty function (immediate RET). Called once from Gfx_DrawObject at 1000:76c1 -- a deliberate no-op clip case."
     },
     {
       "name": "Sys_DetectCpuSpeed",
       "address": "1ffb:0b79",
-      "tags": ["verified", "spine"],
+      "tags": [
+        "verified",
+        "spine"
+      ],
       "summary": "First function entry() calls. Polls port 3DAh (vsync status) counting reads across a vsync cycle to classify the machine fast/slow -- likely selects the undocumented high-speed CGA path. NOTE: appears in disassembly as a far call to CS:2000:0b29 due to real-mode segment:offset aliasing (same linear address as 1ffb:0b79)."
     },
     {
       "name": "Gfx_BlitSpriteMaskedWide",
       "address": "1000:81ad",
-      "tags": ["verified", "gfx"],
+      "tags": [
+        "verified",
+        "gfx"
+      ],
       "summary": "Same AND-mask-then-4xOR-plane template as Gfx_BlitSpriteMasked but 3 words (48px)/row, inline sub-pixel shift. Called from Gfx_DrawObject for left-partial-off-screen X positions."
     },
     {
       "name": "Gfx_BlitSpriteMaskedWideB",
       "address": "1000:832c",
-      "tags": ["verified", "gfx"],
+      "tags": [
+        "verified",
+        "gfx"
+      ],
       "summary": "Same template, 3-word row width, via Gfx_AndMaskRowWide/Gfx_OrPlaneRowWide helpers. Called from Gfx_DrawObject for right-edge (X>=0x140) positions. Exact relationship to Gfx_BlitSpriteMaskedWide not fully disambiguated."
     },
     {
       "name": "Gfx_BlitSpriteMaskedLeftClip",
       "address": "1000:843a",
-      "tags": ["verified", "gfx"],
+      "tags": [
+        "verified",
+        "gfx"
+      ],
       "summary": "Starts writing at DI+2/+3 (skips first dest word) and reads source one word later -- confirmed left-screen-edge-clip variant. Called from Gfx_DrawObject when X straddles the left edge."
     },
     {
       "name": "Gfx_AndMaskRowWide",
       "address": "1000:83dc",
-      "tags": ["verified", "gfx"],
+      "tags": [
+        "verified",
+        "gfx"
+      ],
       "summary": "AND-mask row primitive for the 3-word/row (wide) sprite class, +44 bytes/row."
     },
     {
       "name": "Gfx_OrPlaneRowWide",
       "address": "1000:840f",
-      "tags": ["verified", "gfx"],
+      "tags": [
+        "verified",
+        "gfx"
+      ],
       "summary": "OR-plane row primitive for the 3-word/row (wide) sprite class, +44 bytes/row."
     },
     {
       "name": "Gfx_AndMaskRowLeftClip",
       "address": "1000:84ed",
-      "tags": ["verified", "gfx"],
+      "tags": [
+        "verified",
+        "gfx"
+      ],
       "summary": "AND-mask row primitive that skips the leading source/dest word -- used for sprites straddling the left screen edge."
     },
     {
       "name": "Gfx_OrPlaneRowLeftClip",
       "address": "1000:852f",
-      "tags": ["verified", "gfx"],
+      "tags": [
+        "verified",
+        "gfx"
+      ],
       "summary": "OR-plane row primitive, leading-word-skipped counterpart to Gfx_OrPlaneRow, for left-edge-straddling sprites."
     },
     {
       "name": "Video_SetModeCga",
       "address": "1000:1472",
-      "tags": ["verified", "spine"],
+      "tags": [
+        "verified",
+        "spine"
+      ],
       "summary": "Actual target of Video_SetMode's '4'/'0'/default branches (corrects an earlier mis-description). CGA 320x200 mode set + the only palette-related call in the whole binary (INT 10h AH=0Bh CGA palette-select). See memory-map.md 'Sprite rendering' section for the no-palette-setter finding."
     },
     {
       "name": "Gfx_BlitSpriteMasked",
       "address": "1000:7ea0",
-      "tags": ["verified", "gfx"],
+      "tags": [
+        "verified",
+        "gfx"
+      ],
       "summary": "The confirmed EGA sprite blitter: AND an inverted silhouette mask into all 4 bitplanes (Gfx_AndMaskRow), then OR each colour plane in separately (Gfx_OrPlaneRow x4, cycling Sequencer Map Mask). -44 bytes/row, matching the 352px virtual screen width."
     },
     {
       "name": "Gfx_BlitSpriteMaskedAlt",
       "address": "1000:7ff2",
-      "tags": ["verified", "gfx"],
+      "tags": [
+        "verified",
+        "gfx"
+      ],
       "summary": "Same algorithm as Gfx_BlitSpriteMasked, inlined, with sub-byte pixel-shift support for non-8-pixel-aligned X positions. Loop bound differs (0x10 vs 0x20) -- likely a different sprite height class, not yet confirmed."
     },
     {
       "name": "Gfx_AndMaskRow",
       "address": "1000:7f67",
-      "tags": ["verified", "gfx"],
+      "tags": [
+        "verified",
+        "gfx"
+      ],
       "summary": "ANDs a mask-bitmap row into all write-enabled bitplanes, -44 bytes/row, with sub-byte shift support via BL/BH edge masks."
     },
     {
       "name": "Gfx_OrPlaneRow",
       "address": "1000:7fb4",
-      "tags": ["verified", "gfx"],
+      "tags": [
+        "verified",
+        "gfx"
+      ],
       "summary": "ORs one bitplane's colour-data row into the destination (Map Mask selects which plane beforehand), -44 bytes/row, same shift support."
     },
     {
       "name": "Gfx_DrawObject",
       "address": "1000:7419",
-      "tags": ["spine", "gfx", "partial"],
+      "tags": [
+        "spine",
+        "gfx",
+        "partial"
+      ],
       "summary": "Top-level per-object/sprite draw dispatcher, called from FUN_1000_73a5 (one of entry()'s main-loop calls -- confirmed per-frame render path). Switches on object-record byte [SI+0x16] to masked-bitmap draw (clipped, via an unnamed family of edge-clip-case helpers), a probable text/string renderer, or other variants. See Ghidra plate comment for full breakdown; edge-clip helper family (FUN_1000_843a/81ad/832c/8568/7db4/7dcd/7e81/7e9b) is the next naming target."
     },
     {
       "name": "World2_LoadBanks",
       "address": "1000:b6f0",
-      "tags": ["verified", "spine"],
+      "tags": [
+        "verified",
+        "spine"
+      ],
       "summary": "Structurally identical to World1_LoadBanks (same 7 target segments), gated on [8c11]!='2'. Own DAT_1000_b152 filename near-pointers, which cannot be resolved statically -- see openQuestions."
     },
     {
       "name": "World3_LoadBanks",
       "address": "1000:b8b7",
-      "tags": ["verified", "spine"],
+      "tags": [
+        "verified",
+        "spine"
+      ],
       "summary": "Structurally identical to World1_LoadBanks, gated on [8c11]!='3'. Own DAT_1000_b152 filename near-pointers -- see openQuestions."
     },
     {
       "name": "World4_LoadBanks",
       "address": "1000:ba3c",
-      "tags": ["verified", "spine"],
+      "tags": [
+        "verified",
+        "spine"
+      ],
       "summary": "Structurally identical to World1_LoadBanks, gated on [8c11]!='4'. Own DAT_1000_b152 filename near-pointers -- see openQuestions. Calls FUN_1000_bd0a only twice (World2/3 call it three times) -- minor structural difference, worth re-checking once filenames are known."
     },
     {
       "name": "entry",
       "address": "1000:0010",
-      "tags": ["verified", "spine"],
+      "tags": [
+        "verified",
+        "spine"
+      ],
       "summary": "Program entry point. Reads PSP command tail, sets SS:SP=6d83:05fe (the real stack), DS=ES=6de3, runs init chain, dispatches to World_Dispatch or falls through, then runs the main loop (~14 subsystem calls per iteration)."
     },
     {
       "name": "Video_SetMode",
       "address": "1000:133b",
-      "tags": ["verified", "spine"],
+      "tags": [
+        "verified",
+        "spine"
+      ],
       "summary": "Dispatches on driver-selector byte [8a5a]: 'E'=EGA/VGA16 (reference mode), 'i'=mode 0Dh, 'C'=allocates a 0x800-para buffer once + mode set, 'T'=Tandy (mode 09h, B800, port 3DFh), '4'/'0'=CGA (incl. the undocumented high-speed CGA mode from the 1ffb credits string)."
     },
     {
       "name": "App_FatalExit",
       "address": "1000:197f",
-      "tags": ["verified", "spine"],
+      "tags": [
+        "verified",
+        "spine"
+      ],
       "summary": "Unconditional cleanup path (video/keyboard restore, DOS vector restore, close open handles). Reached from entry() when the early init chain fails (<0 return)."
     },
     {
       "name": "App_ExitOrReset",
       "address": "1000:1987",
-      "tags": ["verified", "spine"],
+      "tags": [
+        "verified",
+        "spine"
+      ],
       "summary": "Polls exit-reason byte [8b60] for 0x1E (quit to DOS, full cleanup) or 0x13 (re-enter game: reset video mode, reload a bank). Reached from Load_PackedFile's DOS-error path and World_Dispatch's default branch."
     },
     {
       "name": "Sys_RestoreState",
       "address": "1000:1a26",
-      "tags": ["verified", "spine"],
+      "tags": [
+        "verified",
+        "spine"
+      ],
       "summary": "Shared cleanup: restore video mode / keyboard state / an INT vector (calls FUN_1000_1dae/0142/2061), then closes handles at [8c9e]/[8ca2] if set. Used by both exit paths above (and inlined again at their tails)."
     },
     {
       "name": "World_Dispatch",
       "address": "1000:b51e",
-      "tags": ["verified", "spine"],
+      "tags": [
+        "verified",
+        "spine"
+      ],
       "summary": "Switches on global word [8b89] (current world 1..4) to the matching bank loader: 1->World1_LoadBanks, 2->FUN_1000_b6f0, 3->FUN_1000_b8b7, 4->FUN_1000_ba3c. Default calls FUN_1000_b56b then reloads segment 6de3 twice."
     },
     {
       "name": "World1_LoadBanks",
       "address": "1000:b56b",
-      "tags": ["verified", "spine"],
+      "tags": [
+        "verified",
+        "spine"
+      ],
       "summary": "Loads world 1's resource banks via Load_PackedFile into segments 2a49,4353,5c53,20e9,3bc3,6a63,6de3 (skipped if already resident per [8c11]). TODO: resolve each DAT_1000_b152 near-pointer to its filename string."
     },
     {
       "name": "Load_PackedFile",
       "address": "1000:bbbd",
-      "tags": ["verified", "spine"],
+      "tags": [
+        "verified",
+        "spine"
+      ],
       "summary": "LoadPackedFile(DX=near ptr filename, DI=dest offset) -> CX=size. DOS open/read/close into segment [8c75]; if signature 'RN' detected, calls Rnc_Depack in place. Fatal-exits via App_ExitOrReset on any DOS error."
     },
     {
       "name": "Rnc_Depack",
       "address": "1000:fcc4",
-      "tags": ["verified", "rnc"],
+      "tags": [
+        "verified",
+        "rnc"
+      ],
       "summary": "RNC ProPack method-1 decompressor entry point. Validates 'RNC\\x01' signature, reads chunk count from header+0x11, drives the per-chunk Huffman-table-build + literal/match decode loop. Fully ported to tools/rnc.js in the project repo (see docs/formats/rnc.md); validated against all 60 shipped data files via CRC16."
     },
     {
       "name": "Rnc_GetHeaderWordSwapped",
       "address": "1000:fe6a",
-      "tags": ["verified", "rnc"],
+      "tags": [
+        "verified",
+        "rnc"
+      ],
       "summary": "Reads a big-endian header field and byte-swaps it. Only used by Rnc_Depack's DOS in-place-expansion overlap-safety shuffle -- irrelevant to a flat-buffer port."
     },
     {
       "name": "Rnc_BytesToParasRoundUp",
       "address": "1000:fe73",
-      "tags": ["verified", "rnc"],
+      "tags": [
+        "verified",
+        "rnc"
+      ],
       "summary": "Converts a byte count to a rounded-up paragraph (16-byte) count. Only used by the same DOS overlap-safety shuffle as Rnc_GetHeaderWordSwapped."
     },
     {
       "name": "Rnc_DecodeSymbol",
       "address": "1000:fe86",
-      "tags": ["verified", "rnc"],
+      "tags": [
+        "verified",
+        "rnc"
+      ],
       "summary": "Decodes one Huffman-coded value: linear-scans table for (bitwindow&mask)==code, advances the stream by codeLen bits (discarding that result), then returns classIndex directly if <2, else GetBits(classIndex-1)|(1<<(classIndex-1)). Returns via CX, not AX -- see plate comment for the register-preservation subtlety that this depended on."
     },
     {
       "name": "Rnc_GetBits",
       "address": "1000:fec2",
-      "tags": ["verified", "rnc"],
+      "tags": [
+        "verified",
+        "rnc"
+      ],
       "summary": "GetBits(AL=n): consumes n bits (0..16) LSB-first from the two-register (fcbb/fcbd) sliding bit window, refilling from the compressed stream only when needed."
     },
     {
       "name": "Rnc_BuildHuffTable",
       "address": "1000:ff22",
-      "tags": ["verified", "rnc"],
+      "tags": [
+        "verified",
+        "rnc"
+      ],
       "summary": "Reads a canonical Huffman table (count via GetBits(5), then count 4-bit code lengths) and builds bit-reversed (mask,code) pairs plus a per-symbol classIndex used by Rnc_DecodeSymbol. Called 3x per chunk (raw-length, distance, length tables)."
+    },
+    {
+      "name": "Video_SelectAndLoadPalette",
+      "address": "1000:3bbf",
+      "tags": [
+        "verified",
+        "gfx"
+      ],
+      "summary": "Selects one of 24 contiguous 32-byte (16-word) palette banks at 6de3:da96 (bank[i]=da96+i*32) and copies it to working buffer [8ae7]. AL==7 special-cases by current world ([8b89]) to banks 7/0x13/0x14/0x15 (worlds 1-4 target palettes); otherwise AL is the bank index directly -- this is how Fx_TransitionStep walks the fade ramp. Bank 0 is runtime-populated (all-zero statically). Calls Video_WaitVsyncAndCountFrame then Video_ApplyVgaPalette (or Video_ApplyPaletteNonVga on non-VGA drivers)."
+    },
+    {
+      "name": "Video_ApplyVgaPalette",
+      "address": "1000:170b",
+      "tags": [
+        "verified",
+        "gfx"
+      ],
+      "summary": "THE REAL PALETTE SETTER -- only reached when driver [8a5a]=='C' (Colour VGA, what this project's shipped pockets.ini actually selects). Converts the 16 packed palette words at [8ae7] to VGA DAC RGB via Video_ScaleColorComponent (R=hi byte, G=hi nibble of lo byte, B=low 3 bits of lo byte) and programs them via INT 10h AX=0x1002 (set palette regs+overscan), AX=0x1012 (set DAC block, VGA-only), AX=0x101b (gray-scale, gated once). Overturns the earlier 'no palette setter' finding for this driver path."
+    },
+    {
+      "name": "Video_ScaleColorComponent",
+      "address": "1000:180e",
+      "tags": [
+        "verified",
+        "gfx"
+      ],
+      "summary": "Scales a 0-7(ish) palette-word color nibble to a 6-bit VGA DAC value: 0->0, else (n*63)/7+6 clipped to 63. Called 3x per color by Video_ApplyVgaPalette."
+    },
+    {
+      "name": "Video_ApplyPaletteNonVga",
+      "address": "1000:17ae",
+      "tags": [
+        "verified",
+        "gfx"
+      ],
+      "summary": "Non-VGA-driver counterpart to Video_ApplyVgaPalette. Its per-component step (Video_ScaleColorComponentStub) is an empty RET stub -- confirms EGA/Tandy driver paths do not apply a real custom palette and rely on the BIOS default."
+    },
+    {
+      "name": "Video_ScaleColorComponentStub",
+      "address": "1000:17d8",
+      "tags": [
+        "verified",
+        "gfx",
+        "stub"
+      ],
+      "summary": "Empty RET stub -- the non-VGA equivalent of Video_ScaleColorComponent. Confirms non-VGA driver paths compute no real palette."
+    },
+    {
+      "name": "Fx_TransitionStep",
+      "address": "1000:10d8",
+      "tags": [
+        "verified",
+        "gfx"
+      ],
+      "summary": "Default-case body of Fx_UpdateTransition. Increments [8ba2] once per frame and drives Video_SelectAndLoadPalette through its 24-bank fade-ramp table -- confirms Fx_UpdateTransition is a palette-fade transition system, not a screen wipe. Other opcode values (-5/-4/-3/-2/-1) handle camera re-center, mode re-init (Video_SetMode), and input-gated waits around level transitions."
     }
   ],
   "openQuestions": [
@@ -377,6 +629,9 @@
     "Decode Entity_RunScript's 256-entry opcode jump table at 1000:2383 -- reveals the entity scripting language.",
     "Name FUN_1000_02e2 (animated-tile callback) and FUN_1000_c2f3 (level-event-queue callback).",
     "Confirm the guessed main-loop functions (Camera_UpdateScroll, Level_UpdateAnimatedTiles, Fx_UpdateTransition, Level_UpdateEventQueue, Entity_UpdateAll) -- structure is solid, semantic role inferred; see docs/engine.md.",
-    "Exact disambiguation of Gfx_BlitSpriteMaskedWide vs WideB's distinct roles (both cover the same row width)."
+    "Exact disambiguation of Gfx_BlitSpriteMaskedWide vs WideB's distinct roles (both cover the same row width).",
+    "Full 24-bank palette dump only spot-checked (banks 0,7,19,20,21 + the 0-17 ramp shape) -- worth a dedicated docs/formats/palette.md with all 24 banks decoded.",
+    "tools/ega.js still hardcodes a generic default EGA palette; the empirically-guessed PLANE_TO_INDEX_BIT mapping in docs/formats/pak.md/pip.md was validated against that wrong reference and needs re-checking against the real per-world palettes now found in Video_ApplyVgaPalette / docs/memory-map.md.",
+    "Which .pak/.pap files correspond to which world (1-4) palette bank is not yet mapped -- needed before re-rendering sprites/levels with correct colors."
   ]
 }
