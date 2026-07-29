@@ -27,11 +27,14 @@ offset, and raw payload words. A meaningful fraction of entities have unresolved
 negative/off-map) coordinates — these are still plotted (the status line reports how many), not
 hidden, since the coordinate-origin question is still open.
 
-Entities render as their **actual sprite tile** when the mapping is confirmed exact (currently
-only bonus/HUD-icon entities, via `extras.pak`/`extraxN.pak` — see
-`docs/formats/pin-level-script.md`'s "Entity sprite rendering" section); everything else
-(enemies/characters, whose sprite-bank tile-index formula isn't fully resolved yet) falls back to
-a colored dot (one hue per type) rather than guessing the wrong tile.
+Entities render as their **actual sprite tile** whenever the shape descriptor's addressing mode is
+confirmed direct (`frameSourceMode === 1`, or bank id 6 which is always direct) — see
+`docs/formats/pin-level-script.md`'s "Entity sprite rendering" section. This now covers bonus/
+HUD-icon entities (`extras.pak`/`extraxN.pak`, bank 6), most `nastyN.pak` enemies (bank 7), most
+`specialN.pak` effects (bank 3), and a few `bitkid.pak`/`kidxN.pak` entities (bank 2) — typically
+70-97% of a given level's entities. The remainder (entities using the still-unresolved indirect
+near-pointer-table addressing mode, or the rare video-memory screen-grab mode) fall back to a
+colored dot (one hue per type) rather than guessing the wrong tile.
 
 ## How it works
 
@@ -51,6 +54,10 @@ a colored dot (one hue per type) rather than guessing the wrong tile.
   entity list — `{entities: [{type, x, y, offset, bx, payload}, ...]}` — drawn directly in level
   pixel coordinates.
 - `build/png/entity-shapes.json` (copied from `symbols/entity-shapes.json`, Ghidra-derived) maps
-  entity `type` → shape descriptor (bank id + starting animation frame). For bank id 6, the
-  viewer resolves this to a real tile in `extras.pak.png`/`extrax<world>.pak.png` and draws it at
-  the entity's position instead of a dot.
+  entity `type` → shape descriptor (bank id, starting animation frame, addressing mode) and also
+  provides `bankAtlas`: for each resolved bank id, the ordered list of `.pak` files (some shared
+  across worlds like `extras.pak`/`bitkid.pak`, some per-world like `extrax<world>.pak`/
+  `kidx<world>.pak`) whose tiles concatenate into that bank's flat tile-index space. The viewer's
+  `loadSpriteAtlasesForWorld`/`resolveEntitySprite` use this generically — no per-bank-id special
+  casing beyond "bank 6 is always direct" — to draw the real tile at the entity's position instead
+  of a dot whenever `frameSourceMode` confirms direct addressing.

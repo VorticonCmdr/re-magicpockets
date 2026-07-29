@@ -304,11 +304,15 @@ respectively), so the fix is scoped exactly to `extras.pak`/`extrax1-4.pak` and 
 ## Open questions
 
 - **RESOLVED**: sprite *placement/identity* metadata is found at two levels. (1) Per-shape-class
-  metadata (frame count, height, bank/segment) — the 96-entry, 28-byte-record descriptor table at
-  `6de3:b91a` (indexed via `Entity_LookupShapeDescriptor`'s table lookup, `6de3:c39a`), see the
-  `extras.pak` resolution above. Still untraced there: fields `+0x0`..`+0x8`, `+0x12`, `+0x16`
-  (only `+0xa` frame-count, `+0xc` frame-stride, `+0xe` bank-id, and `+0x14` height are
-  decoded/named so far). (2) Per-level entity *placement* (which specific X/Y positions in a
+  metadata (frame count, height, bank/segment, and — as of the raw-disassembly re-trace of
+  `Gfx_DrawObject`'s masked-bitmap dispatch — the `+0x16` addressing-mode field and `+0x18` kind
+  field that resolve `animStart` to a real tile index for banks 2/3/7 too, not just bank 6) — the
+  96-entry, 28-byte-record descriptor table at `6de3:b91a` (indexed via
+  `Entity_LookupShapeDescriptor`'s table lookup, `6de3:c39a`). See the `extras.pak` resolution
+  below for `+0xa`/`+0xc`/`+0xe`/`+0x14`, and `docs/formats/pin-level-script.md`'s "Entity sprite
+  rendering" section for `+0x16`/`+0x18` and the still-open indirect-mode tables (`+0x2`=animStart,
+  `+0x4`=animEnd, `+0x8`=shape-type dispatch value are already named). `+0x0`, `+0x1a` (hitbox
+  index) remain untraced/unused by rendering. (2) Per-level entity *placement* (which specific X/Y positions in a
   given level spawn which shape-class) — found in the per-world `new1/level2/level3a-c/level4.pin`
   files (previously miscategorized as unclassified/music `.pin` files), NOT the `.pap` files. Full
   writeup: `docs/formats/pin-level-script.md`.

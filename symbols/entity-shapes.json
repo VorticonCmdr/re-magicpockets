@@ -1,5 +1,5 @@
 {
- "note": "Entity shape-descriptor table (6de3:b91a, 96 x 28-byte records), indexed by entity type (the same value stored in level-script records -- see docs/formats/pin-level-script.md). Only bankId=6 (extras.pak+extraxN.pak) has a CONFIRMED animStart->tile-index mapping (verified: every bankId=6 animStart/animEnd value falls exactly within the combined extras.pak(240 tiles)+extraxN.pak(80 tiles) 0-319 flat tile range). Other bankIds' segments concatenate additional files (e.g. bitkid.pak precedes kidxN.pak in segment 0x4353) not yet fully mapped -- animStart is NOT yet reliable as a tile index for those. See docs/formats/pin-level-script.md's entity-sprite-rendering section.",
+ "note": "Entity shape-descriptor table (6de3:b91a, 96 x 28-byte records), indexed by entity type (the same value stored in level-script records -- see docs/formats/pin-level-script.md). frameSourceMode (descriptor+0x16, copied to global [0x89e4] in Gfx_DrawObject) is the addressing-mode switch confirmed via raw disassembly: nonzero (1) -> the entity's current animation frame (initialized to animStart) is used DIRECTLY as a flat tile index into bankAtlas[bankId]'s combined tile space (same mechanism already confirmed for bankId 6). 0 -> tile index is instead read (one byte, first of possibly `frameCount` for tall composite sprites) from a per-(kind,frame) byte-stream reached via a 3-way near-pointer table (6de3:e4fa/e906/dea2, selected by `kind`) indexed by [animStart*2] -- NOT YET extracted, still renders as a dot. 0xffff -> reads from live EGA/VGA video memory (a screen-grab special effect, e.g. a portal/mirror), not a bank tile -- always a dot. `kind` is descriptor+0x18, only meaningful for selecting the frameSourceMode=0 near-pointer table.",
  "bankToSegment": {
   "2": 17235,
   "3": 27235,
@@ -7,6 +7,52 @@
   "6": 23635,
   "7": 8425,
   "8": 10825
+ },
+ "bankAtlas": {
+  "2": {
+   "parts": [
+    {
+     "file": "bitkid",
+     "tiles": 60
+    },
+    {
+     "file": "kidx",
+     "tiles": 20,
+     "perWorld": true
+    }
+   ]
+  },
+  "3": {
+   "parts": [
+    {
+     "file": "special",
+     "tiles": 20,
+     "perWorld": true
+    }
+   ]
+  },
+  "6": {
+   "parts": [
+    {
+     "file": "extras",
+     "tiles": 240
+    },
+    {
+     "file": "extrax",
+     "tiles": 80,
+     "perWorld": true
+    }
+   ]
+  },
+  "7": {
+   "parts": [
+    {
+     "file": "nasty",
+     "tiles": 60,
+     "perWorld": true
+    }
+   ]
+  }
  },
  "descriptors": [
   {
@@ -17,7 +63,9 @@
    "frameCount": 0,
    "frameStride": 0,
    "bankId": 0,
-   "height": 0
+   "height": 0,
+   "frameSourceMode": 0,
+   "kind": 0
   },
   {
    "id": 1,
@@ -27,7 +75,9 @@
    "frameCount": 128,
    "frameStride": 128,
    "bankId": 5,
-   "height": 16
+   "height": 16,
+   "frameSourceMode": 0,
+   "kind": 1
   },
   {
    "id": 2,
@@ -37,7 +87,9 @@
    "frameCount": 1,
    "frameStride": 1,
    "bankId": 6,
-   "height": 16
+   "height": 16,
+   "frameSourceMode": 0,
+   "kind": 0
   },
   {
    "id": 3,
@@ -47,7 +99,9 @@
    "frameCount": 1,
    "frameStride": 2,
    "bankId": 2,
-   "height": 16
+   "height": 16,
+   "frameSourceMode": 0,
+   "kind": 3
   },
   {
    "id": 4,
@@ -57,7 +111,9 @@
    "frameCount": 1,
    "frameStride": 1,
    "bankId": 6,
-   "height": 16
+   "height": 16,
+   "frameSourceMode": 1,
+   "kind": 0
   },
   {
    "id": 5,
@@ -67,7 +123,9 @@
    "frameCount": 1,
    "frameStride": 2,
    "bankId": 2,
-   "height": 16
+   "height": 16,
+   "frameSourceMode": 0,
+   "kind": 0
   },
   {
    "id": 6,
@@ -77,7 +135,9 @@
    "frameCount": 2,
    "frameStride": 2,
    "bankId": 6,
-   "height": 16
+   "height": 16,
+   "frameSourceMode": 0,
+   "kind": 5
   },
   {
    "id": 7,
@@ -87,7 +147,9 @@
    "frameCount": 6,
    "frameStride": 1,
    "bankId": 6,
-   "height": 16
+   "height": 16,
+   "frameSourceMode": 0,
+   "kind": 0
   },
   {
    "id": 8,
@@ -97,7 +159,9 @@
    "frameCount": 1,
    "frameStride": 1,
    "bankId": 6,
-   "height": 16
+   "height": 16,
+   "frameSourceMode": 0,
+   "kind": 0
   },
   {
    "id": 9,
@@ -107,7 +171,9 @@
    "frameCount": 8,
    "frameStride": 2,
    "bankId": 6,
-   "height": 16
+   "height": 16,
+   "frameSourceMode": 0,
+   "kind": 0
   },
   {
    "id": 10,
@@ -117,7 +183,9 @@
    "frameCount": 1,
    "frameStride": 1,
    "bankId": 6,
-   "height": 16
+   "height": 16,
+   "frameSourceMode": 1,
+   "kind": 7
   },
   {
    "id": 11,
@@ -127,7 +195,9 @@
    "frameCount": 1,
    "frameStride": 1,
    "bankId": 3,
-   "height": 20
+   "height": 20,
+   "frameSourceMode": 1,
+   "kind": 7
   },
   {
    "id": 12,
@@ -137,7 +207,9 @@
    "frameCount": 1,
    "frameStride": 1,
    "bankId": 3,
-   "height": 26
+   "height": 26,
+   "frameSourceMode": 1,
+   "kind": 7
   },
   {
    "id": 13,
@@ -147,7 +219,9 @@
    "frameCount": 1,
    "frameStride": 1,
    "bankId": 3,
-   "height": 32
+   "height": 32,
+   "frameSourceMode": 1,
+   "kind": 7
   },
   {
    "id": 14,
@@ -157,7 +231,9 @@
    "frameCount": 1,
    "frameStride": 1,
    "bankId": 6,
-   "height": 16
+   "height": 16,
+   "frameSourceMode": 1,
+   "kind": 5
   },
   {
    "id": 15,
@@ -167,7 +243,9 @@
    "frameCount": 1,
    "frameStride": 1,
    "bankId": 6,
-   "height": 16
+   "height": 16,
+   "frameSourceMode": 1,
+   "kind": 0
   },
   {
    "id": 16,
@@ -177,7 +255,9 @@
    "frameCount": 1,
    "frameStride": 1,
    "bankId": 3,
-   "height": 32
+   "height": 32,
+   "frameSourceMode": 1,
+   "kind": 7
   },
   {
    "id": 17,
@@ -187,7 +267,9 @@
    "frameCount": 2,
    "frameStride": 1,
    "bankId": 6,
-   "height": 16
+   "height": 16,
+   "frameSourceMode": 0,
+   "kind": 0
   },
   {
    "id": 18,
@@ -197,7 +279,9 @@
    "frameCount": 1,
    "frameStride": 1,
    "bankId": 7,
-   "height": 32
+   "height": 32,
+   "frameSourceMode": 0,
+   "kind": 4
   },
   {
    "id": 19,
@@ -207,7 +291,9 @@
    "frameCount": 1,
    "frameStride": 1,
    "bankId": 7,
-   "height": 32
+   "height": 32,
+   "frameSourceMode": 0,
+   "kind": 2
   },
   {
    "id": 20,
@@ -217,7 +303,9 @@
    "frameCount": 1,
    "frameStride": 1,
    "bankId": 7,
-   "height": 32
+   "height": 32,
+   "frameSourceMode": 0,
+   "kind": 2
   },
   {
    "id": 21,
@@ -227,7 +315,9 @@
    "frameCount": 1,
    "frameStride": 1,
    "bankId": 2,
-   "height": 32
+   "height": 32,
+   "frameSourceMode": 0,
+   "kind": 5
   },
   {
    "id": 22,
@@ -237,7 +327,9 @@
    "frameCount": 1,
    "frameStride": 1,
    "bankId": 6,
-   "height": 16
+   "height": 16,
+   "frameSourceMode": 1,
+   "kind": 6
   },
   {
    "id": 23,
@@ -247,7 +339,9 @@
    "frameCount": 2,
    "frameStride": 1,
    "bankId": 6,
-   "height": 16
+   "height": 16,
+   "frameSourceMode": 256,
+   "kind": 5
   },
   {
    "id": 24,
@@ -257,7 +351,9 @@
    "frameCount": 2,
    "frameStride": 2,
    "bankId": 6,
-   "height": 16
+   "height": 16,
+   "frameSourceMode": 0,
+   "kind": 0
   },
   {
    "id": 25,
@@ -267,7 +363,9 @@
    "frameCount": 1,
    "frameStride": 1,
    "bankId": 2,
-   "height": 32
+   "height": 32,
+   "frameSourceMode": 0,
+   "kind": 0
   },
   {
    "id": 26,
@@ -277,7 +375,9 @@
    "frameCount": 2,
    "frameStride": 1,
    "bankId": 6,
-   "height": 16
+   "height": 16,
+   "frameSourceMode": 0,
+   "kind": 5
   },
   {
    "id": 27,
@@ -287,7 +387,9 @@
    "frameCount": 1,
    "frameStride": 1,
    "bankId": 6,
-   "height": 16
+   "height": 16,
+   "frameSourceMode": 1,
+   "kind": 5
   },
   {
    "id": 28,
@@ -297,7 +399,9 @@
    "frameCount": 2,
    "frameStride": 2,
    "bankId": 6,
-   "height": 16
+   "height": 16,
+   "frameSourceMode": 256,
+   "kind": 5
   },
   {
    "id": 29,
@@ -307,7 +411,9 @@
    "frameCount": 2,
    "frameStride": 1,
    "bankId": 6,
-   "height": 16
+   "height": 16,
+   "frameSourceMode": 0,
+   "kind": 7
   },
   {
    "id": 30,
@@ -317,7 +423,9 @@
    "frameCount": 1,
    "frameStride": 1,
    "bankId": 6,
-   "height": 16
+   "height": 16,
+   "frameSourceMode": 0,
+   "kind": 0
   },
   {
    "id": 31,
@@ -327,7 +435,9 @@
    "frameCount": 1,
    "frameStride": 1,
    "bankId": 6,
-   "height": 16
+   "height": 16,
+   "frameSourceMode": 1,
+   "kind": 0
   },
   {
    "id": 32,
@@ -337,7 +447,9 @@
    "frameCount": 1,
    "frameStride": 1,
    "bankId": 7,
-   "height": 32
+   "height": 32,
+   "frameSourceMode": 0,
+   "kind": 2
   },
   {
    "id": 33,
@@ -347,7 +459,9 @@
    "frameCount": 1,
    "frameStride": 1,
    "bankId": 2,
-   "height": 32
+   "height": 32,
+   "frameSourceMode": 0,
+   "kind": 0
   },
   {
    "id": 34,
@@ -357,7 +471,9 @@
    "frameCount": 2,
    "frameStride": 1,
    "bankId": 6,
-   "height": 16
+   "height": 16,
+   "frameSourceMode": 0,
+   "kind": 5
   },
   {
    "id": 35,
@@ -367,7 +483,9 @@
    "frameCount": 1,
    "frameStride": 1,
    "bankId": 7,
-   "height": 32
+   "height": 32,
+   "frameSourceMode": 0,
+   "kind": 2
   },
   {
    "id": 36,
@@ -377,7 +495,9 @@
    "frameCount": 2,
    "frameStride": 2,
    "bankId": 6,
-   "height": 16
+   "height": 16,
+   "frameSourceMode": 0,
+   "kind": 5
   },
   {
    "id": 37,
@@ -387,7 +507,9 @@
    "frameCount": 4,
    "frameStride": 1,
    "bankId": 6,
-   "height": 16
+   "height": 16,
+   "frameSourceMode": 0,
+   "kind": 6
   },
   {
    "id": 38,
@@ -397,7 +519,9 @@
    "frameCount": 2,
    "frameStride": 2,
    "bankId": 6,
-   "height": 16
+   "height": 16,
+   "frameSourceMode": 0,
+   "kind": 5
   },
   {
    "id": 39,
@@ -407,7 +531,9 @@
    "frameCount": 1,
    "frameStride": 1,
    "bankId": 6,
-   "height": 16
+   "height": 16,
+   "frameSourceMode": 1,
+   "kind": 7
   },
   {
    "id": 40,
@@ -417,7 +543,9 @@
    "frameCount": 1,
    "frameStride": 1,
    "bankId": 6,
-   "height": 16
+   "height": 16,
+   "frameSourceMode": 1,
+   "kind": 6
   },
   {
    "id": 41,
@@ -427,7 +555,9 @@
    "frameCount": 2,
    "frameStride": 2,
    "bankId": 6,
-   "height": 16
+   "height": 16,
+   "frameSourceMode": 0,
+   "kind": 5
   },
   {
    "id": 42,
@@ -437,7 +567,9 @@
    "frameCount": 2,
    "frameStride": 2,
    "bankId": 6,
-   "height": 16
+   "height": 16,
+   "frameSourceMode": 0,
+   "kind": 5
   },
   {
    "id": 43,
@@ -447,7 +579,9 @@
    "frameCount": 1,
    "frameStride": 1,
    "bankId": 2,
-   "height": 32
+   "height": 32,
+   "frameSourceMode": 1,
+   "kind": 4
   },
   {
    "id": 44,
@@ -457,7 +591,9 @@
    "frameCount": 1,
    "frameStride": 1,
    "bankId": 6,
-   "height": 16
+   "height": 16,
+   "frameSourceMode": 0,
+   "kind": 2
   },
   {
    "id": 45,
@@ -467,7 +603,9 @@
    "frameCount": 16,
    "frameStride": 1,
    "bankId": 6,
-   "height": 16
+   "height": 16,
+   "frameSourceMode": 0,
+   "kind": 0
   },
   {
    "id": 46,
@@ -477,7 +615,9 @@
    "frameCount": 2,
    "frameStride": 2,
    "bankId": 6,
-   "height": 16
+   "height": 16,
+   "frameSourceMode": 256,
+   "kind": 5
   },
   {
    "id": 47,
@@ -487,7 +627,9 @@
    "frameCount": 1,
    "frameStride": 1,
    "bankId": 2,
-   "height": 16
+   "height": 16,
+   "frameSourceMode": 1,
+   "kind": 0
   },
   {
    "id": 48,
@@ -497,7 +639,9 @@
    "frameCount": 1,
    "frameStride": 1,
    "bankId": 6,
-   "height": 16
+   "height": 16,
+   "frameSourceMode": 1,
+   "kind": 7
   },
   {
    "id": 49,
@@ -507,7 +651,9 @@
    "frameCount": 1,
    "frameStride": 1,
    "bankId": 3,
-   "height": 20
+   "height": 20,
+   "frameSourceMode": 1,
+   "kind": 7
   },
   {
    "id": 50,
@@ -517,7 +663,9 @@
    "frameCount": 1,
    "frameStride": 1,
    "bankId": 3,
-   "height": 26
+   "height": 26,
+   "frameSourceMode": 1,
+   "kind": 7
   },
   {
    "id": 51,
@@ -527,7 +675,9 @@
    "frameCount": 1,
    "frameStride": 1,
    "bankId": 3,
-   "height": 32
+   "height": 32,
+   "frameSourceMode": 1,
+   "kind": 7
   },
   {
    "id": 52,
@@ -537,7 +687,9 @@
    "frameCount": 1,
    "frameStride": 1,
    "bankId": 3,
-   "height": 32
+   "height": 32,
+   "frameSourceMode": 1,
+   "kind": 7
   },
   {
    "id": 53,
@@ -547,7 +699,9 @@
    "frameCount": 1,
    "frameStride": 1,
    "bankId": 6,
-   "height": 16
+   "height": 16,
+   "frameSourceMode": 1,
+   "kind": 7
   },
   {
    "id": 54,
@@ -557,7 +711,9 @@
    "frameCount": 2,
    "frameStride": 1,
    "bankId": 6,
-   "height": 16
+   "height": 16,
+   "frameSourceMode": 0,
+   "kind": 7
   },
   {
    "id": 55,
@@ -567,7 +723,9 @@
    "frameCount": 1,
    "frameStride": 1,
    "bankId": 3,
-   "height": 26
+   "height": 26,
+   "frameSourceMode": 1,
+   "kind": 7
   },
   {
    "id": 56,
@@ -577,7 +735,9 @@
    "frameCount": 1,
    "frameStride": 1,
    "bankId": 3,
-   "height": 32
+   "height": 32,
+   "frameSourceMode": 1,
+   "kind": 7
   },
   {
    "id": 57,
@@ -587,7 +747,9 @@
    "frameCount": 1,
    "frameStride": 1,
    "bankId": 3,
-   "height": 32
+   "height": 32,
+   "frameSourceMode": 1,
+   "kind": 7
   },
   {
    "id": 58,
@@ -597,7 +759,9 @@
    "frameCount": 1,
    "frameStride": 1,
    "bankId": 6,
-   "height": 16
+   "height": 16,
+   "frameSourceMode": 1,
+   "kind": 7
   },
   {
    "id": 59,
@@ -607,7 +771,9 @@
    "frameCount": 1,
    "frameStride": 1,
    "bankId": 3,
-   "height": 20
+   "height": 20,
+   "frameSourceMode": 1,
+   "kind": 7
   },
   {
    "id": 60,
@@ -617,7 +783,9 @@
    "frameCount": 1,
    "frameStride": 1,
    "bankId": 3,
-   "height": 26
+   "height": 26,
+   "frameSourceMode": 1,
+   "kind": 7
   },
   {
    "id": 61,
@@ -627,7 +795,9 @@
    "frameCount": 1,
    "frameStride": 1,
    "bankId": 3,
-   "height": 32
+   "height": 32,
+   "frameSourceMode": 1,
+   "kind": 7
   },
   {
    "id": 62,
@@ -637,7 +807,9 @@
    "frameCount": 1,
    "frameStride": 1,
    "bankId": 3,
-   "height": 32
+   "height": 32,
+   "frameSourceMode": 1,
+   "kind": 7
   },
   {
    "id": 63,
@@ -647,7 +819,9 @@
    "frameCount": 1,
    "frameStride": 1,
    "bankId": 2,
-   "height": 16
+   "height": 16,
+   "frameSourceMode": 0,
+   "kind": 7
   },
   {
    "id": 64,
@@ -657,7 +831,9 @@
    "frameCount": 1,
    "frameStride": 1,
    "bankId": 6,
-   "height": 16
+   "height": 16,
+   "frameSourceMode": 256,
+   "kind": 5
   },
   {
    "id": 65,
@@ -667,7 +843,9 @@
    "frameCount": 1,
    "frameStride": 1,
    "bankId": 3,
-   "height": 32
+   "height": 32,
+   "frameSourceMode": 0,
+   "kind": 5
   },
   {
    "id": 66,
@@ -677,7 +855,9 @@
    "frameCount": 2,
    "frameStride": 2,
    "bankId": 7,
-   "height": 32
+   "height": 32,
+   "frameSourceMode": 0,
+   "kind": 2
   },
   {
    "id": 67,
@@ -687,7 +867,9 @@
    "frameCount": 1,
    "frameStride": 1,
    "bankId": 2,
-   "height": 32
+   "height": 32,
+   "frameSourceMode": 0,
+   "kind": 5
   },
   {
    "id": 68,
@@ -697,7 +879,9 @@
    "frameCount": 1,
    "frameStride": 1,
    "bankId": 6,
-   "height": 16
+   "height": 16,
+   "frameSourceMode": 1,
+   "kind": 7
   },
   {
    "id": 69,
@@ -707,7 +891,9 @@
    "frameCount": 2,
    "frameStride": 2,
    "bankId": 6,
-   "height": 16
+   "height": 16,
+   "frameSourceMode": 0,
+   "kind": 5
   },
   {
    "id": 70,
@@ -717,7 +903,9 @@
    "frameCount": 5,
    "frameStride": 1,
    "bankId": 6,
-   "height": 16
+   "height": 16,
+   "frameSourceMode": 0,
+   "kind": 0
   },
   {
    "id": 71,
@@ -727,7 +915,9 @@
    "frameCount": 15,
    "frameStride": 1,
    "bankId": 2,
-   "height": 28
+   "height": 28,
+   "frameSourceMode": 0,
+   "kind": 0
   },
   {
    "id": 72,
@@ -737,7 +927,9 @@
    "frameCount": 1,
    "frameStride": 1,
    "bankId": 7,
-   "height": 32
+   "height": 32,
+   "frameSourceMode": 0,
+   "kind": 4
   },
   {
    "id": 73,
@@ -747,7 +939,9 @@
    "frameCount": 1,
    "frameStride": 1,
    "bankId": 7,
-   "height": 32
+   "height": 32,
+   "frameSourceMode": 0,
+   "kind": 4
   },
   {
    "id": 74,
@@ -757,7 +951,9 @@
    "frameCount": 1,
    "frameStride": 1,
    "bankId": 7,
-   "height": 32
+   "height": 32,
+   "frameSourceMode": 1,
+   "kind": 2
   },
   {
    "id": 75,
@@ -767,7 +963,9 @@
    "frameCount": 1,
    "frameStride": 1,
    "bankId": 7,
-   "height": 32
+   "height": 32,
+   "frameSourceMode": 1,
+   "kind": 2
   },
   {
    "id": 76,
@@ -777,7 +975,9 @@
    "frameCount": 1,
    "frameStride": 1,
    "bankId": 7,
-   "height": 32
+   "height": 32,
+   "frameSourceMode": 1,
+   "kind": 2
   },
   {
    "id": 77,
@@ -787,7 +987,9 @@
    "frameCount": 1,
    "frameStride": 1,
    "bankId": 6,
-   "height": 16
+   "height": 16,
+   "frameSourceMode": 1,
+   "kind": 6
   },
   {
    "id": 78,
@@ -797,7 +999,9 @@
    "frameCount": 1,
    "frameStride": 1,
    "bankId": 7,
-   "height": 32
+   "height": 32,
+   "frameSourceMode": 1,
+   "kind": 4
   },
   {
    "id": 79,
@@ -807,7 +1011,9 @@
    "frameCount": 1,
    "frameStride": 1,
    "bankId": 7,
-   "height": 32
+   "height": 32,
+   "frameSourceMode": 1,
+   "kind": 4
   },
   {
    "id": 80,
@@ -817,7 +1023,9 @@
    "frameCount": 1,
    "frameStride": 1,
    "bankId": 7,
-   "height": 32
+   "height": 32,
+   "frameSourceMode": 1,
+   "kind": 2
   },
   {
    "id": 81,
@@ -827,7 +1035,9 @@
    "frameCount": 1,
    "frameStride": 1,
    "bankId": 7,
-   "height": 32
+   "height": 32,
+   "frameSourceMode": 1,
+   "kind": 2
   },
   {
    "id": 82,
@@ -837,7 +1047,9 @@
    "frameCount": 2,
    "frameStride": 2,
    "bankId": 6,
-   "height": 16
+   "height": 16,
+   "frameSourceMode": 256,
+   "kind": 5
   },
   {
    "id": 83,
@@ -847,7 +1059,9 @@
    "frameCount": 1,
    "frameStride": 1,
    "bankId": 6,
-   "height": 16
+   "height": 16,
+   "frameSourceMode": 1,
+   "kind": 6
   },
   {
    "id": 84,
@@ -857,7 +1071,9 @@
    "frameCount": 1,
    "frameStride": 1,
    "bankId": 7,
-   "height": 32
+   "height": 32,
+   "frameSourceMode": 1,
+   "kind": 4
   },
   {
    "id": 85,
@@ -867,7 +1083,9 @@
    "frameCount": 1,
    "frameStride": 1,
    "bankId": 6,
-   "height": 16
+   "height": 16,
+   "frameSourceMode": 1,
+   "kind": 5
   },
   {
    "id": 86,
@@ -877,7 +1095,9 @@
    "frameCount": 1,
    "frameStride": 1,
    "bankId": 2,
-   "height": 32
+   "height": 32,
+   "frameSourceMode": 0,
+   "kind": 5
   },
   {
    "id": 87,
@@ -887,7 +1107,9 @@
    "frameCount": 1,
    "frameStride": 1,
    "bankId": 7,
-   "height": 32
+   "height": 32,
+   "frameSourceMode": 1,
+   "kind": 2
   },
   {
    "id": 88,
@@ -897,7 +1119,9 @@
    "frameCount": 1,
    "frameStride": 1,
    "bankId": 7,
-   "height": 32
+   "height": 32,
+   "frameSourceMode": 1,
+   "kind": 2
   },
   {
    "id": 89,
@@ -907,7 +1131,9 @@
    "frameCount": 1,
    "frameStride": 1,
    "bankId": 7,
-   "height": 32
+   "height": 32,
+   "frameSourceMode": 1,
+   "kind": 2
   },
   {
    "id": 90,
@@ -917,7 +1143,9 @@
    "frameCount": 1,
    "frameStride": 1,
    "bankId": 7,
-   "height": 32
+   "height": 32,
+   "frameSourceMode": 1,
+   "kind": 2
   },
   {
    "id": 91,
@@ -927,7 +1155,9 @@
    "frameCount": 1,
    "frameStride": 1,
    "bankId": 7,
-   "height": 32
+   "height": 32,
+   "frameSourceMode": 1,
+   "kind": 2
   },
   {
    "id": 92,
@@ -937,7 +1167,9 @@
    "frameCount": 1,
    "frameStride": 1,
    "bankId": 2,
-   "height": 16
+   "height": 16,
+   "frameSourceMode": 65535,
+   "kind": 5
   },
   {
    "id": 93,
@@ -947,7 +1179,9 @@
    "frameCount": 1,
    "frameStride": 1,
    "bankId": 7,
-   "height": 32
+   "height": 32,
+   "frameSourceMode": 1,
+   "kind": 4
   },
   {
    "id": 94,
@@ -957,7 +1191,9 @@
    "frameCount": 1,
    "frameStride": 1,
    "bankId": 6,
-   "height": 16
+   "height": 16,
+   "frameSourceMode": 1,
+   "kind": 0
   },
   {
    "id": 95,
@@ -967,7 +1203,9 @@
    "frameCount": 1,
    "frameStride": 1,
    "bankId": 6,
-   "height": 16
+   "height": 16,
+   "frameSourceMode": 1,
+   "kind": 6
   }
  ]
 }

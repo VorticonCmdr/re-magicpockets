@@ -73,9 +73,10 @@
   Tile value <code>V</code> at grid (row, col) draws atlas tile <code>V-1</code> from the
   selected <code>blocksN.pak</code> sheet (32x16 px/tile, 1-based on-disk indices) --
   see docs/formats/pak.md and docs/formats/pap.md. Hover a tile to see its raw index.
-  Entity markers (colored dots) are enemy/item/trigger placements decoded from the level-script
-  <code>.pin</code> files -- see docs/formats/pin-level-script.md. A meaningful fraction have
-  unresolved (often negative or off-map) coordinates -- shown as-is, not clipped.
+  Entity markers are enemy/item/trigger placements decoded from the level-script <code>.pin</code>
+  files -- see docs/formats/pin-level-script.md. Most render as their real sprite tile; entities
+  whose tile-index addressing mode is still unresolved fall back to a colored dot. A meaningful
+  fraction have unresolved (often negative or off-map) coordinates -- shown as-is, not clipped.
 </div>
 <script>
 'use strict';
@@ -97,16 +98,9 @@ let currentGrid = null; // {width, height, rows}
 let currentAtlasMeta = null; // {tileWidth, tileHeight, cols, rows, tileCount}
 let currentAtlasImage = null;
 let currentEntities = null; // {fileSize, sublevelCount, entities: [{offset,type,x,y,...}]}
-let entityShapes = null; // symbols/entity-shapes.json: {bankToSegment, descriptors: [{id,bankId,animStart,height,...}]}
-let extrasAtlas = null; // {meta, image} for extras.pak (shared across worlds)
-let extraxAtlas = null; // {meta, image} for extrax<world>.pak (per-world)
-let extraxWorldLoaded = null;
-
-// Only bankId 6 (extras.pak + extraxN.pak) has a CONFIRMED animStart -> tile-index mapping --
-// see docs/formats/pin-level-script.md's entity-sprite-rendering section. Other banks fall back
-// to a colored dot until their segment concatenation is fully mapped.
-const RESOLVED_BANK_ID = 6;
-const EXTRAS_TILE_COUNT = 240;
+let entityShapes = null; // symbols/entity-shapes.json: {bankToSegment, bankAtlas, descriptors: [{id,bankId,animStart,frameSourceMode,...}]}
+let loadedAtlases = {}; // filename (e.g. "extras.pak", "kidx2.pak") -> {meta, image}
+let atlasWorldLoaded = null;
 
 // Deterministic, visually-distinct color per entity type id.
 function colorForType(type) {
@@ -170,44 +164,55 @@ function worldOfLevel(levelName) {
   return m ? Number(m[1]) : null;
 }
 
-// Loads the extras.pak (shared) + extrax<world>.pak (per-world) atlases needed to render
-// bankId=6 entities' real sprites. Cheap to call repeatedly -- extras.pak loads once, extrax
-// reloads only when the world changes.
+// Loads every tile atlas any bankAtlas entry references for the given world. Shared files
+// (e.g. extras.pak, bitkid.pak) load once and stay cached; per-world files (e.g. extrax2.pak,
+// kidx2.pak) reload only when the world changes. Best-effort per file -- a missing atlas just
+// means entities resolving into it fall back to a dot instead of failing the whole render.
 async function loadSpriteAtlasesForWorld(world) {
-  if (!world) return;
-  try {
-    if (!extrasAtlas) {
-      const [meta, image] = await Promise.all([
-        fetchJson('/build/png/extras.pak.json'),
-        loadImage('/build/png/extras.pak.png'),
-      ]);
-      extrasAtlas = { meta, image };
+  if (!world || !entityShapes) return;
+  const worldChanged = atlasWorldLoaded !== world;
+  atlasWorldLoaded = world;
+  const files = new Set();
+  for (const atlas of Object.values(entityShapes.bankAtlas || {})) {
+    for (const part of atlas.parts) {
+      files.add(part.perWorld ? `${part.file}${world}` : part.file);
     }
-    if (extraxWorldLoaded !== world) {
-      const [meta, image] = await Promise.all([
-        fetchJson(`/build/png/extrax${world}.pak.json`),
-        loadImage(`/build/png/extrax${world}.pak.png`),
-      ]);
-      extraxAtlas = { meta, image };
-      extraxWorldLoaded = world;
-    }
-  } catch (e) {
-    // non-fatal -- bankId=6 entities just fall back to dots for this world
-    extraxAtlas = null;
   }
+  await Promise.all([...files].map(async (name) => {
+    if (loadedAtlases[name] && !(worldChanged && /[1-4]$/.test(name))) return;
+    try {
+      const [meta, image] = await Promise.all([
+        fetchJson(`/build/png/${name}.pak.json`),
+        loadImage(`/build/png/${name}.pak.png`),
+      ]);
+      loadedAtlases[name] = { meta, image };
+    } catch (e) {
+      delete loadedAtlases[name];
+    }
+  }));
 }
 
-// Returns {atlas, tileIndex} for entities whose shape resolves to the confirmed extras/extrax
-// bank, or null if unresolved (caller should fall back to a colored dot).
+// Returns {atlas, tileIndex} for entities whose shape has a CONFIRMED direct animStart -> tile
+// index mapping (frameSourceMode === 1, or bankId 6's always-direct case -- see
+// docs/formats/pin-level-script.md's entity-sprite-rendering section), or null if unresolved
+// (indirect near-pointer-table lookup, or a video-memory screen-grab effect) -- caller falls
+// back to a colored dot.
 function resolveEntitySprite(entity) {
   if (!entityShapes || entity.type == null || entity.type >= entityShapes.descriptors.length) return null;
   const desc = entityShapes.descriptors[entity.type];
-  if (desc.bankId !== RESOLVED_BANK_ID) return null;
-  const tileIndex = desc.animStart;
-  if (tileIndex < EXTRAS_TILE_COUNT) {
-    return extrasAtlas ? { atlas: extrasAtlas, tileIndex } : null;
+  const atlasSpec = entityShapes.bankAtlas[desc.bankId];
+  if (!atlasSpec) return null;
+  if (desc.bankId !== 6 && desc.frameSourceMode !== 1) return null; // 0 = indirect table (unresolved), else = video-memory effect
+  let tileIndex = desc.animStart;
+  for (const part of atlasSpec.parts) {
+    if (tileIndex < part.tiles) {
+      const name = part.perWorld ? `${part.file}${atlasWorldLoaded}` : part.file;
+      const atlas = loadedAtlases[name];
+      return atlas ? { atlas, tileIndex } : null;
+    }
+    tileIndex -= part.tiles;
   }
-  return extraxAtlas ? { atlas: extraxAtlas, tileIndex: tileIndex - EXTRAS_TILE_COUNT } : null;
+  return null; // out of range for every part -- shouldn't happen for a confirmed direct mapping
 }
 
 function render() {

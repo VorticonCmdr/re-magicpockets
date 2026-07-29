@@ -93,70 +93,85 @@ the same leading payload positions.
 
 Every entity's `type` (the level-script `AX` field above) is also the index into a **96-entry,
 28-byte shape-descriptor table at `6de3:b91a`** (indexed via `Entity_LookupShapeDescriptor`,
-`1000:c16a`, see `docs/formats/pak.md`). Two of its fields matter for rendering:
+`1000:c16a`, see `docs/formats/pak.md`). The fields that matter for rendering:
 
 - `+0xe` = **bank id** — an index into a small segment table (`6de3:f941`) giving which loaded
   segment this shape's pixel data lives in (e.g. bank 6 → segment `0x5c53`).
 - `+2` = **animStart** — the entity's initial animation-frame index, copied into the runtime
   entity struct's own current-frame field (`entity+0xa`) at spawn time
   (`Entity_InitFromTemplateRecord`/`Entity_SpawnFromQueuedEvent`).
+- `+0x16` = **frameSourceMode** — copied to a global (`[0x89e4]`) inside `Gfx_DrawObject` and
+  read right after the bank segment is resolved. This is the field that broke the original
+  "just use `animStart` as a tile index" assumption for banks 2/3/7 — see below.
 
-**Confirmed exact** for bank id 6 (segment `0x5c53` = `extras.pak` (240 tiles) + `extraxN.pak` (80
-tiles) concatenated, world N's per-world bonus/HUD icon bank — see `docs/formats/pak.md`):
-`animStart` is a direct flat tile index into that combined 320-tile space (index < 240 →
-`extras.pak`, else `extraxN.pak` at `index - 240`). Verified two ways: (1) every one of the ~44
-bank-6 descriptors' `animStart`/`animEnd` values falls exactly inside 0–319 with zero exceptions
-— not a coincidence at that sample size; (2) rendering each resolved entity's actual sprite tile
-at its level position produces recognizable bonus-item art (stars, spinning icons, sparkles)
-sitting at sensible in-level spawn points, not noise.
+**Confirmed exact — RESOLVED for every bank, not just bank 6.** Found by re-tracing
+`Gfx_DrawObject`'s raw disassembly (`1000:7419`) instruction-by-instruction for the `0x0e`/`0x0f`
+masked-bitmap dispatch branches, exactly as the previous session's dead-end note recommended.
+The key evidence, in order:
 
-**Not yet resolved** for the other bank ids (2 = `kidxN.pak`, 3 = `specialN.pak`, 5 = `blocksN.pak`,
-7 = `nastyN.pak`) — these cover most enemies/characters. `animStart` values there exceed each
-file's own tile count. `tools/viewer.html` renders bank-6 entities as real sprites and falls back
-to a colored dot for everything else, rather than guess wrong tiles.
+1. `Gfx_DrawObject`'s caller, `Gfx_RenderVisibleEntities` (`1000:73a5`), does
+   `MOV AX, word ptr [SI+0xa]; MOV [0x8c21],AX` immediately before every `CALL Gfx_DrawObject` —
+   i.e. **the entity's own current-frame value (`entity+0xa`, initialized from `animStart`) is
+   copied into `[0x8c21]` on every single draw call.** This is the "cumulative running offset"
+   used by the three near-pointer tables (`e4fa`/`e906`/`dea2`) documented (but misread) in the
+   prior investigation.
+2. Disassembling `Gfx_BlitSpriteMaskedAlt`/`Wide` (`1000:81ad`/`1000:7ff2`) shows a `LODSW ES:SI`
+   plane-blit loop (EGA/VGA latch writes through ports `0x3ce`/`0x3c4`) — confirming `DS:SI` is a
+   genuine pixel-data pointer, `DS` set from `[0x89e6]` = `bankToSegment[bankId]` right before the
+   call. This rules out the tables holding pixel data directly (they never reach `DS:SI` — only
+   `BX`).
+3. In `Gfx_DrawObject` itself, right before the blit: `[0x89e4]` (descriptor `+0x16`,
+   *frameSourceMode*) gates two completely different addressing modes:
+   - **`frameSourceMode != 0` (typically `1`) — direct mode.** `entity+0xa` (the frame value
+     `[0x8c21]` was just copied from) is used **directly** as a flat tile index into
+     `bankToSegment[bankId]`, multiplied by `0x280` (640 bytes = one 32×32 5-plane masked tile) —
+     the exact same mechanism already confirmed for bank 6, just not gated behind a bank-id
+     special case.
+   - **`frameSourceMode == 0` — indirect mode.** `entity+0xa` is instead used as a *word index*
+     into one of the three near-pointer tables (`e4fa`/`e906`/`dea2`, selected by the descriptor's
+     `kind` field, `+0x18`) to fetch a pointer, and **one byte is read from that pointer** as the
+     real tile index (more bytes for tall composite sprites, `frameCount` of them, each byte
+     advancing through the target stream). This is why the earlier pass's raw sample of that
+     target data (`7,52,9,10,66,67,...`) looked like small unrelated integers — they *are* tile
+     indices, just for a different, dynamically-selected sprite, not for the entity whose
+     `animStart` was being misread as the index in the first place. **Still not extracted** — see
+     "Open questions" below.
+   - **`frameSourceMode == 0xffff`** — a third, rarer mode: `SI` is forced to `0xa000` (EGA/VGA
+     display memory) instead of a bank segment, i.e. the entity's "sprite" is actually a live
+     grab of on-screen video memory (a portal/mirror-style special effect, not a real bank tile).
 
-### Investigation trail for banks 2/3/7 (dead-ended — read this before retrying)
+`tools/build-all.js`'s regenerated `symbols/entity-shapes.json` now exports `frameSourceMode` and
+`kind` per descriptor, plus a `bankAtlas` map describing each bank's on-disk tile-catalog layout
+(confirmed by reading `World1..4_LoadBanks`'s raw disassembly — identical across all 4 worlds):
 
-Several hypotheses were tried and ruled out; a future session should start past these rather than
-repeat them:
+| bank id | segment | tile catalog | total |
+|---|---|---|---|
+| 2 | `0x4353` | `bitkid.pak` (60 tiles, index 0-59) + `kidxN.pak` (20 tiles, index 60-79) | 80 |
+| 3 | `0x6a63` | `specialN.pak` alone (no prefix file) | 20 |
+| 6 | `0x5c53` | `extras.pak` (240 tiles, index 0-239) + `extraxN.pak` (80 tiles, index 240-319) | 320 |
+| 7 | `0x20e9` | `nastyN.pak` alone (no prefix file) | 60 |
 
-1. **Segment concatenation** (like bank 6's `extras`+`extraxN`): confirmed bank 2's segment
-   (`0x4353`) really does load `bitkid.pak` (60 tiles) *before* `kidxN.pak` (20 tiles) each world —
-   but even the combined 80-tile space doesn't cover the `animStart` values observed (up to 214).
-   Bank 3 (`specialN.pak`, loaded alone, no prefix file found) shows values up to 225 with no
-   second file to concatenate. **Ruled out as the general explanation.**
+`tools/viewer.html` now resolves any entity whose descriptor has `frameSourceMode === 1` (or bank
+id 6, which is always direct) to its real sprite tile, loading whichever atlas file(s) the
+`bankAtlas` entry lists for the current world. Verified two ways: (1) the direct-mode `animStart`
+values for every bank now fall exactly inside that bank's own tile budget (0-79 for bank 2, 0-19
+for bank 3, 0-59 for bank 7) with zero exceptions, mirroring the bank-6 verification; (2) counting
+resolved-vs-total entities across all 7 level scripts shows 70-97% of entities per world now
+render as real sprites (up from bank-6-only coverage), and the newly-visible `nastyN.pak`/
+`specialN.pak`/`bitkid.pak` atlases are all clean, recognizable sprite art (birds, snakes, ape-like
+walk cycles, bubble/foam effects, player-costume frames) — not noise.
 
-2. **Mirror-sprite generator as an extra source**: found `1000:b3c4`/`1000:b3f2` — real functions
-   that regenerate horizontally-mirrored sprites in place (using the confirmed bit-reversal table
-   at `0x8eee`) by copying from segments `0x4fd3` (kidx-related) / `0x2a49` (nasty-related).
-   **Ruled out**: both are called only from `Game_StartAttractDemoAndRunLoop` (the attract-mode
-   demo) — irrelevant to normal per-level entity rendering. Also, no load site into `0x4fd3` was
-   ever found via any `Load_PackedFile` call, so its contents remain unexplained regardless.
-
-3. **Per-entity-kind lookup tables**: `Gfx_DrawObject` computes a sprite/text source pointer via
-   one of three near-pointer tables selected by the entity's *kind* field (descriptor `+0x18`, a
-   separate field from bank id): kind 5 (or type `0x2b`) → table at `6de3:e4fa`; kind 2 or 4 →
-   `6de3:e906`; type `0x2d` → `6de3:dea2`; everything else → `e4fa` again. This looked promising —
-   until the **target data both `e4fa` and `e906` point to was read directly and turned out to be
-   small sequential/repeated-integer sequences** (e.g. `7,52,9,10,66,67,42,70,71,72,73,74,75,76,
-   77,78,79,200,200,200,200,11,12,...`) — indistinguishable from glyph/character codes, not
-   sprite pixel data, even for entries whose descriptor `+8` field ("orientation", copied to
-   `entity+0x16`) is `0x0f` — nominally the masked-bitmap-sprite shape-type dispatch value in
-   `Gfx_DrawObject`. **Dead end**: either these tables are used exclusively by the text/glyph
-   shape path (`0x0a`) and the real masked-bitmap sprite source pointer for `0x0e`/`0x0f` entities
-   comes from a different register/variable this pass didn't correctly isolate in
-   `Gfx_DrawObject`'s ~600-line decompile, or there's a subtlety the decompiled pseudocode is
-   hiding (as has happened elsewhere in this project — raw disassembly has repeatedly disagreed
-   with it). **Next step, if picked back up**: re-trace `Gfx_DrawObject` instruction-by-instruction
-   (raw `disassemble_function`, not the decompiled C) specifically for the `0x0e`/`0x0f` dispatch
-   branches, following the actual register that ends up in `SI`/`DS` right before
-   `Gfx_BlitSpriteMaskedAlt`/`Wide` is called, rather than trusting which decompiled variable name
-   claims to feed it. A dosbox-x breakpoint at `Gfx_BlitSpriteMaskedAlt` (`1000:7ff2`) or `Wide`
-   (`1000:81ad`) dumping `DS:SI` for a live, on-screen kidx/nasty/special sprite would settle this
-   immediately and is likely faster than further static tracing.
+**Not yet resolved**: entities with `frameSourceMode === 0` (the indirect near-pointer-table path)
+— roughly a third of bank 7's entities, the bulk of bank 2's, and a handful of bank 3's. The full
+addressing mechanism is now known (see above) but the three tables' target byte-streams
+(`6de3:e4fa`/`e906`/`dea2`) haven't been dumped and mapped per-`kind`/per-frame-index yet. `kind`
+is exported in `entity-shapes.json` for exactly this follow-up. `tools/viewer.html` falls back to
+a colored dot for these, and for `frameSourceMode === 0xffff` (video-memory effects, which have no
+static tile to show at all).
 
 `symbols/entity-shapes.json` (Ghidra-derived, checked into git like other symbol exports, copied
-into `build/` by `tools/build-all.js`) holds the decoded descriptor table + bank-to-segment map.
+into `build/` by `tools/build-all.js`) holds the decoded descriptor table + bank-to-segment map +
+per-bank atlas layout.
 
 ## Verification
 
