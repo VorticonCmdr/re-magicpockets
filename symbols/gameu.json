@@ -1739,13 +1739,14 @@
       "summary": "Triggers a sound effect and pushes 8 spawn events (kinds 0x48-0x4f) at one position -- an 8-piece simultaneous spawn, consistent with a segmented/chain boss."
     },
     {
-      "name": "Entity_SpawnGateStub",
+      "name": "Entity_LookupShapeDescriptor",
       "address": "1000:c16a",
       "tags": [
         "verified",
-        "entity"
+        "entity",
+        "gfx"
       ],
-      "summary": "Trivial passthrough (returns AX unchanged) -- a no-op gate stub called first in Entity_SpawnFromQueuedEvent."
+      "summary": "CORRECTED (was wrongly tagged a no-op passthrough -- that only checked AX, not DI): DI = table[shapeClassId*2] at 6de3:c39a, a 96-entry pointer table into a flat array of 96 fixed 28-byte shape-descriptor records at 6de3:b91a. Gfx_DrawObject reads +0xa=frameCount, +0xc=frame stride, +0xe=bank id, +0x14=sprite height (rows) from the returned descriptor. This table is what resolved extras.pak/extrax1-4.pak's real 16x16 tile size -- see docs/formats/pak.md."
     },
     {
       "name": "Entity_FindFreeSlot",

@@ -1,12 +1,18 @@
 # `.pak` sprite/tile bank format
 
-Confirmed empirically (not just inferred from the blit code) by decoding the first two tiles
-of `special1.pak` and visually inspecting the mask-plane bits as ASCII art — both produced
-coherent, symmetric rounded-block silhouettes, and every shipped `.pak` file's unpacked size
-divides evenly by the predicted tile size (640 bytes) with no remainder. See
+**Three distinct on-disk layouts share this one extension** — do not assume the 640-byte/32x32
+format below applies to a `.pak` file just because its size divides evenly by 640; both
+`blocks*.pak` (256B/32x32, unmasked, see its own RESOLVED section) and `extras.pak`/
+`extrax1-4.pak` (160B/16x16, masked, see its own RESOLVED section) also divide evenly by 640 by
+coincidence, and decode to pure noise if forced through the 640-byte path. Always verify by
+rendering, not by byte-math alone.
+
+The 640-byte/32x32 masked-sprite format itself was confirmed empirically (not just inferred from
+the blit code) by decoding the first two tiles of `special1.pak` and visually inspecting the
+mask-plane bits as ASCII art — both produced coherent, symmetric rounded-block silhouettes. See
 `tools/extract-pak.js` / `tools/ega.js` for the implementation.
 
-## Layout
+## Layout (640-byte masked 32x32 sprite banks: `special`/`kidx`/`nasty`/`bitkid`/`ape`)
 
 **No header at all.** A `.pak` file (once RNC-depacked — see `docs/formats/rnc.md`) is a flat
 array of fixed-size tile records:
@@ -52,22 +58,25 @@ through that, not a fixed default.
 
 | Unpacked size | Tile format | Tile count | Files |
 |---|---|---|---|
-| 12800 | 640B masked 32x32 | 20 | `special1-4.pak`, `kidx1-4.pak`, `extrax1-4.pak` |
+| 12800 | 640B masked 32x32 | 20 | `special1-4.pak`, `kidx1-4.pak` |
+| 12800 | 160B masked 16x16 | 80 | `extrax1-4.pak` (same byte size as the row above — coincidental, see "RESOLVED" section below) |
 | 30720 | 256B unmasked 32x16 | 120 | `blocks1-4.pak` (see "RESOLVED" section below — a completely different format from the other `.pak` files, despite the shared extension) |
-| 38400 | 640B masked 32x32 | 60 | `nasty1-4.pak`, `bitkid.pak`, `ape.pak`, `extras.pak` |
+| 38400 | 640B masked 32x32 | 60 | `nasty1-4.pak`, `bitkid.pak`, `ape.pak` |
+| 38400 | 160B masked 16x16 | 240 | `extras.pak` (same byte size as the row above — coincidental, see "RESOLVED" section below) |
 
 ## Verification
 
 `node tools/extract-pak.js build/raw/<file>.pak.raw --palette worldN` produces a PNG sprite
-sheet. Every file extracts cleanly (exact division by 640, no leftover bytes) and, with the real
-per-world palette and identity plane mapping, `kidx1-4.pak`/`nasty1-4.pak`/`special1-4.pak`/
-`extrax1-4.pak`/`bitkid.pak`/`ape.pak`/`extras.pak` render as clean, coherent sprite art —
-character/enemy sprites with multiple readable animation frames, correct colors, no artifacts.
+sheet. Every file extracts cleanly (exact division by its tile size, no leftover bytes) and, with
+the real per-world palette and identity plane mapping, `kidx1-4.pak`/`nasty1-4.pak`/
+`special1-4.pak`/`bitkid.pak`/`ape.pak` render as clean, coherent sprite art — character/enemy
+sprites with multiple readable animation frames, correct colors, no artifacts. `extras.pak`/
+`extrax1-4.pak` render just as cleanly once decoded at their real 16x16 size (see "RESOLVED —
+`extras.pak`/`extrax1-4.pak` are 16x16, not 32x32" below) — a full HUD icon sheet and per-world
+bonus-item icons respectively, not noise.
 
-**`blocks1-4.pak` is the one exception** — it does not render correctly through this same,
-now-confirmed pipeline. See the "RESOLVED" section below: this is a separate, still-open format
-question (background tiles aren't consumed by `Gfx_BlitSpriteMasked` at all), not a regression
-in the mapping/palette work.
+**`blocks1-4.pak`** uses a different, unmasked, direct 4-plane 32x16 tile format — see the
+"RESOLVED" section on it below; this is not a `Gfx_BlitSpriteMasked` consumer at all.
 
 ## RESOLVED — identity plane mapping confirmed by disassembly AND clean renders; `blocks*.pak` is a separate, still-open format question
 
@@ -229,17 +238,86 @@ No dosbox-x trace was needed in the end — the missing register values were sit
 `World_ResetGraphicsAfterLoad`'s own disassembly, one function up from where the trace had
 stopped.
 
+## RESOLVED — `extras.pak`/`extrax1-4.pak` are 16x16 masked sprites, not 32x32
+
+These five files were originally lumped into the same 640-byte/32x32 "sprite bank" bucket as
+`kidx`/`nasty`/`special`/`bitkid`/`ape` purely because their unpacked sizes also divide evenly by
+640 (`extrax1-4.pak`: 12800/640=20; `extras.pak`: 38400/640=60) — the exact same kind of
+byte-math coincidence that misled the original `blocks*.pak` hypothesis. Decoding them at 32x32
+produces mostly pure noise (confirmed genuinely random, not just "busy dithered art" — directly
+compared against a known-good `kidx1.pak` character-face tile at the same zoom level, which
+shows clean edges/regions; the `extrax1.pak` tiles at 32x32 showed zero coherent structure
+anywhere), with only a handful of suspiciously-identical "clean" tiles per file (turned out to be
+genuinely blank/unused reserved slots, not evidence the 32x32 reading was right).
+
+**Root cause, found via the actual per-shape descriptor table, not more guessing.** Every sprite
+draw ultimately goes through `Gfx_DrawObject` (`1000:7419`), which — for the "simple masked
+bitmap" case — calls `Entity_LookupShapeDescriptor` (`1000:c16a`) with the entity's shape-class id in AX.
+This function was previously tagged **"trivial passthrough (returns AX unchanged)"** — true, but
+incomplete: that characterization only checked the AX return value and missed that **DI carries
+the real result**:
+
+```
+1000:c16a: PUSH AX
+1000:c16b: ADD AX,AX          ; shapeClassId * 2
+1000:c16d: MOV DI,0xc39a      ; DS-relative (6de3:c39a) -- a table of pointers
+1000:c170: ADD DI,AX
+1000:c172: MOV DI,word ptr [DI]   ; DI = descriptor pointer for this shape class
+1000:c174: POP AX
+1000:c175: RET
+```
+
+`6de3:c39a` is a table of 96 pointers, each exactly `0x1c` (28) bytes apart, pointing into a flat
+array of 96 fixed-size 28-byte shape-descriptor records starting at `6de3:b91a`. `Gfx_DrawObject`
+reads six fields straight out of whichever descriptor DI points at: `+0xa` (frame count),
+`+0xc` (frame-to-frame byte stride), `+0xe` (**bank id** — the very same bank id resolved to a
+segment via the `6de3:f941` table documented above, e.g. bank 6 → segment `0x5c53`, where
+`extras.pak`+`extraxN.pak` load), `+0x12`, `+0x14` (**sprite height, in rows**), and `+0x16`.
+
+Reading all 96 descriptors and filtering to `bankId == 6` (i.e. every shape drawn from
+`extras.pak`/`extrax*.pak`) gives an unambiguous, unanimous answer: **every single one of the ~44
+matching descriptors has height field `+0x14 == 16`**, never 32. This is the real sprite height
+for this bank — half of what every other sprite bank uses.
+
+**Confirmed by rendering**: decoding at 16x16 (1 AND-mask + 4 OR-color planes, 2 bytes/row × 16
+rows = 32 bytes/plane, 160 bytes/tile) produces completely clean art for all five files:
+- `extras.pak` (240 tiles) is a full HUD/pickup icon sheet — score digits `100`–`1000`, the
+  entire `A`–`Z` and `0`–`9` alphabet, food/drink icons (candy, ice cream, soda, a chocolate
+  bar), hand gestures, sunglasses, a `GAS` sign.
+- `extrax1-4.pak` (80 tiles each) are per-world bonus-item icon sets — a spinning
+  dumbbell/weight animation, rotating gems, a power-up cross, a "1UP"-style heart icon,
+  directional arrows, short text sprites. `extrax4.pak` (world 4, the ice/snow world) contains a
+  legible "EXIT" sign tile, echoing the one already found in `blocks4.pak`.
+
+`160B x 240 = 38400` and `160B x 80 = 12800` — exactly the unpacked sizes of `extras.pak` and
+each `extraxN.pak`, zero remainder, for all five files.
+
+**Also spot-checked `bitkid.pak`/`ape.pak`** (bundled in the same unverified blanket claim as
+`extras.pak` previously) at the original 640B/32x32 format — both are genuinely clean at that
+size (a "Bit Kid" running/animated player-character sheet and a gorilla enemy sheet
+respectively), so the fix is scoped exactly to `extras.pak`/`extrax1-4.pak` and does not affect
+`bitkid`/`ape`.
+
+`tools/extract-pak.js` now format-detects `extras`/`extrax*` by filename (alongside the existing
+`blocks*` detection) and decodes them at 16x16 via a new third code path.
+
 ## Open questions
 
-- **Sprite *placement/identity* metadata** (which tile index means what, animation frame
-  groupings, hotspots) lives elsewhere — likely in the `.pap` level-map files or in code tables,
-  not in the `.pak` files themselves. Not yet traced.
+- **RESOLVED (partially)**: sprite *placement/identity* metadata (per-shape frame count, height,
+  bank/segment) **is** found — the 96-entry, 28-byte-record descriptor table at `6de3:b91a`
+  (indexed via `Entity_LookupShapeDescriptor`'s table lookup, `6de3:c39a`), see the `extras.pak`
+  resolution above. Still untraced: fields `+0x0`..`+0x8`, `+0x12`, `+0x16` (only `+0xa`
+  frame-count, `+0xc` frame-stride, `+0xe` bank-id, and `+0x14` height are decoded/named so far),
+  and which *entity records* (not shape-class ids) reference which specific tile index within a
+  bank — that placement layer likely still lives in the `.pap` files or in per-level entity-spawn
+  tables, not yet traced.
 - **CORRECTION**: `Gfx_BlitSpriteMaskedWide`'s disassembly was checked directly — it is NOT a
   48-pixel-wide *source* format. It reads the same 2 words (4 bytes) per row per plane as the
   regular byte-aligned path; "Wide" refers to a 5-byte *destination* footprint from sub-pixel
   ROR-shift spill (the same mechanism as `Gfx_BlitSpriteMasked`'s CL!=0 branch), not a different
-  on-disk tile geometry. The hypothesized second/wider tile size has **not** been located anywhere
-  yet — open question, not resolved by this correction.
+  on-disk tile geometry. **The hypothesized second/wider tile size was a red herring in the
+  "wide" direction — the real second tile size found (`extras.pak`/`extrax*.pak`) is
+  *narrower/shorter* (16x16), not wider**; see the dedicated RESOLVED section above.
 - ~~`blocks1-4.pak`'s consumer/geometry~~ — **fully resolved**, see "`blocks*.pak` is 120
   individually-packed 32x16 tiles" above.
 - `.pip` full-screen images do **not** use this same fixed-tile-array layout (unpacked sizes
