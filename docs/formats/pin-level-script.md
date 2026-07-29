@@ -112,12 +112,48 @@ sitting at sensible in-level spawn points, not noise.
 
 **Not yet resolved** for the other bank ids (2 = `kidxN.pak`, 3 = `specialN.pak`, 5 = `blocksN.pak`,
 7 = `nastyN.pak`) — these cover most enemies/characters. `animStart` values there exceed each
-file's own tile count, meaning (like bank 6) each segment concatenates more than one file — e.g.
-bank 2's segment loads `bitkid.pak` (60 tiles) *before* `kidxN.pak` (20 tiles), confirmed from the
-loader disassembly, but even accounting for that the numbers don't fully add up yet (`special`'s
-values still exceed a two-file concatenation), so the exact tile-index formula for these banks is
-still open. `tools/viewer.html` renders bank-6 entities as real sprites and falls back to a
-colored dot for everything else, rather than guess wrong tiles.
+file's own tile count. `tools/viewer.html` renders bank-6 entities as real sprites and falls back
+to a colored dot for everything else, rather than guess wrong tiles.
+
+### Investigation trail for banks 2/3/7 (dead-ended — read this before retrying)
+
+Several hypotheses were tried and ruled out; a future session should start past these rather than
+repeat them:
+
+1. **Segment concatenation** (like bank 6's `extras`+`extraxN`): confirmed bank 2's segment
+   (`0x4353`) really does load `bitkid.pak` (60 tiles) *before* `kidxN.pak` (20 tiles) each world —
+   but even the combined 80-tile space doesn't cover the `animStart` values observed (up to 214).
+   Bank 3 (`specialN.pak`, loaded alone, no prefix file found) shows values up to 225 with no
+   second file to concatenate. **Ruled out as the general explanation.**
+
+2. **Mirror-sprite generator as an extra source**: found `1000:b3c4`/`1000:b3f2` — real functions
+   that regenerate horizontally-mirrored sprites in place (using the confirmed bit-reversal table
+   at `0x8eee`) by copying from segments `0x4fd3` (kidx-related) / `0x2a49` (nasty-related).
+   **Ruled out**: both are called only from `Game_StartAttractDemoAndRunLoop` (the attract-mode
+   demo) — irrelevant to normal per-level entity rendering. Also, no load site into `0x4fd3` was
+   ever found via any `Load_PackedFile` call, so its contents remain unexplained regardless.
+
+3. **Per-entity-kind lookup tables**: `Gfx_DrawObject` computes a sprite/text source pointer via
+   one of three near-pointer tables selected by the entity's *kind* field (descriptor `+0x18`, a
+   separate field from bank id): kind 5 (or type `0x2b`) → table at `6de3:e4fa`; kind 2 or 4 →
+   `6de3:e906`; type `0x2d` → `6de3:dea2`; everything else → `e4fa` again. This looked promising —
+   until the **target data both `e4fa` and `e906` point to was read directly and turned out to be
+   small sequential/repeated-integer sequences** (e.g. `7,52,9,10,66,67,42,70,71,72,73,74,75,76,
+   77,78,79,200,200,200,200,11,12,...`) — indistinguishable from glyph/character codes, not
+   sprite pixel data, even for entries whose descriptor `+8` field ("orientation", copied to
+   `entity+0x16`) is `0x0f` — nominally the masked-bitmap-sprite shape-type dispatch value in
+   `Gfx_DrawObject`. **Dead end**: either these tables are used exclusively by the text/glyph
+   shape path (`0x0a`) and the real masked-bitmap sprite source pointer for `0x0e`/`0x0f` entities
+   comes from a different register/variable this pass didn't correctly isolate in
+   `Gfx_DrawObject`'s ~600-line decompile, or there's a subtlety the decompiled pseudocode is
+   hiding (as has happened elsewhere in this project — raw disassembly has repeatedly disagreed
+   with it). **Next step, if picked back up**: re-trace `Gfx_DrawObject` instruction-by-instruction
+   (raw `disassemble_function`, not the decompiled C) specifically for the `0x0e`/`0x0f` dispatch
+   branches, following the actual register that ends up in `SI`/`DS` right before
+   `Gfx_BlitSpriteMaskedAlt`/`Wide` is called, rather than trusting which decompiled variable name
+   claims to feed it. A dosbox-x breakpoint at `Gfx_BlitSpriteMaskedAlt` (`1000:7ff2`) or `Wide`
+   (`1000:81ad`) dumping `DS:SI` for a live, on-screen kidx/nasty/special sprite would settle this
+   immediately and is likely faster than further static tracing.
 
 `symbols/entity-shapes.json` (Ghidra-derived, checked into git like other symbol exports, copied
 into `build/` by `tools/build-all.js`) holds the decoded descriptor table + bank-to-segment map.
