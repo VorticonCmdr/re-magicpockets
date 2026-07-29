@@ -1,0 +1,709 @@
+{
+  "program": "INTROU.EXE",
+  "namedFunctions": 77,
+  "totalFunctions": 77,
+  "functions": [
+    {
+      "name": "entry",
+      "address": "1000:0000",
+      "tags": [
+        "verified",
+        "spine"
+      ],
+      "summary": "Entry point: parses config/sound-driver setup, calibrates joystick, saves interrupt vectors + installs custom timer, reads N interrupt vectors per hardware mode (6 Tandy / 12 CGA), builds the row-offset table, sets video mode, plays the intro sequence, tears down on exit."
+    },
+    {
+      "name": "App_PlayIntroSequence",
+      "address": "1000:0229",
+      "tags": [
+        "guess",
+        "spine",
+        "gfx"
+      ],
+      "summary": "Top-level intro sequence orchestrator: cycles through the draw-slot/bounce-animation helpers across DAT_1000_0648 states 0/1/2, framed by Video_ClearFramebuffer and Video_FadeOutPalette."
+    },
+    {
+      "name": "Video_WaitVsyncAndCountFrame",
+      "address": "1000:035e",
+      "tags": [
+        "verified",
+        "engine"
+      ],
+      "summary": "Polls port 0x3DA (vertical retrace bit) for a full inactive->active transition, then increments the frame counter at [8a3a]. Matches GAMEU.EXE's identical function."
+    },
+    {
+      "name": "Snd_SelectDriverScriptTable",
+      "address": "1000:0375",
+      "tags": [
+        "guess",
+        "sound"
+      ],
+      "summary": "Reads sound-driver selector char [8cef] (A/R/S/B/T) and sets [0xbaef] to that driver's fixed timing-script table address; far-calls the driver init entrypoint for A/R/T."
+    },
+    {
+      "name": "Gfx_ConvertLogoResourceBank",
+      "address": "1000:0406",
+      "tags": [
+        "guess",
+        "gfx"
+      ],
+      "summary": "Sets [8cb9]=0x12fd then calls Gfx_ConvertResourceEntry for a batch of fixed resource-table offsets -- converts a bank of logo sprite/palette resources to the active hardware's pixel format."
+    },
+    {
+      "name": "Video_ClearFramebuffer",
+      "address": "1000:04f6",
+      "tags": [
+        "guess",
+        "gfx"
+      ],
+      "summary": "Dispatches by hardware mode: CGA/Tandy = flat word-fill; EGA/VGA = programs Sequencer/GC registers then clears via a loop."
+    },
+    {
+      "name": "Gfx_LoadFrameRowTable",
+      "address": "1000:0571",
+      "tags": [
+        "guess",
+        "gfx"
+      ],
+      "summary": "Loads a 16-word row-offset table for frame index AL into [0x8b2b], stores AL into [8c51], then calls Video_PrepareFrameHardware."
+    },
+    {
+      "name": "Anim_RunTimedSequence",
+      "address": "1000:0596",
+      "tags": [
+        "guess",
+        "gfx"
+      ],
+      "summary": "Walks the per-sound-driver timing-script cursor at [0xbaef], drawing frames for a duration derived from the script byte; bails early if the abort flag [8b9c] is set."
+    },
+    {
+      "name": "Gfx_LoadFrameRowTableTandy",
+      "address": "1000:0617",
+      "tags": [
+        "guess",
+        "gfx",
+        "altbuild"
+      ],
+      "summary": "Tandy-specific sibling of Gfx_LoadFrameRowTable: looks up [8aa2] from a fixed table indexed by (AX-0x22), then blits."
+    },
+    {
+      "name": "Gfx_AnimateBounceCycle",
+      "address": "1000:064a",
+      "tags": [
+        "guess",
+        "gfx"
+      ],
+      "summary": "Ping-pong bounce animation: draws frames 0->17 then 17->7, waiting for vsync each step. Dispatches to Gfx_SwapPageBuffersTandy on Tandy."
+    },
+    {
+      "name": "Gfx_AnimateToFrame",
+      "address": "1000:06a7",
+      "tags": [
+        "guess",
+        "gfx"
+      ],
+      "summary": "Draws frames until reaching frame index BX, waiting for vsync each step. Dispatches to Gfx_SwapPageBuffersTandy on Tandy."
+    },
+    {
+      "name": "Gfx_SwapPageBuffersTandy",
+      "address": "1000:06d3",
+      "tags": [
+        "guess",
+        "gfx",
+        "altbuild"
+      ],
+      "summary": "Tandy double-buffer page swap: two 16KB block copies between segment 0 and [0x8a40], separated by 4x Gfx_OrMaskBlitTandy calls; gated on DAT_1000_0648."
+    },
+    {
+      "name": "Gfx_OrMaskBlitTandy",
+      "address": "1000:076b",
+      "tags": [
+        "guess",
+        "gfx",
+        "altbuild"
+      ],
+      "summary": "Masked OR-blit: ORs a fixed lookup table ANDed with AH into 100 rows x 0x50 bytes with 0x4000 bank-wrap, then waits for frame counter==1."
+    },
+    {
+      "name": "Gfx_AnimateToFrameOrClear",
+      "address": "1000:07c8",
+      "tags": [
+        "guess",
+        "gfx"
+      ],
+      "summary": "Dispatch: EGA/VGA loops drawing frames until BX; Tandy waits 1 vsync; CGA calls Gfx_AndMaskFramebufferRegion x4."
+    },
+    {
+      "name": "Gfx_AndMaskFramebufferRegion",
+      "address": "1000:0827",
+      "tags": [
+        "guess",
+        "gfx",
+        "altbuild"
+      ],
+      "summary": "ANDs AX into 200 rows x 0x28 words with 0x4000 bank-wrap (CGA framebuffer clear-via-mask), then waits for frame counter==1."
+    },
+    {
+      "name": "Video_FadeOutPalette",
+      "address": "1000:086c",
+      "tags": [
+        "guess",
+        "gfx"
+      ],
+      "summary": "Fade-to-black effect: 8 steps, each decrementing 15 palette entries via Video_DecrementPaletteEntry and waiting 2 vsyncs."
+    },
+    {
+      "name": "Video_DecrementPaletteEntry",
+      "address": "1000:0898",
+      "tags": [
+        "guess",
+        "gfx"
+      ],
+      "summary": "Decrements each of a packed palette word's 3 RGB nibble fields by 1 if nonzero -- the fade-step primitive for Video_FadeOutPalette."
+    },
+    {
+      "name": "Gfx_DrawFrameFromSlot3A",
+      "address": "1000:08d8",
+      "tags": [
+        "guess",
+        "gfx"
+      ],
+      "summary": "Sets [8aa2]=[0x36] and blits -- one of three byte-identical duplicate compiled bodies (08d8/0914/0959)."
+    },
+    {
+      "name": "Gfx_DrawFrameFromSlot3B",
+      "address": "1000:0914",
+      "tags": [
+        "guess",
+        "gfx"
+      ],
+      "summary": "Byte-identical duplicate of Gfx_DrawFrameFromSlot3A."
+    },
+    {
+      "name": "Gfx_DrawFrameFromSlot3C",
+      "address": "1000:0959",
+      "tags": [
+        "guess",
+        "gfx"
+      ],
+      "summary": "Byte-identical duplicate of Gfx_DrawFrameFromSlot3A."
+    },
+    {
+      "name": "Gfx_DrawFrameFromSlot3Quad",
+      "address": "1000:099b",
+      "tags": [
+        "guess",
+        "gfx"
+      ],
+      "summary": "Draws the [0x36] frame slot 4 times in a row."
+    },
+    {
+      "name": "Gfx_DrawFrameFromSlot0",
+      "address": "1000:0aa0",
+      "tags": [
+        "guess",
+        "gfx"
+      ],
+      "summary": "Sets [8aa2]=[0x2c] and blits (draws whichever frame pointer slot 0 currently holds)."
+    },
+    {
+      "name": "Gfx_SetRowStrideConstantsForMode",
+      "address": "1000:0ad0",
+      "tags": [
+        "guess",
+        "gfx"
+      ],
+      "summary": "Sets 5 fixed row-pitch/count constants at [0xc53]-[0xc5b] per hardware mode -- geometry parameters for the slot-sequence blit helpers."
+    },
+    {
+      "name": "Gfx_AnimateSlot2Sequence",
+      "address": "1000:0b53",
+      "tags": [
+        "guess",
+        "gfx"
+      ],
+      "summary": "Draws the [0x30] frame slot repeatedly, after setting mode-dependent stride constants via Gfx_SetRowStrideConstantsForMode."
+    },
+    {
+      "name": "Gfx_AnimateSlot4Sequence",
+      "address": "1000:0c5d",
+      "tags": [
+        "guess",
+        "gfx"
+      ],
+      "summary": "Sibling of Gfx_AnimateSlot2Sequence for the [0x32] frame slot."
+    },
+    {
+      "name": "Gfx_AnimateSlot5Sequence",
+      "address": "1000:0d5d",
+      "tags": [
+        "guess",
+        "gfx"
+      ],
+      "summary": "Sibling of Gfx_AnimateSlot2Sequence for the [0x34] frame slot (no BP stride constant)."
+    },
+    {
+      "name": "Gfx_AnimateSlot1Sequence",
+      "address": "1000:0e5a",
+      "tags": [
+        "guess",
+        "gfx"
+      ],
+      "summary": "Sibling of Gfx_AnimateSlot2Sequence for the [0x2e] frame slot."
+    },
+    {
+      "name": "App_WaitFramesOrAbort",
+      "address": "1000:0f57",
+      "tags": [
+        "guess",
+        "engine"
+      ],
+      "summary": "Advances the script cursor, waits for vsync/frame-count target; if the abort flag [8ba1] is set, runs the full teardown sequence and returns early."
+    },
+    {
+      "name": "App_PerformExitSequence",
+      "address": "1000:0f83",
+      "tags": [
+        "guess",
+        "engine"
+      ],
+      "summary": "Unconditional teardown: clears screen, redraws slot3+bounce frames, resets script cursor, restores state, stops sound, waits vsync, frees environment blocks if set."
+    },
+    {
+      "name": "Gfx_ConvertResourceEntry",
+      "address": "1000:0fa4",
+      "tags": [
+        "guess",
+        "gfx",
+        "altbuild"
+      ],
+      "summary": "Converts one logo/palette resource to the active hardware's pixel format: EGA calls Gfx_BlitPlanarResourceEga; CGA builds packed RGBI nibbles; Tandy calls Gfx_PackTandyPixelNibble in a loop."
+    },
+    {
+      "name": "Gfx_PackTandyPixelNibble",
+      "address": "1000:109a",
+      "tags": [
+        "guess",
+        "gfx",
+        "altbuild"
+      ],
+      "summary": "Bit-packing primitive: folds 4 registers' sign bits into a nibble via an XOR-keyed lookup -- structurally identical to GAMEU.EXE's AltBuild_Pack*FromSignBits family."
+    },
+    {
+      "name": "Gfx_BlitPlanarResourceEga",
+      "address": "1000:1243",
+      "tags": [
+        "guess",
+        "gfx"
+      ],
+      "summary": "EGA planar copy: cycles Sequencer Map Mask through 0x1,0x2,0x4,0x8 copying one word per plane per iteration, then resets Map Mask to 0xf."
+    },
+    {
+      "name": "Video_ResetGraphicsControllerEga",
+      "address": "1000:126a",
+      "tags": [
+        "guess",
+        "gfx"
+      ],
+      "summary": "Resets Sequencer Map Mask and Graphics Controller registers to their default read/write-mode-0 state."
+    },
+    {
+      "name": "Load_PackedFileWithRetry",
+      "address": "1000:128b",
+      "tags": [
+        "verified",
+        "engine"
+      ],
+      "summary": "DOS file load with retry: opens/reads the file named at [8cb9], depacks via Rnc_Depack if the RNC magic is present; retries on error. Matches GAMEU.EXE's Load_PackedFile."
+    },
+    {
+      "name": "Video_CallInt10h",
+      "address": "1000:1355",
+      "tags": [
+        "verified",
+        "gfx"
+      ],
+      "summary": "Trivial INT 10h (video BIOS) call wrapper."
+    },
+    {
+      "name": "Dos_PrintString",
+      "address": "1000:135f",
+      "tags": [
+        "guess",
+        "engine"
+      ],
+      "summary": "Prints a NUL-terminated string at BX one character at a time via INT 21h."
+    },
+    {
+      "name": "Sys_NoOpStub",
+      "address": "1000:1372",
+      "tags": [
+        "verified",
+        "engine"
+      ],
+      "summary": "Empty stub -- always returns immediately."
+    },
+    {
+      "name": "Gfx_BlitFrameToFramebuffer",
+      "address": "1000:13e5",
+      "tags": [
+        "guess",
+        "gfx"
+      ],
+      "summary": "The core frame-draw primitive: copies the current source frame into the framebuffer via the row-offset table at [0xb95d] (EGA/CGA) or a fixed stride copy (Tandy)."
+    },
+    {
+      "name": "Video_ExpandPaletteTable",
+      "address": "1000:14d3",
+      "tags": [
+        "guess",
+        "gfx"
+      ],
+      "summary": "Rebuilds the 0x1e0-entry palette table at [0xbc9e] from RGBI component lookups -- matches GAMEU.EXE's Video_ExpandPaletteFadeTable."
+    },
+    {
+      "name": "Video_SetMode",
+      "address": "1000:1547",
+      "tags": [
+        "verified",
+        "gfx"
+      ],
+      "summary": "Video driver dispatch on [8a9e] (E/i/C/T/4/0/default): sets page segment pointers, programs CRTC offset register 0x13=0x16 (352px virtual width), dispatches to Video_SetModeCga/Tandy paths."
+    },
+    {
+      "name": "Video_FillFramebufferWords",
+      "address": "1000:166f",
+      "tags": [
+        "guess",
+        "gfx"
+      ],
+      "summary": "Fills 0x4000 words (32KB) with AX -- flat framebuffer clear for CGA/Tandy."
+    },
+    {
+      "name": "Video_SetModeCga",
+      "address": "1000:167f",
+      "tags": [
+        "guess",
+        "gfx",
+        "altbuild"
+      ],
+      "summary": "Sets DAT_1000_2b2a=0xffff (CGA mode marker), calls INT10h x2 if needed, sets B800 page segments."
+    },
+    {
+      "name": "Video_SetVgaPaletteA",
+      "address": "1000:16c6",
+      "tags": [
+        "guess",
+        "gfx"
+      ],
+      "summary": "Programs VGA-style palette registers (port 0x3c2=0x4b, Sequencer setup, CRTC index 0xe/0x11 sequence) writing a variable-length palette buffer."
+    },
+    {
+      "name": "Video_SetVgaPaletteB",
+      "address": "1000:16da",
+      "tags": [
+        "guess",
+        "gfx"
+      ],
+      "summary": "Sibling of Video_SetVgaPaletteA using port 0x3c2=0x66 instead of 0x4b."
+    },
+    {
+      "name": "Video_FlipAndSync",
+      "address": "1000:172b",
+      "tags": [
+        "guess",
+        "gfx"
+      ],
+      "summary": "Double-buffer page-flip dispatch across Tandy/EGA/CGA; waits on DAT_1000_28b4 then optionally services the sound driver via a far call."
+    },
+    {
+      "name": "Video_PrepareFrameHardware",
+      "address": "1000:1913",
+      "tags": [
+        "guess",
+        "gfx"
+      ],
+      "summary": "Per-hardware frame-prep dispatch: CGA scales/loads a palette + INT10h; EGA calls Video_ApplyPaletteEga; Tandy programs port 0x3da/0x3de per output color."
+    },
+    {
+      "name": "Video_ApplyPaletteEga",
+      "address": "1000:1e66",
+      "tags": [
+        "guess",
+        "gfx"
+      ],
+      "summary": "Builds a 16-byte palette buffer then applies it with INT10h -- matches GAMEU.EXE's Video_ApplyVgaPalette."
+    },
+    {
+      "name": "Sys_NoOpStub2",
+      "address": "1000:1e90",
+      "tags": [
+        "verified",
+        "engine"
+      ],
+      "summary": "Empty stub, sibling of Sys_NoOpStub."
+    },
+    {
+      "name": "Video_ScaleColorComponent",
+      "address": "1000:1ed8",
+      "tags": [
+        "verified",
+        "gfx"
+      ],
+      "summary": "Scales a 0-7 EGA color component to a 6-bit VGA DAC value -- byte-for-byte matches GAMEU.EXE's Video_ScaleColorComponent."
+    },
+    {
+      "name": "Input_CalibrateJoystick",
+      "address": "1000:1ef4",
+      "tags": [
+        "verified",
+        "input"
+      ],
+      "summary": "Joystick calibration entry point -- matches GAMEU.EXE's Input_CalibrateJoystick: computes axis center/range constants."
+    },
+    {
+      "name": "Input_MeasureJoystickTiming",
+      "address": "1000:1f2c",
+      "tags": [
+        "guess",
+        "input"
+      ],
+      "summary": "Measures joystick RC-timing loop count, stores it into DAT_1000_1f53."
+    },
+    {
+      "name": "Input_PollJoystickEdge",
+      "address": "1000:1f55",
+      "tags": [
+        "guess",
+        "input"
+      ],
+      "summary": "Waits for a joystick-port bit set then clear transition."
+    },
+    {
+      "name": "Input_WaitJoystickBitSet",
+      "address": "1000:1f5d",
+      "tags": [
+        "guess",
+        "input"
+      ],
+      "summary": "Busy-waits on port 0x3DA bit 3 per detected polarity."
+    },
+    {
+      "name": "Input_WaitJoystickBitClear",
+      "address": "1000:1f71",
+      "tags": [
+        "guess",
+        "input"
+      ],
+      "summary": "Inverse-polarity sibling of Input_WaitJoystickBitSet."
+    },
+    {
+      "name": "Input_DetectJoystickPolarity",
+      "address": "1000:1f82",
+      "tags": [
+        "guess",
+        "input"
+      ],
+      "summary": "Times two vsync-bit half-cycles and compares durations to determine port 0x3DA's active polarity."
+    },
+    {
+      "name": "Input_ReadJoystickPortRaw",
+      "address": "1000:1fd6",
+      "tags": [
+        "guess",
+        "input"
+      ],
+      "summary": "Raw joystick port (0x201) read plus a vsync-port touch, used by the RC-timing loop."
+    },
+    {
+      "name": "Input_ReadJoystickState",
+      "address": "1000:1ff3",
+      "tags": [
+        "guess",
+        "input"
+      ],
+      "summary": "Per-frame joystick/abort-state read: fires the one-shot, times RC discharge, writes direction/button byte to [8ba1] (abort flag) and [8cd3]."
+    },
+    {
+      "name": "Input_ComputeJoystickButtonMask",
+      "address": "1000:2068",
+      "tags": [
+        "guess",
+        "input"
+      ],
+      "summary": "Combines button-state words into the packed byte pair at [8cd5]/[8cd4]."
+    },
+    {
+      "name": "Sys_SaveInterruptVectors",
+      "address": "1000:2089",
+      "tags": [
+        "guess",
+        "engine"
+      ],
+      "summary": "Installs the custom timer then, if not already saved, saves two interrupt vectors via INT21h AH=35h."
+    },
+    {
+      "name": "App_HandleFatalStartupError",
+      "address": "1000:20dd",
+      "tags": [
+        "guess",
+        "engine"
+      ],
+      "summary": "Fatal-startup teardown, called from entry when Config_ParseIniAndLoadSoundDriver returns <0."
+    },
+    {
+      "name": "App_HandleAbortResumePrompt",
+      "address": "1000:20e6",
+      "tags": [
+        "guess",
+        "engine"
+      ],
+      "summary": "Abort/Resume scancode prompt loop -- 0x1e ('A') tears down and returns; 0x13 ('R') re-sets video mode and resumes. Same scancode pair as GAMEU.EXE's App_ExitOrReset."
+    },
+    {
+      "name": "App_HandleFatalStartupErrorB",
+      "address": "1000:213c",
+      "tags": [
+        "guess",
+        "engine"
+      ],
+      "summary": "Byte-identical duplicate of App_HandleFatalStartupError, called from entry's other failure branches."
+    },
+    {
+      "name": "Sys_RestoreState",
+      "address": "1000:2182",
+      "tags": [
+        "verified",
+        "engine"
+      ],
+      "summary": "Shared cleanup helper: stops sound, waits vsync, restores timer, restores saved interrupt vectors -- matches GAMEU.EXE's Sys_RestoreState."
+    },
+    {
+      "name": "Config_ParseIniAndLoadSoundDriver",
+      "address": "1000:2279",
+      "tags": [
+        "verified",
+        "spine",
+        "sound"
+      ],
+      "summary": "Main init: parses config text (video driver char, joystick mode, 5 key-bindings into a 512-byte lookup table), dispatches sound-driver loading per letter, far-calls the driver entrypoint."
+    },
+    {
+      "name": "Config_SkipLine",
+      "address": "1000:24af",
+      "tags": [
+        "verified",
+        "engine"
+      ],
+      "summary": "Line-oriented text scanner: advances to just past the next LF, or stops on NUL. Matches GAMEU.EXE's Config_SkipLine."
+    },
+    {
+      "name": "Snd_StopDriver",
+      "address": "1000:25c7",
+      "tags": [
+        "guess",
+        "sound"
+      ],
+      "summary": "Stops/resets the active sound driver: 'T'/'B' write a stop pattern then far-call the entrypoint; 'A'/'R'/'S' just far-call it."
+    },
+    {
+      "name": "Sys_InstallCustomTimerHandler",
+      "address": "1000:2861",
+      "tags": [
+        "verified",
+        "engine"
+      ],
+      "summary": "Reprograms PIT channel 0 and installs a custom timer interrupt vector, saving the original -- matches GAMEU.EXE's Sys_InstallCustomTimerHandler."
+    },
+    {
+      "name": "Sys_RestoreOriginalTimerHandler",
+      "address": "1000:288d",
+      "tags": [
+        "verified",
+        "engine"
+      ],
+      "summary": "Restores the saved timer vector and resets PIT channel 0 to the BIOS default divisor."
+    },
+    {
+      "name": "Gfx_BuildRowOffsetTable4000",
+      "address": "1000:2aea",
+      "tags": [
+        "guess",
+        "gfx"
+      ],
+      "summary": "Builds a 200-entry framebuffer row-offset table with +0x2000 bank-interleave wrapping at the 0x4000 boundary."
+    },
+    {
+      "name": "Gfx_BuildRowOffsetTable8000",
+      "address": "1000:2b09",
+      "tags": [
+        "guess",
+        "gfx"
+      ],
+      "summary": "Sibling of Gfx_BuildRowOffsetTable4000 wrapping at the 0x8000 boundary instead."
+    },
+    {
+      "name": "Rnc_Depack",
+      "address": "1000:2cc6",
+      "tags": [
+        "verified",
+        "engine"
+      ],
+      "summary": "The RNC ProPack-1 depacker: validates the magic, builds a Huffman table per chunk, decodes via Rnc_HuffmanLookup/Rnc_ReadBits. Matches GAMEU.EXE's FUN_1000_fcc4 depacker."
+    },
+    {
+      "name": "Rnc_ReadHeaderWord",
+      "address": "1000:2e7e",
+      "tags": [
+        "guess",
+        "engine"
+      ],
+      "summary": "Calls Rnc_ReadBigEndianWord (redundant intermediate call) -- reads one big-endian header word."
+    },
+    {
+      "name": "Rnc_ReadBigEndianWord",
+      "address": "1000:2e83",
+      "tags": [
+        "verified",
+        "engine"
+      ],
+      "summary": "Byte-swaps a little-endian word into big-endian -- reads RNC header fields. Matches GAMEU.EXE's Sys_ReadByteSwappedWord."
+    },
+    {
+      "name": "Rnc_ComputeParagraphCount",
+      "address": "1000:2e87",
+      "tags": [
+        "guess",
+        "engine"
+      ],
+      "summary": "Converts a byte count to a paragraph (16-byte) count, rounding up on a nonzero remainder."
+    },
+    {
+      "name": "Rnc_HuffmanLookup",
+      "address": "1000:2e9d",
+      "tags": [
+        "guess",
+        "engine"
+      ],
+      "summary": "Walks the Huffman decode table matching the current bit-window against each entry, consuming bits via Rnc_ReadBits."
+    },
+    {
+      "name": "Rnc_ReadBits",
+      "address": "1000:2edc",
+      "tags": [
+        "guess",
+        "engine"
+      ],
+      "summary": "RNC bit-stream reader: extracts bits from the rolling 32-bit window, refilling from the input stream when it underflows."
+    },
+    {
+      "name": "Rnc_BuildHuffmanTable",
+      "address": "1000:2f3f",
+      "tags": [
+        "guess",
+        "engine"
+      ],
+      "summary": "Canonical-Huffman decode-table builder from a list of code bit-lengths, consumed by Rnc_HuffmanLookup."
+    }
+  ]
+}

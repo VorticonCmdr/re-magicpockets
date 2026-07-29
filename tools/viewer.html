@@ -1,0 +1,252 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Magic Pockets -- level viewer</title>
+<style>
+  :root { color-scheme: dark; }
+  body {
+    margin: 0;
+    font: 13px/1.4 -apple-system, system-ui, sans-serif;
+    background: #1b1b1f;
+    color: #ddd;
+    display: flex;
+    flex-direction: column;
+    height: 100vh;
+  }
+  header {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    padding: 10px 14px;
+    background: #26262c;
+    border-bottom: 1px solid #3a3a42;
+    flex-wrap: wrap;
+  }
+  header h1 { font-size: 14px; margin: 0 12px 0 0; color: #8bd0ff; font-weight: 600; }
+  label { display: flex; align-items: center; gap: 6px; }
+  select, input[type=range] { background: #1b1b1f; color: #ddd; border: 1px solid #444; border-radius: 4px; padding: 3px 6px; }
+  #status { margin-left: auto; color: #999; }
+  #status.error { color: #ff8080; }
+  main {
+    flex: 1;
+    overflow: auto;
+    display: flex;
+    align-items: flex-start;
+    justify-content: flex-start;
+    background:
+      linear-gradient(45deg, #222 25%, transparent 25%, transparent 75%, #222 75%, #222),
+      linear-gradient(45deg, #222 25%, transparent 25%, transparent 75%, #222 75%, #222);
+    background-size: 24px 24px;
+    background-position: 0 0, 12px 12px;
+    background-color: #2c2c33;
+  }
+  canvas {
+    image-rendering: pixelated;
+    image-rendering: crisp-edges;
+    display: block;
+  }
+  #tip { padding: 6px 14px; background: #26262c; border-top: 1px solid #3a3a42; color: #999; }
+</style>
+</head>
+<body>
+<header>
+  <h1>Magic Pockets level viewer</h1>
+  <label>Level
+    <select id="levelSelect"></select>
+  </label>
+  <label>Tileset
+    <select id="tilesetSelect"></select>
+  </label>
+  <label>Zoom
+    <input type="range" id="zoom" min="0.25" max="4" step="0.25" value="1">
+    <span id="zoomLabel">100%</span>
+  </label>
+  <span id="status"></span>
+</header>
+<main><canvas id="canvas"></canvas></main>
+<div id="tip">
+  Tile value <code>V</code> at grid (row, col) draws atlas tile <code>V-1</code> from the
+  selected <code>blocksN.pak</code> sheet (32x16 px/tile, 1-based on-disk indices) --
+  see docs/formats/pak.md and docs/formats/pap.md. Hover a tile to see its raw index.
+</div>
+<script>
+'use strict';
+
+const levelSelect = document.getElementById('levelSelect');
+const tilesetSelect = document.getElementById('tilesetSelect');
+const zoomInput = document.getElementById('zoom');
+const zoomLabel = document.getElementById('zoomLabel');
+const statusEl = document.getElementById('status');
+const canvas = document.getElementById('canvas');
+const ctx = canvas.getContext('2d');
+const tip = document.getElementById('tip');
+const TIP_DEFAULT = tip.textContent;
+
+let manifest = null;
+let currentGrid = null; // {width, height, rows}
+let currentAtlasMeta = null; // {tileWidth, tileHeight, cols, rows, tileCount}
+let currentAtlasImage = null;
+
+function setStatus(msg, isError) {
+  statusEl.textContent = msg;
+  statusEl.className = isError ? 'error' : '';
+}
+
+async function fetchJson(url) {
+  const res = await fetch(url);
+  if (!res.ok) throw new Error(`${url}: HTTP ${res.status}`);
+  return res.json();
+}
+
+function loadImage(url) {
+  return new Promise((resolve, reject) => {
+    const img = new Image();
+    img.onload = () => resolve(img);
+    img.onerror = () => reject(new Error(`failed to load image ${url}`));
+    img.src = url;
+  });
+}
+
+function guessTilesetForLevel(levelName) {
+  const m = levelName.match(/([1-4])/);
+  if (m && manifest.tilesets.some((t) => t.world === Number(m[1]))) {
+    return `blocks${m[1]}`;
+  }
+  return manifest.tilesets[0] ? manifest.tilesets[0].name : null;
+}
+
+async function loadLevel(levelName) {
+  currentGrid = await fetchJson(`/build/png/${levelName}.pap.json`);
+}
+
+async function loadTileset(tilesetName) {
+  currentAtlasMeta = await fetchJson(`/build/png/${tilesetName}.pak.json`);
+  currentAtlasImage = await loadImage(`/build/png/${tilesetName}.pak.png`);
+}
+
+function render() {
+  if (!currentGrid || !currentAtlasMeta || !currentAtlasImage) return;
+  const { width, height, rows } = currentGrid;
+  const { tileWidth, tileHeight, cols, tileCount } = currentAtlasMeta;
+
+  canvas.width = width * tileWidth;
+  canvas.height = height * tileHeight;
+  ctx.imageSmoothingEnabled = false;
+
+  let outOfRange = 0;
+  for (let row = 0; row < height; row++) {
+    for (let col = 0; col < width; col++) {
+      const value = rows[row][col];
+      const tileIndex = value - 1; // 1-based on-disk tile index -> 0-based atlas index
+      if (tileIndex < 0 || tileIndex >= tileCount) {
+        outOfRange++;
+        continue;
+      }
+      const sx = (tileIndex % cols) * tileWidth;
+      const sy = Math.floor(tileIndex / cols) * tileHeight;
+      ctx.drawImage(
+        currentAtlasImage,
+        sx, sy, tileWidth, tileHeight,
+        col * tileWidth, row * tileHeight, tileWidth, tileHeight
+      );
+    }
+  }
+
+  const zoom = Number(zoomInput.value);
+  canvas.style.width = `${canvas.width * zoom}px`;
+  canvas.style.height = `${canvas.height * zoom}px`;
+
+  setStatus(
+    `${width}x${height} tiles (${canvas.width}x${canvas.height}px) -- ${tilesetSelect.value}.pak.png ` +
+      `(${tileCount} tiles, ${tileWidth}x${tileHeight})` +
+      (outOfRange ? ` -- ${outOfRange} cell(s) out of tileset range!` : ''),
+    outOfRange > 0
+  );
+}
+
+async function onLevelChange() {
+  const levelName = levelSelect.value;
+  const guessed = guessTilesetForLevel(levelName);
+  if (guessed && tilesetSelect.value !== guessed && [...tilesetSelect.options].some((o) => o.value === guessed)) {
+    tilesetSelect.value = guessed;
+  }
+  setStatus(`loading ${levelName}...`);
+  try {
+    await loadLevel(levelName);
+    await onTilesetChangeInner();
+  } catch (e) {
+    setStatus(String(e), true);
+  }
+}
+
+async function onTilesetChangeInner() {
+  const tilesetName = tilesetSelect.value;
+  await loadTileset(tilesetName);
+  render();
+}
+
+async function onTilesetChange() {
+  setStatus(`loading ${tilesetSelect.value}...`);
+  try {
+    await onTilesetChangeInner();
+  } catch (e) {
+    setStatus(String(e), true);
+  }
+}
+
+canvas.addEventListener('mousemove', (ev) => {
+  if (!currentGrid || !currentAtlasMeta) return;
+  const rect = canvas.getBoundingClientRect();
+  const scaleX = canvas.width / rect.width;
+  const scaleY = canvas.height / rect.height;
+  const px = (ev.clientX - rect.left) * scaleX;
+  const py = (ev.clientY - rect.top) * scaleY;
+  const col = Math.floor(px / currentAtlasMeta.tileWidth);
+  const row = Math.floor(py / currentAtlasMeta.tileHeight);
+  if (row >= 0 && row < currentGrid.height && col >= 0 && col < currentGrid.width) {
+    const value = currentGrid.rows[row][col];
+    tip.textContent = `row ${row}, col ${col} -- tile value ${value} (atlas index ${value - 1})`;
+  }
+});
+canvas.addEventListener('mouseleave', () => { tip.textContent = TIP_DEFAULT; });
+
+zoomInput.addEventListener('input', () => {
+  zoomLabel.textContent = `${Math.round(Number(zoomInput.value) * 100)}%`;
+  render();
+});
+levelSelect.addEventListener('change', onLevelChange);
+tilesetSelect.addEventListener('change', onTilesetChange);
+
+async function init() {
+  try {
+    manifest = await fetchJson('/build/manifest.json');
+  } catch (e) {
+    setStatus(`Could not load /build/manifest.json (${e.message}) -- run "node tools/build-all.js" first.`, true);
+    return;
+  }
+
+  for (const level of manifest.levels) {
+    const opt = document.createElement('option');
+    opt.value = level.name;
+    opt.textContent = level.world ? `${level.name}  (world ${level.world})` : level.name;
+    levelSelect.appendChild(opt);
+  }
+  for (const tileset of manifest.tilesets) {
+    const opt = document.createElement('option');
+    opt.value = tileset.name;
+    opt.textContent = tileset.name;
+    tilesetSelect.appendChild(opt);
+  }
+
+  if (manifest.levels.length === 0) {
+    setStatus('No levels found in manifest.json.', true);
+    return;
+  }
+  await onLevelChange();
+}
+
+init();
+</script>
+</body>
+</html>

@@ -50,11 +50,11 @@ through that, not a fixed default.
 
 ## Tile counts per file (all confirmed exact — no remainder)
 
-| Unpacked size | Tile count | Files |
-|---|---|---|
-| 12800 | 20 | `special1-4.pak`, `kidx1-4.pak`, `extrax1-4.pak` |
-| 30720 | 48 | `blocks1-4.pak` |
-| 38400 | 60 | `nasty1-4.pak`, `bitkid.pak`, `ape.pak`, `extras.pak` |
+| Unpacked size | Tile format | Tile count | Files |
+|---|---|---|---|
+| 12800 | 640B masked 32x32 | 20 | `special1-4.pak`, `kidx1-4.pak`, `extrax1-4.pak` |
+| 30720 | 256B unmasked 32x16 | 120 | `blocks1-4.pak` (see "RESOLVED" section below — a completely different format from the other `.pak` files, despite the shared extension) |
+| 38400 | 640B masked 32x32 | 60 | `nasty1-4.pak`, `bitkid.pak`, `ape.pak`, `extras.pak` |
 
 ## Verification
 
@@ -124,6 +124,111 @@ why there's no separate blitter to find. Unconfirmed — needs a dosbox-x trace 
 the entity list at level load, and/or resolving `DAT_1000_b152`'s near-pointer filename table to
 identify exactly which loaded file `blocks*.pak`'s data lands in and who actually reads it.
 
+**Supporting structural evidence found while naming `Entity_UpdateBehavior`'s callee graph**:
+`Entity_RebuildVisibleList` (`1000:c998`) walks the raw ~140-slot entity-pointer array at
+`0x9090` (the same array `Entity_FreeSlot` manages) every frame, applies the current
+camera-scroll delta to each entity's X/Y, and **culls entities to the screen-relative viewport**
+(X in `[-0x3f,0x17f]`, Y in `[-0x3f,0xdf]`) by flipping a sign-bit marker — building the working
+list at `0x91be` that `Entity_UpdateAll` walks and (via `FUN_1000_73a5`) that `Gfx_DrawObject`
+actually renders. This is exactly the mechanism placed background-tile entities would need: if
+`blocks*.pak` tiles are loaded as entity records at level-load time, this function is where
+they'd get camera-relative-transformed and culled into the render list alongside gameplay
+entities, using the identical pipeline. Still not proof (no dosbox-x trace has confirmed
+`blocks*.pak` data actually lands in the `0x9090` array), but it closes the "how would a
+tile-as-entity even get drawn" mechanical gap the hypothesis previously left open.
+
+## RESOLVED (mostly) — the real `blocks*.pak` consumer found: `World_ResetGraphicsAfterLoad`
+
+Found by tracing `World_ResetGraphicsAfterLoad` one level deeper than the earlier "exhaustive"
+pass did — that pass characterized it from its name/shallow summary alone ("simple GC-register
+resets") and never decompiled into what it actually calls.
+
+**The real chain, confirmed byte-for-byte in all four `World*_LoadBanks` functions** (identical
+in each): `blocksN.pak` loads into segment `0x3bc3` at offset 0 with `CX=0x7800` (30720, its
+exact known unpacked size — confirmed by reading the ASCIIZ filename directly out of memory at
+the near-pointer used for the `Load_PackedFile` call: `data\blocksN.pak`), then **immediately and
+unconditionally** falls into `World_ResetGraphicsAfterLoad` → `Gfx_CopyTileBankPlanes`. This is a
+completely different code path from `Gfx_BlitSpriteMasked` (whose only caller is `Gfx_DrawObject`,
+confirmed unchanged) — `blocks*.pak` was never 640-byte masked sprite tiles to begin with.
+
+`Gfx_CopyTileBankPlanes` (`1000:85d0`) dispatches on `DAT_1000_22d7` exactly like every other
+hardware-mode switch in this codebase:
+- `DAT_1000_22d7 == -1` → `AltBuild_ConvertTileBankRleVariant` (CGA path)
+- `DAT_1000_22d7 == 0xff` → `AltBuild_ConvertTileBankRle` (Tandy path)
+- otherwise → the **direct EGA/VGA plane copy** via 4x `Gfx_CopyPlaneRow32Words`, cycling
+  Sequencer Map Mask `0x1,0x2,0x4,0x8` — i.e. writing 4 separate bitplanes, no AND-mask plane at
+  all. This is structurally much closer to `.pip`'s direct-picture format than to the masked-sprite
+  `.pak` format.
+
+**Confirmed which branch the real 'C'/'E' (Colour VGA / EGA) driver path takes**: `Video_SetMode`
+only ever writes `DAT_1000_22d7` on the `'T'` (Tandy, sets `0xff`) branch; `Video_SetModeCga`
+presumably sets it to `-1` for `'4'`/`'0'`. Neither the `'E'` nor `'C'` branch writes it at all, so
+on the actual VGA path this global keeps its zero-initialized default — meaning **the reference
+build takes the direct 4-plane-copy branch**, not one of the AltBuild RLE converters. This also
+means the RLE scheme documented above (`AltBuild_ConvertTileBankRle`/`RleVariant`) is
+`blocks*.pak`'s CGA/Tandy-specific decode path specifically — not some unrelated curiosity.
+
+## RESOLVED — `blocks*.pak` is 120 individually-packed 32x16 tiles, not one big raster image
+
+The remaining ambiguity above (what does `CX` actually equal, and how can 256 bytes/"row" times
+120 "rows" possibly fit a 30720-byte file) was resolved by re-disassembling
+`World_ResetGraphicsAfterLoad` (`1000:b6d7`) directly instead of re-deriving `CX` through the
+loader chain:
+
+```
+1000:b6d7: MOV AX,0xa800  ; ES = a800 (destination: a separate VGA-plane page, not a000)
+1000:b6de: MOV AX,0x3bc3  ; DS = 3bc3 (source: the just-loaded blocksN.pak buffer)
+1000:b6e3: XOR DI,DI      ; DI = 0
+1000:b6e5: XOR SI,SI      ; SI = 0
+1000:b6e7: MOV CX,0x78    ; CX = 0x78 = 120  <-- the value that couldn't be pinned down before
+1000:b6ea: CALL Gfx_CopyTileBankPlanes
+```
+
+`CX = 0x78 = 120` confirmed directly, no guessing needed. The earlier "120 rows of 512px is
+dimensionally impossible" confusion came from assuming each of the 120 loop iterations was one
+*pixel scanline* of one giant image. It is not — **each iteration is one entire 32x16 tile**.
+
+Re-deriving the byte math on that basis: a 32x16 tile's single bitplane is `32/8 = 4` bytes/row ×
+16 rows = **64 bytes** — exactly the `REP MOVSW` count (`0x20` words) seen in
+`Gfx_CopyPlaneRow32Words`. The `ADD SI,0xC0` (192 bytes) that runs after each 64-byte plane-chunk
+copy is the source skipping over that *same tile's other 3 planes* (192 = 3 × 64) to reach the
+next tile's chunk for the plane currently being copied. Across the 4 sequential
+`Gfx_CopyPlaneRow32Words` calls (masks `0x1,0x2,0x4,0x8`), each net `SI` advances by only `+0x40`
+(64) between calls — landing exactly on the next plane-chunk within tile 0's own 256-byte record.
+So the on-disk layout per tile is:
+
+```
+tile[i] starts at offset i * 256   (i = 0..119)
+  offset +0   : color bitplane 0   (16 rows x 4 bytes = 64 bytes)
+  offset +64  : color bitplane 1   (64 bytes)
+  offset +128 : color bitplane 2   (64 bytes)
+  offset +192 : color bitplane 3   (64 bytes)
+```
+
+**No AND-mask plane at all** (4 planes, not 5) — background/terrain tiles are always fully
+opaque, matching `Gfx_CopyTileBankPlanes`'s dispatch (it's a direct 4-plane copy, distinct from
+`Gfx_BlitSpriteMasked`'s 5-plane masked format). `120 tiles x 256 bytes = 30720` — exactly the
+unpacked file size, zero remainder, for all four `blocks1-4.pak`.
+
+**This also lines up with the `.pap` format docs** (`docs/formats/pap.md`): tile size there is
+documented as 32x16 (asymmetric), and observed tile-index byte values range ~1-120 — exactly
+120 tiles, matching this format precisely. The `.pap` tile-index byte is simply a direct index
+into a `blocksN.pak` file's 120-tile array.
+
+**Visually confirmed** via `tools/extract-pak.js` (now format-detects `blocks*.pak` by filename
+and uses `decodeDirectTile`/4-plane-no-mask instead of the 640-byte masked-sprite path): all four
+`blocksN.pak` files render as clean, coherent 32x16 terrain-tile sheets — rock/stone tiles with
+glowing crystal veins and mushrooms (world 1), jungle vine/leaf tiles (world 2), and world 4's
+sheet even contains legible text tiles ("EXIT", "KEEP OUT" signage). No shearing, no noise, no
+ambiguity left. The earlier 512x120-monolithic-image hypothesis was wrong — it happened to also
+satisfy the byte-total math (256 bytes/"row" x 120 "rows" = 30720) but produced sheared,
+TV-static-looking output because it concatenated scanlines from many unrelated tiles into fake
+"rows"; the tile-array interpretation is the one that actually decodes cleanly.
+
+No dosbox-x trace was needed in the end — the missing register values were sitting directly in
+`World_ResetGraphicsAfterLoad`'s own disassembly, one function up from where the trace had
+stopped.
+
 ## Open questions
 
 - **Sprite *placement/identity* metadata** (which tile index means what, animation frame
@@ -135,8 +240,8 @@ identify exactly which loaded file `blocks*.pak`'s data lands in and who actuall
   ROR-shift spill (the same mechanism as `Gfx_BlitSpriteMasked`'s CL!=0 branch), not a different
   on-disk tile geometry. The hypothesized second/wider tile size has **not** been located anywhere
   yet — open question, not resolved by this correction.
-- **`blocks1-4.pak`'s real format and consumer function are unresolved** — see the "RESOLVED"
-  section above. This is now the single highest-value open question for this format.
+- ~~`blocks1-4.pak`'s consumer/geometry~~ — **fully resolved**, see "`blocks*.pak` is 120
+  individually-packed 32x16 tiles" above.
 - `.pip` full-screen images do **not** use this same fixed-tile-array layout (unpacked sizes
   like 32066 don't divide evenly by 640 or by any obvious plane-count assumption) — still
   unresolved, see the note in `tools/extract-pak.js`'s history / next session's open items.

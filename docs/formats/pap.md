@@ -43,18 +43,27 @@ Tile size is asymmetric per `Camera_UpdateScroll`'s divide constants: 32px horiz
 
 Tile byte values observed range roughly 1–120 (not 0–255).
 
-## Open questions
+## RESOLVED — tile index → `.pak` mapping, and the 32×16 asymmetric size
 
-- **The 32×16 asymmetric tile size.** Is Y-granularity finer for collision/scroll purposes
-  while rendering still uses 32×32 visual tiles (two map rows per rendered tile row), or are
-  level tiles genuinely 32×16?
-- **Tile index → `.pak` tile mapping.** Not yet confirmed which `.pak` file(s) a given byte
-  value indexes into, or whether indices combine multiple tile banks. Needed before `.pap`
-  files can be rendered as actual level images rather than an index heatmap.
-- Confirm both of the above with a dosbox-x memory dump comparison once available.
+Both open questions below turned out to have the same answer. `blocks*.pak` was found (see
+`docs/formats/pak.md`) to be exactly **120 individually-packed 32×16 tiles** — and every shipped
+`.pap` file's byte values range **exactly 1–120 inclusive, with zero occurrences of 0**
+(confirmed by scanning every cell of `level1a.pap`: min 1, max 120, 0 never appears). That is a
+one-to-one match, not a coincidence: **tile byte value `V` indexes atlas tile `V-1`** (1-based on
+disk) in the world's own `blocksN.pak` (`levelNa`/`levelNb` -> `blocksN.pak`, matched by the
+world digit in the filename).
+
+This also answers the asymmetric-tile-size question: there's **no row-doubling** — level tiles
+are genuinely 32×16, rendered 1:1 against the `blocksN.pak` atlas, one map cell per tile. No
+dosbox-x trace needed; the byte-range match alone was conclusive.
+
+**Still open**: `pcmap.pap` and `sea.pap` have no world digit in their filenames, so which
+`blocksN.pak` (if any single one) they render against is unconfirmed — `tools/viewer.html`
+defaults them to `blocks1` but lets the tileset be picked manually.
 
 ## Verification
 
 `node tools/extract-pap.js build/raw/<file>.pap.raw` dumps the **row-major** grid (the
-confirmed on-disk format) as a tile-index heatmap PNG for visual sanity-checking — not yet a
-true rendered level (see open questions above).
+confirmed on-disk format) as a tile-index heatmap PNG, plus the raw grid as JSON. For an actual
+rendered level (real tiles, not the heatmap), run `node tools/serve.js` and open
+`tools/viewer.html` — see `docs/viewer.md`.

@@ -140,4 +140,32 @@ function decodeDirectPicture(buf, offset, widthWords, heightRows, palette = EGA_
   return rgba;
 }
 
-module.exports = { EGA_PALETTE, decodeMaskedTile, decodeDirectPicture };
+/**
+ * Decode an unmasked, directly-opaque EGA tile: N consecutive color bitplanes (no AND-mask
+ * plane), each `heightRows` rows of `widthBytes` bytes, tightly packed with no row padding.
+ * This is `blocks*.pak`'s tile format (confirmed: 32x16 tiles, 4 planes, 120 tiles/file) --
+ * see docs/formats/pak.md's "blocks*.pak is 120 individually-packed 32x16 tiles" section.
+ *
+ * Returns an RGBA Buffer of width*height*4 bytes (width = widthBytes*8), fully opaque.
+ */
+function decodeDirectTile(buf, offset, widthBytes, heightRows, palette = EGA_PALETTE) {
+  const width = widthBytes * 8;
+  const planeSize = widthBytes * heightRows;
+  const rgba = Buffer.alloc(width * heightRows * 4);
+  for (let row = 0; row < heightRows; row++) {
+    for (let col = 0; col < width; col++) {
+      const byteIdx = row * widthBytes + (col >> 3);
+      const bitMask = 0x80 >> (col & 7);
+      const planeBits = [0, 1, 2, 3].map((p) => (buf[offset + p * planeSize + byteIdx] & bitMask ? 1 : 0));
+      const [r, g, b] = palette[assembleIndex(planeBits)];
+      const pixelOffset = (row * width + col) * 4;
+      rgba[pixelOffset] = r;
+      rgba[pixelOffset + 1] = g;
+      rgba[pixelOffset + 2] = b;
+      rgba[pixelOffset + 3] = 255;
+    }
+  }
+  return rgba;
+}
+
+module.exports = { EGA_PALETTE, decodeMaskedTile, decodeDirectPicture, decodeDirectTile };

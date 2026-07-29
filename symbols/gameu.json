@@ -1,8 +1,8 @@
 {
   "program": "GAMEU.EXE",
   "note": "Manually exported from Ghidra (GHIDRA_MCP_ALLOW_SCRIPTS is off in this environment, so the planned automated export script cannot run yet -- see docs/memory-map.md). Regenerate/extend this file at the end of each RE session by querying search_functions_by_tag for 'verified' and 'guess', plus get_function_documentation per address, and merging the results here.",
-  "totalFunctions": 440,
-  "namedFunctions": 97,
+  "totalFunctions": 441,
+  "namedFunctions": 441,
   "note2": "See docs/engine.md for the full main-loop architecture writeup (this file only indexes; engine.md has the narrative).",
   "functions": [
     {
@@ -858,7 +858,7 @@
         "verified",
         "gfx"
       ],
-      "summary": "Thin wrapper calling Gfx_ResetGraphicsControllerRegs. Called during World*_LoadBanks and Fx_TransitionStep."
+      "summary": "THE blocks*.pak CONSUMER. Sets ES=0xa800, DS=0x3bc3, DI=SI=0, CX=0x78 (120 tiles) and calls Gfx_CopyTileBankPlanes. Called from all four World*_LoadBanks right after loading blocksN.pak, and from Fx_TransitionStep. See docs/formats/pak.md."
     },
     {
       "name": "World_InitDefaultByteTable",
@@ -895,6 +895,3163 @@
         "gfx"
       ],
       "summary": "CGA/Tandy fallback for Gfx_DrawObject's 0x0b case, paired with Gfx_DrawObjectHudCaseCgaA. Not individually decompiled -- assumed parallel structure by analogy with other CGA/Tandy fallback pairs."
+    },
+    {
+      "name": "Snd_TriggerEffect",
+      "address": "1000:1ccf",
+      "tags": [
+        "guess",
+        "sound"
+      ],
+      "summary": "Sound-effect trigger. Gated on DAT_1000_202b. Driver-type byte [8cab]=='T'/'B' writes (AX+1) into the loaded sound-driver bank (segment 33a9); =='A'/'R'/'S' advances a rotating counter and far-calls the driver entrypoint at [2029]. Called throughout Entity_UpdateBehavior's handlers as the common 'play sound' primitive."
+    },
+    {
+      "name": "Snd_TriggerEffectRaw",
+      "address": "1000:1d4c",
+      "tags": [
+        "guess",
+        "sound"
+      ],
+      "summary": "Sibling of Snd_TriggerEffect: writes raw (char)AX with no +1 offset and no rotating-counter path for 'A'/'R'/'S' drivers."
+    },
+    {
+      "name": "Entity_AdvanceAnimationFrame",
+      "address": "1000:3178",
+      "tags": [
+        "guess",
+        "entity"
+      ],
+      "summary": "Per-entity animation-frame advance: increments frame counter at +0x3b until reaching in_AL, then resets and steps an index at +0xa toward a target at +0x12, wrapping to the value at +0x10."
+    },
+    {
+      "name": "Entity_HandleCollisionOrStateDispatch",
+      "address": "1000:3ce8",
+      "tags": [
+        "guess",
+        "entity"
+      ],
+      "summary": "Dispatches on global state byte [8b98] to distinct handlers; default path computes an entity-vs-entity collision-flag word [8c27] from both entities' +0x24 flags and reacts (spawn effect, mutual bounce-state setup, or hitbox-size set + FUN_1000_d596). Called from Entity_UpdateBehavior with the colliding pair."
+    },
+    {
+      "name": "Entity_SelectNextStateByWorldAndKind",
+      "address": "1000:50ae",
+      "tags": [
+        "guess",
+        "entity"
+      ],
+      "summary": "Selects a new per-entity state ID from a per-world x per-kind table; special-cases kind 0x23 to free a linked entity (mark dead, clear link)."
+    },
+    {
+      "name": "Entity_QueueRandomizedSpawn",
+      "address": "1000:53a5",
+      "tags": [
+        "guess",
+        "entity"
+      ],
+      "summary": "Computes a randomized spawn position and pushes a spawn event via Entity_PushSpawnEvent (opcode 0xe/0x1b/0x13/0x14 depending on state), or defers to FUN_1000_5440/FUN_1000_bfca."
+    },
+    {
+      "name": "Entity_DispatchUpdateByKind",
+      "address": "1000:5e22",
+      "tags": [
+        "guess",
+        "entity"
+      ],
+      "summary": "Per-world x per-kind per-frame update dispatcher -- one of Entity_UpdateBehavior's main sub-tables, fanning out to ~20 kind-specific handlers. Sibling: Entity_DispatchHitReactionByKind."
+    },
+    {
+      "name": "Entity_DispatchHitReactionByKind",
+      "address": "1000:677c",
+      "tags": [
+        "guess",
+        "entity"
+      ],
+      "summary": "Sets a hit-reaction timer pair then dispatches per-world x per-kind to a mostly-disjoint handler set -- the 'entity was just hit' reaction dispatch, paired with Entity_DispatchUpdateByKind."
+    },
+    {
+      "name": "Entity_RollRandomBehaviorIndex",
+      "address": "1000:71d5",
+      "tags": [
+        "guess",
+        "entity"
+      ],
+      "summary": "Rolls a pseudo-random index into an unnamed table at 0xeca4 from Rng_NextValue + entity field +0x38; forced to 1 during demo record/playback for determinism."
+    },
+    {
+      "name": "Entity_PushSpawnEvent",
+      "address": "1000:c035",
+      "tags": [
+        "guess",
+        "entity"
+      ],
+      "summary": "Pushes a fixed 8-word event record onto a downward-growing queue at [8bb5] -- matches Level_UpdateEventQueue's opcode/length-tagged buffer noted in docs/engine.md. This is the entity-side producer for that queue."
+    },
+    {
+      "name": "Entity_FindEntityByKind",
+      "address": "1000:c18c",
+      "tags": [
+        "guess",
+        "entity"
+      ],
+      "summary": "REVISED: scans a table of 0x42-byte entity records (~0x9356-0xb918, i.e. entity struct size is 0x42=66 bytes, ~146 max entities) for a record whose +2 field matches in_AX (target kind), returning a pointer to the first match. The entity-by-kind lookup AI think-functions use to find their target (e.g. the player)."
+    },
+    {
+      "name": "Entity_RebuildVisibleList",
+      "address": "1000:c998",
+      "tags": [
+        "guess",
+        "entity",
+        "gfx"
+      ],
+      "summary": "KEY FUNCTION for the blocks*.pak background-tile hypothesis: walks the raw ~140-slot entity array at 0x9090 (same array Entity_FreeSlot manages), copies entries into the working list at 0x91be (same list Entity_UpdateAll walks), applies the camera-scroll delta to X/Y, and culls by screen-relative bounds (X in [-0x3f,0x17f], Y in [-0x3f,0xdf]) via a sign-flip marker. This is the per-frame visible-entity list builder Gfx_DrawObject's caller actually walks -- if background geometry is placed as entity records, this is where it gets culled into the render list."
+    },
+    {
+      "name": "Entity_UpdateCameraTargetFromEntity",
+      "address": "1000:d3ce",
+      "tags": [
+        "guess",
+        "entity",
+        "camera"
+      ],
+      "summary": "Recomputes the global camera-scroll delta ([8bb7]/[8bb9], the same fields Entity_RebuildVisibleList applies) from a given entity's world position vs. the previously stored camera position ([8bbb]/[8bbd]). Likely how the camera locks onto the player entity each frame."
+    },
+    {
+      "name": "Entity_SetHitboxByOrientation",
+      "address": "1000:d40a",
+      "tags": [
+        "guess",
+        "entity"
+      ],
+      "summary": "Selects one of two hitbox-dimension pairs depending on whether an orientation/facing field equals 4."
+    },
+    {
+      "name": "Entity_HandleWorld3SpecialTrigger",
+      "address": "1000:d42c",
+      "tags": [
+        "guess",
+        "entity"
+      ],
+      "summary": "World-3-only scripted trigger: dispatches on [8b98] state and a counter [8bea], eventually pushing two spawn events (opcode 0x52/0x55) and a sound trigger. Likely a specific level-3 scripted sequence or boss trigger -- not fully decoded."
+    },
+    {
+      "name": "EntityOp_SyncCameraTargetThenUnknown",
+      "address": "1000:d584",
+      "tags": [
+        "guess",
+        "entity"
+      ],
+      "summary": "Thin wrapper: Entity_LookupTypeTableEntry then FUN_1000_e067 (not yet decoded). Likely an Entity_UpdateBehavior opcode-handler entry point."
+    },
+    {
+      "name": "EntityOp_RebuildVisibleList",
+      "address": "1000:d592",
+      "tags": [
+        "guess",
+        "entity"
+      ],
+      "summary": "Thin wrapper calling Entity_RebuildVisibleList -- an Entity_UpdateBehavior opcode-handler entry point for rebuilding the visible-entity list mid-behavior-update."
+    },
+    {
+      "name": "Entity_MoveHorizontalByFlags",
+      "address": "1000:d5e2",
+      "tags": [
+        "guess",
+        "entity"
+      ],
+      "summary": "Movement primitive: adjusts entity X by in_AX, gated by collision/facing flags at [SI+0x24]. Flags field matches the one Entity_HandleCollisionOrStateDispatch computes into [8c27]."
+    },
+    {
+      "name": "Entity_MoveVerticalDownByFlags",
+      "address": "1000:d5fd",
+      "tags": [
+        "guess",
+        "entity"
+      ],
+      "summary": "Movement primitive: increments entity Y by in_AX unless blocked-downward flag bit is set. Sibling: Entity_MoveVerticalUpByFlags."
+    },
+    {
+      "name": "Entity_MoveVerticalUpByFlags",
+      "address": "1000:d609",
+      "tags": [
+        "guess",
+        "entity"
+      ],
+      "summary": "Movement primitive: decrements entity Y by in_AX unless blocked-upward flag bit is set. Sibling: Entity_MoveVerticalDownByFlags."
+    },
+    {
+      "name": "Entity_BroadcastEventToVisibleByKindFlag",
+      "address": "1000:df5a",
+      "tags": [
+        "guess",
+        "entity"
+      ],
+      "summary": "For each entry in the visible-entity list (0x91be), looks up a per-kind flag byte and, if nonzero, invokes FUN_1000_dfac -- a broadcast/notify mechanism, e.g. waking nearby entities of a matching kind."
+    },
+    {
+      "name": "Entity_ProcessCollisionState15",
+      "address": "1000:d9e6",
+      "tags": [
+        "guess",
+        "entity"
+      ],
+      "summary": "0x8b98==0x15 handler in Entity_HandleCollisionOrStateDispatch. Manipulates counters at [8b94]/[8b95]/[8b97], triggers Snd_TriggerEffect on transitions. On a completion condition resets several state fields and pushes a spawn event (opcode 0x15) -- plausibly checkpoint/respawn or score-milestone. Not fully decoded."
+    },
+    {
+      "name": "Entity_SeparateAndAnimate",
+      "address": "1000:db67",
+      "tags": [
+        "guess",
+        "entity"
+      ],
+      "summary": "0x8b98==0x01 handler: resolves collision-flags byte, offsets SI's X by +-4 if blocked left/right and state isn't 0x11, then always calls Entity_AdvanceAnimationFrame."
+    },
+    {
+      "name": "Entity_SnapXByOrientation",
+      "address": "1000:d7fa",
+      "tags": [
+        "guess",
+        "entity"
+      ],
+      "summary": "0x8b98==0x21 handler: snaps BX's X position to a fixed value (0x9a or 0x86) depending on its hitbox-size field."
+    },
+    {
+      "name": "Entity_HandleAnimatedBarrierCollision",
+      "address": "1000:d8d8",
+      "tags": [
+        "guess",
+        "entity"
+      ],
+      "summary": "0x8b98==0x43 handler: advances BX's animation watching for end-of-cycle frame sentinels (0x2e/0x2d), then blocks/offsets SI's horizontal movement based on collision-flags bits -- an animated barrier/door that also blocks movement."
+    },
+    {
+      "name": "Entity_HandlePeriodicAmbientSpawn",
+      "address": "1000:d67d",
+      "tags": [
+        "guess",
+        "entity"
+      ],
+      "summary": "0x8b98==0x41 handler: increments a counter to 17 then triggers a sound effect and pushes a spawn event at a fixed position -- a periodic ambient sound + spawn trigger (recurring hazard/spawner)."
+    },
+    {
+      "name": "Entity_SetStateAndScript",
+      "address": "1000:2f9e",
+      "tags": [
+        "verified",
+        "entity"
+      ],
+      "summary": "THE entity state->script-pointer resolver referenced in docs/engine.md: sets state byte (+1) and resolves script pointer (+0xc) from one of two tables indexed by state -- positive AL from 0xcd88 (docs/engine.md's known default-script table), negative AL (as AL+0x80) from 0xd996."
+    },
+    {
+      "name": "Entity_MoveXIfStateAllowed",
+      "address": "1000:d596",
+      "tags": [
+        "guess",
+        "entity"
+      ],
+      "summary": "Movement primitive gated by hitbox/flags being clear AND state being in a specific whitelist (0x1d,0x11,0x35,0x5d,0x5b, or SI+1==0xd, or BX+1==0); adds in_AX to SI's X and animates if allowed."
+    },
+    {
+      "name": "Entity_ScriptOpJump",
+      "address": "1000:2659",
+      "tags": [
+        "verified",
+        "entity"
+      ],
+      "summary": "Entity_RunScript's special opcode -4 handler: sets the entity's script pointer (SI+0xc) directly from DI -- a 'jump to script address' bytecode instruction in the entity scripting VM."
+    },
+    {
+      "name": "Entity_ComputeDirectionAndDistanceToTarget",
+      "address": "1000:721f",
+      "tags": [
+        "guess",
+        "entity"
+      ],
+      "summary": "Core 'sense the target' primitive: finds a target via Entity_FindEntityByKind, computes a 4-bit direction bitmask (above/below/left/right) into [8c29] and tile-distance metrics (|dx|/32->[8c1b], |dy|/16->[8c1d])."
+    },
+    {
+      "name": "Entity_CheckOrientationNoOp",
+      "address": "1000:7319",
+      "tags": [
+        "guess",
+        "entity"
+      ],
+      "summary": "Checks SI's orientation (+0x14==4); decompiled body has no observable effect -- likely a register-only side effect lost to decompilation."
+    },
+    {
+      "name": "Entity_MoveXOrResetChargeCounter",
+      "address": "1000:6027",
+      "tags": [
+        "guess",
+        "entity"
+      ],
+      "summary": "If collision flags clear, resets a charge/wind-up counter (+0x2a); otherwise moves X by in_AX and animates if idle."
+    },
+    {
+      "name": "Entity_ScanNearbyTilesForFlag",
+      "address": "1000:72f9",
+      "tags": [
+        "guess",
+        "entity"
+      ],
+      "summary": "Scans up to CX bytes from DI through the swappable table at [0xef23] looking for a match to DL -- a tile/collision-flag search helper for patrol/chase AI."
+    },
+    {
+      "name": "Entity_ThinkPatrolAI",
+      "address": "1000:5f14",
+      "tags": [
+        "guess",
+        "entity"
+      ],
+      "summary": "Shared generic per-frame AI think, called by many idle-state kind handlers. Reads 3 tile-lookahead flags via [0xef23] and branches to Entity_SelectAiScriptTableBlocked/Clear/Default."
+    },
+    {
+      "name": "Entity_SelectAiScriptTableBlocked",
+      "address": "1000:62fe",
+      "tags": [
+        "guess",
+        "entity"
+      ],
+      "summary": "Sets [8c77] to table-at-0xec7c (offset by animation-set +0x39) then invokes Entity_RunMovementAiScript -- Entity_ThinkPatrolAI's 'blocked' case."
+    },
+    {
+      "name": "Entity_SelectAiScriptTableClear",
+      "address": "1000:62ed",
+      "tags": [
+        "guess",
+        "entity"
+      ],
+      "summary": "Sets [8c77] to table-at-0xec68 then invokes Entity_RunMovementAiScript -- Entity_ThinkPatrolAI's 'clear path' case."
+    },
+    {
+      "name": "Entity_SelectAiScriptTableDefault",
+      "address": "1000:630f",
+      "tags": [
+        "guess",
+        "entity"
+      ],
+      "summary": "Sets [8c77] to table-at-0xec90 then invokes Entity_RunMovementAiScript -- Entity_ThinkPatrolAI's default/mixed case."
+    },
+    {
+      "name": "Entity_RunMovementAiScript",
+      "address": "1000:6320",
+      "tags": [
+        "guess",
+        "entity"
+      ],
+      "summary": "A second AI bytecode interpreter (distinct from Entity_RunScript): consumes opcode chars from [8c77] to drive chase/patrol/flee/attack decisions. ~150 decompiled lines, not decoded opcode-by-opcode -- future dedicated session target, ideally with dosbox-x verification."
+    },
+    {
+      "name": "Entity_ThinkGateSwitchAI",
+      "address": "1000:7014",
+      "tags": [
+        "guess",
+        "entity"
+      ],
+      "summary": "Default per-frame think for gate/switch entities (kinds 0x12/0x54/0x5d): checks reaching target X ([8c25]), falls to a 'settled' state on arrival. Shared fallback for the gate think functions."
+    },
+    {
+      "name": "Entity_ThinkSwingingGate",
+      "address": "1000:6ec5",
+      "tags": [
+        "guess",
+        "entity"
+      ],
+      "summary": "Kind 0x12 (world1): sets target X=0x86, defers to Entity_ThinkGateSwitchAI, chance-transitions to state 0x36."
+    },
+    {
+      "name": "Entity_ThinkPeriodicIdleFidgetA",
+      "address": "1000:5f66",
+      "tags": [
+        "guess",
+        "entity"
+      ],
+      "summary": "Frame counter (+0x2e) reaching 10 rolls a chance to switch to state 0x89 (idle fidget); else defers to Entity_ThinkPatrolAI."
+    },
+    {
+      "name": "Entity_ThinkPatrolDefaultA",
+      "address": "1000:5f9f",
+      "tags": [
+        "guess",
+        "entity"
+      ],
+      "summary": "Pure delegate to Entity_ThinkPatrolAI when idle."
+    },
+    {
+      "name": "Entity_ThinkPatrolDefaultB",
+      "address": "1000:5f56",
+      "tags": [
+        "guess",
+        "entity"
+      ],
+      "summary": "Pure delegate to Entity_ThinkPatrolAI when idle. Shared by kind 0x13 (world1) and 0x4a (world2)."
+    },
+    {
+      "name": "Entity_ThinkChargingHazard",
+      "address": "1000:5fa9",
+      "tags": [
+        "guess",
+        "entity"
+      ],
+      "summary": "Kind 0x20 (world1): builds/decays a charge counter based on tile lookahead, moves via Entity_MoveXOrResetChargeCounter; self-destructs under specific world-6 terrain conditions."
+    },
+    {
+      "name": "Entity_ThinkPatrolDefaultC",
+      "address": "1000:6065",
+      "tags": [
+        "guess",
+        "entity"
+      ],
+      "summary": "Pure delegate to Entity_ThinkPatrolAI when idle. Shared by kind 0x2c across all four worlds."
+    },
+    {
+      "name": "Entity_ThinkSleeperWakeUp",
+      "address": "1000:6f00",
+      "tags": [
+        "guess",
+        "entity"
+      ],
+      "summary": "Kind 0x48 (world2): wakes from sleep state to 0x46 (with sound) when target is in range, then to attack state 0x65."
+    },
+    {
+      "name": "Entity_ThinkSleeperWakeUpQuiet",
+      "address": "1000:6f92",
+      "tags": [
+        "guess",
+        "entity"
+      ],
+      "summary": "Kind 0x49 (world2): sibling of Entity_ThinkSleeperWakeUp without the sound effect."
+    },
+    {
+      "name": "Entity_ThinkEdgeDetectReset",
+      "address": "1000:6080",
+      "tags": [
+        "guess",
+        "entity"
+      ],
+      "summary": "Kind 0x4b (world2): scans 3 nearby tile flags while in state 'g'; resets to state 0 on match, else toggles hitbox flags."
+    },
+    {
+      "name": "Entity_ThinkPeriodicIdleFidgetB",
+      "address": "1000:610d",
+      "tags": [
+        "guess",
+        "entity"
+      ],
+      "summary": "Kind 0x4c (world2): sibling of Entity_ThinkPeriodicIdleFidgetA, transitions to state 0x52 instead of 0x89."
+    },
+    {
+      "name": "Entity_ThinkPatrolDefaultD",
+      "address": "1000:6076",
+      "tags": [
+        "guess",
+        "entity"
+      ],
+      "summary": "Pure delegate to Entity_ThinkPatrolAI when idle. Kind 0x42 (world2)."
+    },
+    {
+      "name": "Entity_ThinkVerticalPathfinder",
+      "address": "1000:6190",
+      "tags": [
+        "guess",
+        "entity"
+      ],
+      "summary": "Kind 0x4f (world3): checks 4 tiles spaced 128 bytes apart (a vertical column scan) to gate randomized attack/movement state transitions -- plausibly a climbing enemy."
+    },
+    {
+      "name": "Entity_ThinkSlidingGate",
+      "address": "1000:6ffc",
+      "tags": [
+        "guess",
+        "entity"
+      ],
+      "summary": "Kind 0x54 (world3): target X=0x2b then Entity_ThinkGateSwitchAI."
+    },
+    {
+      "name": "Entity_ThinkPatrolWithCustomTileTableA",
+      "address": "1000:6147",
+      "tags": [
+        "guess",
+        "entity"
+      ],
+      "summary": "Kind 0x50 (world3): temporarily swaps the [0xef23] tile-flag table pointer to 0xf27b around a call to Entity_ThinkPatrolAI, then restores it. KEY FINDING: [0xef23] is a swappable pointer, not a fixed table address -- lets per-kind custom tile-flag tables reuse the shared patrol AI."
+    },
+    {
+      "name": "Entity_ThinkPatrolWithCustomTileTableB",
+      "address": "1000:6164",
+      "tags": [
+        "guess",
+        "entity"
+      ],
+      "summary": "Kind 0x51 (world3): sibling of Entity_ThinkPatrolWithCustomTileTableA with an extra state branch -- likely a flying/hovering variant."
+    },
+    {
+      "name": "Entity_ThinkPatrolDefaultE",
+      "address": "1000:62a9",
+      "tags": [
+        "guess",
+        "entity"
+      ],
+      "summary": "Pure delegate to Entity_ThinkPatrolAI when idle. Kind 0x57 (world4)."
+    },
+    {
+      "name": "Entity_ThinkPatrolDefaultF",
+      "address": "1000:62ba",
+      "tags": [
+        "guess",
+        "entity"
+      ],
+      "summary": "Pure delegate to Entity_ThinkPatrolAI when idle. Kind 0x58 (world4)."
+    },
+    {
+      "name": "Entity_ThinkPatrolDefaultG",
+      "address": "1000:62dc",
+      "tags": [
+        "guess",
+        "entity"
+      ],
+      "summary": "Pure delegate to Entity_ThinkPatrolAI when idle. Kind 0x5a (world4)."
+    },
+    {
+      "name": "Entity_ThinkPatrolDefaultH",
+      "address": "1000:62cb",
+      "tags": [
+        "guess",
+        "entity"
+      ],
+      "summary": "Pure delegate to Entity_ThinkPatrolAI when idle. Kind 0x59 (world4)."
+    },
+    {
+      "name": "Entity_ThinkRotatingGate",
+      "address": "1000:7008",
+      "tags": [
+        "guess",
+        "entity"
+      ],
+      "summary": "Kind 0x5d (world4): target X=0x2a then Entity_ThinkGateSwitchAI."
+    },
+    {
+      "name": "Entity_HitReactToState15",
+      "address": "1000:6c4c",
+      "tags": [
+        "guess",
+        "entity"
+      ],
+      "summary": "Entity_DispatchHitReactionByKind leaf (kind 0x2c, universal): unconditional state=0x15, script=0xc625."
+    },
+    {
+      "name": "Entity_HitReactToState83",
+      "address": "1000:6c2e",
+      "tags": [
+        "guess",
+        "entity"
+      ],
+      "summary": "Entity_DispatchHitReactionByKind leaf (kind 0x13, world1): unconditional state=0x83, script=0xced5."
+    },
+    {
+      "name": "Entity_HitReactToState99",
+      "address": "1000:6c42",
+      "tags": [
+        "guess",
+        "entity"
+      ],
+      "summary": "Entity_DispatchHitReactionByKind leaf (kind 0x23, world1): unconditional state=0x99, script=0xd08d."
+    },
+    {
+      "name": "Entity_HitReactToState97",
+      "address": "1000:6c38",
+      "tags": [
+        "guess",
+        "entity"
+      ],
+      "summary": "Entity_DispatchHitReactionByKind leaf (kind 0x20, world1): unconditional state=0x97, script=0xd062."
+    },
+    {
+      "name": "Entity_HitReactToStateCb",
+      "address": "1000:6d92",
+      "tags": [
+        "guess",
+        "entity"
+      ],
+      "summary": "Entity_DispatchHitReactionByKind leaf (kind 0x4b, world2): unconditional state=0xcb, script=0xd4e8."
+    },
+    {
+      "name": "Entity_HitReactToStateCe",
+      "address": "1000:6d7e",
+      "tags": [
+        "guess",
+        "entity"
+      ],
+      "summary": "Entity_DispatchHitReactionByKind leaf (kind 0x4a, world2): unconditional state=0xce, script=0xd52c."
+    },
+    {
+      "name": "Entity_HitReactToStateD0",
+      "address": "1000:6d88",
+      "tags": [
+        "guess",
+        "entity"
+      ],
+      "summary": "Entity_DispatchHitReactionByKind leaf (kind 0x4c, world2): unconditional state=0xd0, script=0xd54c."
+    },
+    {
+      "name": "Entity_HitReactToStateDa",
+      "address": "1000:6d9d",
+      "tags": [
+        "guess",
+        "entity"
+      ],
+      "summary": "Entity_DispatchHitReactionByKind leaf (kind 0x50, world3): unconditional state=0xda, script=0xd633."
+    },
+    {
+      "name": "Entity_HitReactToStateE0",
+      "address": "1000:6da7",
+      "tags": [
+        "guess",
+        "entity"
+      ],
+      "summary": "Entity_DispatchHitReactionByKind leaf (kind 0x51, world3): unconditional state=0xe0, script=0xd78b."
+    },
+    {
+      "name": "Entity_HitReactToStateE9OrAlt",
+      "address": "1000:6df7",
+      "tags": [
+        "guess",
+        "entity"
+      ],
+      "summary": "Entity_DispatchHitReactionByKind leaf (kind 0x57, world4): if state==0x43('C'), instead state=0x7d/script=0xcd4b; else state=0xe9/script=0xd817."
+    },
+    {
+      "name": "Entity_HitReactToStateEc",
+      "address": "1000:6e7d",
+      "tags": [
+        "guess",
+        "entity"
+      ],
+      "summary": "Entity_DispatchHitReactionByKind leaf (kind 0x58, world4): unconditional state=0xec, script=0xd84a."
+    },
+    {
+      "name": "Entity_HitReactToStateE6",
+      "address": "1000:6ea2",
+      "tags": [
+        "guess",
+        "entity"
+      ],
+      "summary": "Entity_DispatchHitReactionByKind leaf (kind 0x59, world4): unconditional state=0xe6, script=0xd7f9."
+    },
+    {
+      "name": "Entity_HitReactToStateFa",
+      "address": "1000:6e97",
+      "tags": [
+        "guess",
+        "entity"
+      ],
+      "summary": "Entity_DispatchHitReactionByKind leaf (kind 0x5a, world4): unconditional state=0xfa, script=0xd93b."
+    },
+    {
+      "name": "Game_WarpToLevelStageAndRunLoop",
+      "address": "1000:03ff",
+      "tags": [
+        "guess",
+        "engine",
+        "spine"
+      ],
+      "summary": "MAJOR FINDING: not a sound-driver loader (stale plan-doc note). Called from Debug_HandleCheatInput and Demo_PlaybackInput. Dispatches on load-stage [8c29] (1-4) and sub-stage [8c27] to load world/bank/map data; stage4/substage10 is the game's apparent ending/victory sequence (poses player entity, pushes 4 spawn events, plays sound). Falls into a SECOND physical copy of the 14-call main loop that never returns -- a 'warp to world/stage N and resume gameplay' function."
+    },
+    {
+      "name": "Game_StartAttractDemoAndRunLoop",
+      "address": "1000:0089",
+      "tags": [
+        "guess",
+        "engine",
+        "spine"
+      ],
+      "summary": "Boots world 0 via World_Dispatch, resets the demo/attract input buffer to a fixed segment, zeroes score, runs common cleanup, then falls into a THIRD physical copy of the main loop. Likely the attract-mode/demo-boot entry point."
+    },
+    {
+      "name": "Video_CopyFramebufferPageDispatch",
+      "address": "1000:1054",
+      "tags": [
+        "guess",
+        "gfx"
+      ],
+      "summary": "Driver-dispatch wrapper: alt-build variants vs. main VGA path (FUN_1000_8569)."
+    },
+    {
+      "name": "Level_PostLoadHookStub",
+      "address": "1000:124b",
+      "tags": [
+        "verified",
+        "engine"
+      ],
+      "summary": "Empty stub, immediately returns. Called conditionally post-map-load; a no-op hook."
+    },
+    {
+      "name": "Level_RemapTileIndexForWorld3",
+      "address": "1000:126e",
+      "tags": [
+        "verified",
+        "engine"
+      ],
+      "summary": "World-3-only fixup: scans the level-map buffer (0x4200, 128x128=16384 bytes) replacing tile-index 0x51 with 0xaf."
+    },
+    {
+      "name": "Entity_RemoveAllOfKind",
+      "address": "1000:32f2",
+      "tags": [
+        "guess",
+        "entity"
+      ],
+      "summary": "Despawns every entity in the raw array (0x9090) whose kind matches in_AX. Called 6x in the ending-sequence special case."
+    },
+    {
+      "name": "Entity_ClearAllExceptOne",
+      "address": "1000:3317",
+      "tags": [
+        "guess",
+        "entity"
+      ],
+      "summary": "Clears all 150 entity slots except the one referenced by unaff_SI (typically the player) -- level-transition cleanup."
+    },
+    {
+      "name": "Gfx_CopyPlanarBlockDispatch",
+      "address": "1000:bd46",
+      "tags": [
+        "guess",
+        "gfx"
+      ],
+      "summary": "Driver-dispatch wrapper; main VGA path does a raw planar copy via Sequencer Map Mask cycling."
+    },
+    {
+      "name": "Entity_PushPositionEvent",
+      "address": "1000:bf1e",
+      "tags": [
+        "guess",
+        "entity"
+      ],
+      "summary": "Shorter sibling of Entity_PushSpawnEvent: pushes a 3-field record with tag 0x300 (vs 0x600) onto the [8bb5] queue -- confirms variable-length, differently-tagged records in that queue."
+    },
+    {
+      "name": "Entity_ClearAllState",
+      "address": "1000:0f8e",
+      "tags": [
+        "verified",
+        "entity"
+      ],
+      "summary": "Zeroes the entire entity subsystem: 0x9398-0xb918 (entity struct storage, confirms Entity_FindEntityByKind's inferred bounds), 0x9090 (pointer array), 0x91be (visible-list buffer), 0x926a (a third 300-byte buffer, purpose TBD). Called at every level-boot path."
+    },
+    {
+      "name": "Level_InitStateForSublevel",
+      "address": "1000:0d7b",
+      "tags": [
+        "guess",
+        "engine"
+      ],
+      "summary": "Per-sublevel state initializer: reads a per-sublevel metadata table seeding camera-position globals [8bbb]/[8bbd], resets ~40 gameplay globals, and sets up the level-number HUD glyph display."
+    },
+    {
+      "name": "Level_LookupSublevelPosition",
+      "address": "1000:c1c0",
+      "tags": [
+        "guess",
+        "engine"
+      ],
+      "summary": "Looks up the same per-sublevel metadata table as Level_InitStateForSublevel (indexed by in_AX) for a target/marker position -- used as a Level_RunScriptedEventStream opcode handler."
+    },
+    {
+      "name": "Level_RunScriptedEventStream",
+      "address": "1000:c1e6",
+      "tags": [
+        "guess",
+        "engine"
+      ],
+      "summary": "A static level-scripted-event interpreter (distinct from the runtime [8bb5] queue): sentinels 0xaaaa/0xbbbb/0xcccc/0xdddd trigger cutscene resets, position lookups, timed waits, and attract-mode transitions respectively."
+    },
+    {
+      "name": "Gfx_MirrorBufferRegionA",
+      "address": "1000:b3f2",
+      "tags": [
+        "guess",
+        "gfx"
+      ],
+      "summary": "Calls Gfx_MirrorRowThroughLut 60 times across 640-byte rows -- mirrors one screen/buffer region. Sibling: Gfx_MirrorBufferRegionB (80 rows)."
+    },
+    {
+      "name": "Gfx_MirrorBufferRegionB",
+      "address": "1000:b3c4",
+      "tags": [
+        "guess",
+        "gfx"
+      ],
+      "summary": "Sibling of Gfx_MirrorBufferRegionA, 80 rows instead of 60."
+    },
+    {
+      "name": "Gfx_MirrorRowThroughLut",
+      "address": "1000:b449",
+      "tags": [
+        "guess",
+        "gfx"
+      ],
+      "summary": "Processes one 640-byte row: remaps each byte through a LUT at 0x8eee and reverses byte order within 4-byte groups -- a horizontal mirror/flip blit."
+    },
+    {
+      "name": "Entity_SpawnFromQueuedEvent",
+      "address": "1000:c2f3",
+      "tags": [
+        "guess",
+        "entity"
+      ],
+      "summary": "MAJOR FINDING: the entity-spawn factory, resolves docs' open 'FUN_1000_c2f3 event-queue callback' item. Dequeues an opcode+payload from the [8bb5] queue, allocates a free entity slot, and initializes it per-opcode (0x11/0x25 linked child, 0x1f/0x44/0x53 raw setup from tables 0xcd9c/0xcd88/0xcdfe, 0x2b fixed charge entity, 0x2f re-splice, 0x5e CONFIRMED firework/particle spawn via RNG-picked animation range). Inserts into the entity list per a priority selector from [8c77]."
+    },
+    {
+      "name": "Level_InitStateForSublevelWithDistanceCarry",
+      "address": "1000:0d19",
+      "tags": [
+        "guess",
+        "engine"
+      ],
+      "summary": "Sibling of Level_InitStateForSublevel: additionally carries over/resets distance-tracking fields before the shared per-sublevel init body. Called from Game_StartAttractDemoAndRunLoop."
+    },
+    {
+      "name": "Level_InitStateForSublevelBare",
+      "address": "1000:0d53",
+      "tags": [
+        "guess",
+        "engine"
+      ],
+      "summary": "Sibling of Level_InitStateForSublevel missing its leading score/distance block. Called from Game_WarpToLevelStageAndRunLoop."
+    },
+    {
+      "name": "Level_InitStateForWorld1Sublevel1",
+      "address": "1000:0cf6",
+      "tags": [
+        "guess",
+        "engine",
+        "spine"
+      ],
+      "summary": "Hardcodes world1/sublevel1, sets a level-name display constant (0x3141, likely '1A'), and initializes the spawn-event-queue base pointer (0x9396) before the shared per-sublevel init body. Likely the true 'New Game' cold-boot initializer."
+    },
+    {
+      "name": "Entity_SpawnMultiPartBoss",
+      "address": "1000:0c6e",
+      "tags": [
+        "guess",
+        "entity"
+      ],
+      "summary": "Triggers a sound effect and pushes 8 spawn events (kinds 0x48-0x4f) at one position -- an 8-piece simultaneous spawn, consistent with a segmented/chain boss."
+    },
+    {
+      "name": "Entity_SpawnGateStub",
+      "address": "1000:c16a",
+      "tags": [
+        "verified",
+        "entity"
+      ],
+      "summary": "Trivial passthrough (returns AX unchanged) -- a no-op gate stub called first in Entity_SpawnFromQueuedEvent."
+    },
+    {
+      "name": "Entity_FindFreeSlot",
+      "address": "1000:c176",
+      "tags": [
+        "guess",
+        "entity"
+      ],
+      "summary": "Scans the entity struct storage block (0x9356-0xb918) for the first zero-type record -- the entity allocator."
+    },
+    {
+      "name": "Entity_FindArraySlotForEntity",
+      "address": "1000:c15f",
+      "tags": [
+        "guess",
+        "entity"
+      ],
+      "summary": "Scans the raw entity-pointer array (0x9090) for the slot matching a given entity pointer."
+    },
+    {
+      "name": "Entity_ResetExtendedFields",
+      "address": "1000:241f",
+      "tags": [
+        "verified",
+        "entity"
+      ],
+      "summary": "Zeroes an entity's extended field block (+0x24 through +0x3c) -- strong confirmation of the entity field layout: flags(+0x24), charge counter(+0x2a), linked-child(+0x2c), animation-set-progress(+0x2e), direction-vector(+0x30/+0x32/+0x34), charge threshold(+0x36-0x38), animation-set selector(+0x39), frame counter(+0x3a/+0x3b), dead-marker(+0x40)."
+    },
+    {
+      "name": "Entity_SetupDirectionVector",
+      "address": "1000:30b3",
+      "tags": [
+        "guess",
+        "entity"
+      ],
+      "summary": "Computes a Bresenham-like direction vector toward a fixed-point target, storing per-axis sign/magnitude and a speed pair -- likely homing-projectile setup for Entity_SpawnFromQueuedEvent's opcode 0x1f."
+    },
+    {
+      "name": "Debug_RestoreStateAfterCheatMenu",
+      "address": "1000:19e9",
+      "tags": [
+        "guess",
+        "engine"
+      ],
+      "summary": "Interleaves Sys_RestoreState with INT 10h/21h calls, a vsync wait, and conditional cleanup -- restores video/DOS state after leaving the debug cheat console. Called from Debug_HandleCheatInput."
+    },
+    {
+      "name": "Gfx_RenderVisibleEntities",
+      "address": "1000:73a5",
+      "tags": [
+        "verified",
+        "gfx",
+        "spine"
+      ],
+      "summary": "RESOLVES docs' open 'name FUN_1000_73a5' item. Main-loop step #3: walks Entity_RebuildVisibleList's culled list (0x91be), applies a render-mode filter keyed on [8ba1], and calls Gfx_DrawObject per surviving entity. This IS the render pass."
+    },
+    {
+      "name": "Gfx_CopyFramebufferPage",
+      "address": "1000:8569",
+      "tags": [
+        "guess",
+        "gfx"
+      ],
+      "summary": "Resets GC regs then copies 8800 bytes between two video-segment pointers. Shared main-VGA-path primitive for both framebuffer-page-copy dispatchers."
+    },
+    {
+      "name": "Video_CopyFramebufferPageDispatchAlt",
+      "address": "1000:1087",
+      "tags": [
+        "guess",
+        "gfx"
+      ],
+      "summary": "Sibling of Video_CopyFramebufferPageDispatch with different alt-build targets (FUN_1000_b352/b332), same main-VGA-path primitive."
+    },
+    {
+      "name": "Gfx_ComputeFramebufferOffsetFromPosition",
+      "address": "1000:732a",
+      "tags": [
+        "guess",
+        "gfx"
+      ],
+      "summary": "Coordinate-to-offset helper: divides X by 16, returns Y*44 (matching the known video-buffer row stride)."
+    },
+    {
+      "name": "Gfx_DrawObjectNoOpShape",
+      "address": "1000:8439",
+      "tags": [
+        "verified",
+        "gfx"
+      ],
+      "summary": "Empty stub -- one of Gfx_DrawObject's shape-type handlers, a no-op for this shape class."
+    },
+    {
+      "name": "Gfx_ResetAndClearVideoPage",
+      "address": "1000:8667",
+      "tags": [
+        "guess",
+        "gfx"
+      ],
+      "summary": "Main VGA path resets GC registers and zeroes 8800 bytes at ES:0 -- clears a video page. One of Gfx_DrawObject's shape-type handlers."
+    },
+    {
+      "name": "Gfx_BlitScaledSpriteMasked",
+      "address": "1000:95c5",
+      "tags": [
+        "guess",
+        "gfx"
+      ],
+      "summary": "A scaled/stretched sprite-blit loop with fixed-point row accumulators and X-position-bucketed dispatch. One of Gfx_DrawObject's shape-type handlers. Sibling: Gfx_BlitScaledSpriteMaskedMirrored."
+    },
+    {
+      "name": "Gfx_BlitScaledSpriteMaskedMirrored",
+      "address": "1000:976f",
+      "tags": [
+        "guess",
+        "gfx"
+      ],
+      "summary": "Horizontally-mirrored sibling of Gfx_BlitScaledSpriteMasked."
+    },
+    {
+      "name": "Gfx_BlitScaledGlyphString",
+      "address": "1000:9b6d",
+      "tags": [
+        "guess",
+        "gfx"
+      ],
+      "summary": "Walks a glyph string computing scaled per-character framebuffer offsets -- scaled HUD/text rendering, one of Gfx_DrawObject's shape-type handlers. Sibling: Gfx_BlitScaledGlyphStringVariant."
+    },
+    {
+      "name": "Gfx_BlitScaledGlyphStringVariant",
+      "address": "1000:9d39",
+      "tags": [
+        "guess",
+        "gfx"
+      ],
+      "summary": "Void-returning sibling of Gfx_BlitScaledGlyphString."
+    },
+    {
+      "name": "Gfx_BlitScaledSpriteMaskedClip",
+      "address": "1000:9f02",
+      "tags": [
+        "guess",
+        "gfx"
+      ],
+      "summary": "Scaled-sprite-blit variant with explicit left/right clipping. Sibling: Gfx_BlitScaledSpriteMaskedClipMirrored."
+    },
+    {
+      "name": "Gfx_BlitScaledSpriteMaskedClipMirrored",
+      "address": "1000:a0fc",
+      "tags": [
+        "guess",
+        "gfx"
+      ],
+      "summary": "Mirrored sibling of Gfx_BlitScaledSpriteMaskedClip."
+    },
+    {
+      "name": "Gfx_SelectBankForKind3Shape",
+      "address": "1000:b42e",
+      "tags": [
+        "guess",
+        "gfx"
+      ],
+      "summary": "Sets the load-bank segment global to 0x4fd3 for kind-3 shapes with orientation!=8 -- selects the correct sprite bank before blitting."
+    },
+    {
+      "name": "Gfx_AndOrRowScaledAlign1to3",
+      "address": "1000:8ca9",
+      "tags": [
+        "guess",
+        "gfx"
+      ],
+      "summary": "Scaled-sprite AND/OR row-blit, sub-byte alignment cases 1/3. Called from Gfx_BlitScaledSpriteMasked."
+    },
+    {
+      "name": "Gfx_AndOrRowScaledAligned",
+      "address": "1000:8c10",
+      "tags": [
+        "guess",
+        "gfx"
+      ],
+      "summary": "Byte-aligned case of the scaled AND/OR row-blit family."
+    },
+    {
+      "name": "Gfx_AndOrRowScaledAlignVariant",
+      "address": "1000:8c37",
+      "tags": [
+        "guess",
+        "gfx"
+      ],
+      "summary": "Sibling of Gfx_AndOrRowScaledAlign1to3 with byte-vs-word mixing across alignment cases."
+    },
+    {
+      "name": "Gfx_AndOrRowScaledMirroredAlign",
+      "address": "1000:8e6c",
+      "tags": [
+        "guess",
+        "gfx"
+      ],
+      "summary": "Mirrored sibling of Gfx_AndOrRowScaledAlign1to3, using a bit-reversal LUT at 0xa2e3 (second such table alongside Gfx_MirrorRowThroughLut's 0x8eee)."
+    },
+    {
+      "name": "Gfx_AndOrRowScaledMirrored",
+      "address": "1000:8e0a",
+      "tags": [
+        "guess",
+        "gfx"
+      ],
+      "summary": "Byte-aligned, 4-word-unrolled mirrored variant using the 0xa2e3 LUT."
+    },
+    {
+      "name": "Gfx_AndOrRowScaledMirroredAlignVariant",
+      "address": "1000:8e81",
+      "tags": [
+        "guess",
+        "gfx"
+      ],
+      "summary": "Sibling of Gfx_AndOrRowScaledMirroredAlign with a different loop structure."
+    },
+    {
+      "name": "Gfx_AndOrRowScaledWide",
+      "address": "1000:898e",
+      "tags": [
+        "guess",
+        "gfx"
+      ],
+      "summary": "8-word-unrolled byte-aligned AND/OR row-blit. Called from Gfx_BlitScaledGlyphString and clip fallbacks."
+    },
+    {
+      "name": "Gfx_AndOrRowScaledMirroredWide",
+      "address": "1000:8d06",
+      "tags": [
+        "guess",
+        "gfx"
+      ],
+      "summary": "Mirrored 8-word-unrolled sibling of Gfx_AndOrRowScaledWide."
+    },
+    {
+      "name": "Gfx_AndOrRowScaledClipAlign",
+      "address": "1000:8b22",
+      "tags": [
+        "guess",
+        "gfx"
+      ],
+      "summary": "Clipped scaled AND/OR row-blit, 16-byte-stride, 7 alignment cases. Called from Gfx_BlitScaledSpriteMaskedClip."
+    },
+    {
+      "name": "Gfx_AndOrRowScaledClipAlignVariant",
+      "address": "1000:89cb",
+      "tags": [
+        "guess",
+        "gfx"
+      ],
+      "summary": "8-byte-stride sibling of Gfx_AndOrRowScaledClipAlign."
+    },
+    {
+      "name": "Gfx_AndOrRowScaledClipMirroredAlign",
+      "address": "1000:8dbb",
+      "tags": [
+        "guess",
+        "gfx"
+      ],
+      "summary": "Mirrored (0xa2e3 LUT) clipped variant, 16-byte-stride. Called from Gfx_BlitScaledSpriteMaskedClipMirrored."
+    },
+    {
+      "name": "Gfx_AndOrRowScaledClipMirroredAlignVariant",
+      "address": "1000:8dd0",
+      "tags": [
+        "guess",
+        "gfx"
+      ],
+      "summary": "Sibling of Gfx_AndOrRowScaledClipMirroredAlign with a different loop structure."
+    },
+    {
+      "name": "Gfx_AndOrRowScaledAlign2",
+      "address": "1000:8c64",
+      "tags": [
+        "guess",
+        "gfx"
+      ],
+      "summary": "Simplest unshifted 2-word AND/OR row-blit, fallthrough target of Gfx_AndOrRowScaledAlign1to3's case 2."
+    },
+    {
+      "name": "Gfx_ApplyPixelPanningOffset",
+      "address": "1000:a0ea",
+      "tags": [
+        "guess",
+        "gfx"
+      ],
+      "summary": "Subtracts the sub-tile pixel-panning remainder ([8b69]&0xf) from destination X ([8c23]). Called at the start of every scaled-sprite-blit function."
+    },
+    {
+      "name": "Entity_PushSimpleEvent",
+      "address": "1000:c0ae",
+      "tags": [
+        "guess",
+        "entity"
+      ],
+      "summary": "Shortest spawn-event push sibling: 2-word record + tag 0x300 onto the [8bb5] queue."
+    },
+    {
+      "name": "Fx_NoOpStub",
+      "address": "1000:1027",
+      "tags": [
+        "verified",
+        "gfx"
+      ],
+      "summary": "Empty stub. Adjacent to Fx_UpdateTransition; likely an unused/reserved transition-effect slot."
+    },
+    {
+      "name": "Rng_NoOpStub",
+      "address": "1000:11fb",
+      "tags": [
+        "verified",
+        "engine"
+      ],
+      "summary": "Empty stub. Adjacent to Rng_NextValue; likely an unused/reserved RNG variant slot."
+    },
+    {
+      "name": "Sys_CopyByteBlock",
+      "address": "1000:1230",
+      "tags": [
+        "guess",
+        "engine"
+      ],
+      "summary": "Generic memcpy(DI,SI,CX) byte-copy loop."
+    },
+    {
+      "name": "Video_ExpandPaletteFadeTable",
+      "address": "1000:12c7",
+      "tags": [
+        "guess",
+        "gfx"
+      ],
+      "summary": "One-time precompute pass over the 24-bank palette fade table at 0xda96: expands packed 3-bit RGB into a wider per-nibble form via a scale table, same concept as Video_ScaleColorComponent applied in bulk."
+    },
+    {
+      "name": "Sys_FillWordBlock",
+      "address": "1000:1462",
+      "tags": [
+        "guess",
+        "engine"
+      ],
+      "summary": "Fills 32KB (0x4000 words) at ES:0 with a fixed value -- generic word-fill utility."
+    },
+    {
+      "name": "Video_ProgramCrtcTimingA",
+      "address": "1000:14e6",
+      "tags": [
+        "guess",
+        "gfx"
+      ],
+      "summary": "Custom CRTC timing setup: waits for vertical retrace, programs Misc Output/Sequencer, writes a CRTC register sequence -- likely sets up the 352px scrolling video mode. Sibling: Video_ProgramCrtcTimingB."
+    },
+    {
+      "name": "Video_ProgramCrtcTimingB",
+      "address": "1000:14f9",
+      "tags": [
+        "guess",
+        "gfx"
+      ],
+      "summary": "Sibling of Video_ProgramCrtcTimingA with a different Misc Output value (0x22 vs 7)."
+    },
+    {
+      "name": "Input_CalibrateJoystick",
+      "address": "1000:1824",
+      "tags": [
+        "guess",
+        "input"
+      ],
+      "summary": "Joystick axis-center calibration using Input_MeasureJoystickTiming and repeated Input_PollJoystickPort polling."
+    },
+    {
+      "name": "Input_MeasureJoystickTiming",
+      "address": "1000:1859",
+      "tags": [
+        "guess",
+        "input"
+      ],
+      "summary": "Measures a joystick-port timing loop (parallels Sys_DetectCpuSpeed's vsync-poll calibration)."
+    },
+    {
+      "name": "Input_ReadCpuSpeedCalibrationByte",
+      "address": "1000:1882",
+      "tags": [
+        "guess",
+        "input"
+      ],
+      "summary": "NOTABLE: calls directly into the 1ffb alt-build segment (FUN_1ffb_0b57/0b68) unconditionally -- segment 1ffb hosts some shared utility routines, not purely alt-build-specific code."
+    },
+    {
+      "name": "Sys_InstallInterruptHandlers",
+      "address": "1000:192e",
+      "tags": [
+        "guess",
+        "engine"
+      ],
+      "summary": "One-time init: saves and replaces two interrupt vectors via INT 21h -- installs the game's custom keyboard/error interrupt handlers."
+    },
+    {
+      "name": "Debug_RestoreStateAfterSingleStep",
+      "address": "1000:19e1",
+      "tags": [
+        "guess",
+        "engine"
+      ],
+      "summary": "Sibling of Debug_RestoreStateAfterCheatMenu with a shorter restore sequence -- a lighter-weight state-restore path."
+    },
+    {
+      "name": "App_InitStub",
+      "address": "1000:1cce",
+      "tags": [
+        "verified",
+        "engine"
+      ],
+      "summary": "Empty stub -- contradicts an earlier stale plan-doc note describing it as a complex gating init step. No observable logic."
+    },
+    {
+      "name": "Snd_StopEffect",
+      "address": "1000:1dae",
+      "tags": [
+        "guess",
+        "sound"
+      ],
+      "summary": "Sibling of Snd_TriggerEffect: writes a stop/reset pattern to the sound channel for 'T'/'B' drivers before far-calling the driver entrypoint."
+    },
+    {
+      "name": "Sys_InstallCustomTimerHandler",
+      "address": "1000:2035",
+      "tags": [
+        "guess",
+        "engine"
+      ],
+      "summary": "Reprograms PIT channel 0 to a custom faster tick rate and installs a new timer interrupt vector -- the game's frame-pacing clock. Counterpart: Sys_RestoreOriginalTimerHandler."
+    },
+    {
+      "name": "Sys_RestoreOriginalTimerHandler",
+      "address": "1000:2061",
+      "tags": [
+        "guess",
+        "engine"
+      ],
+      "summary": "Restores the PIT to standard 18.2Hz and the original timer vector. Counterpart: Sys_InstallCustomTimerHandler."
+    },
+    {
+      "name": "AltBuild_ConvertTileBankCga",
+      "address": "1ffb:0168",
+      "tags": [
+        "guess",
+        "gfx",
+        "altbuild"
+      ],
+      "summary": "CGA-path tile-bank nibble-pack converter, falls to AltBuild_ConvertTileBankTandy on the alt sentinel."
+    },
+    {
+      "name": "AltBuild_ShiftNibbleHigh",
+      "address": "1ffb:01ff",
+      "tags": [
+        "verified",
+        "gfx",
+        "altbuild"
+      ],
+      "summary": "Trivial nibble-pack helper: AL<<4."
+    },
+    {
+      "name": "AltBuild_ConvertTileBankTandy",
+      "address": "1ffb:020c",
+      "tags": [
+        "guess",
+        "gfx",
+        "altbuild"
+      ],
+      "summary": "Tandy-path tile-bank nibble-pack converter, writes port 0x3df."
+    },
+    {
+      "name": "AltBuild_ShiftNibbleHighTandy",
+      "address": "1ffb:0291",
+      "tags": [
+        "verified",
+        "gfx",
+        "altbuild"
+      ],
+      "summary": "Trivial nibble-pack helper: AL<<4. Tandy sibling of AltBuild_ShiftNibbleHigh."
+    },
+    {
+      "name": "AltBuild_ShiftFramebufferRows",
+      "address": "1ffb:02a2",
+      "tags": [
+        "guess",
+        "gfx",
+        "altbuild"
+      ],
+      "summary": "Shifts byte blocks within a CGA-style bank-wrapped buffer -- an alt-build framebuffer scroll operation."
+    },
+    {
+      "name": "AltBuild_ShiftFramebufferRowsWord",
+      "address": "1ffb:030c",
+      "tags": [
+        "guess",
+        "gfx",
+        "altbuild"
+      ],
+      "summary": "Word-sized, Tandy-bank-wraparound sibling of AltBuild_ShiftFramebufferRows."
+    },
+    {
+      "name": "AltBuild_SetFlagOn",
+      "address": "1ffb:056e",
+      "tags": [
+        "verified",
+        "altbuild"
+      ],
+      "summary": "Sets a flag at 0x2056c to 1."
+    },
+    {
+      "name": "AltBuild_SetFlagOff",
+      "address": "1ffb:0576",
+      "tags": [
+        "verified",
+        "altbuild"
+      ],
+      "summary": "Sets a flag at 0x2056c to 0."
+    },
+    {
+      "name": "AltBuild_SetTimingConstantsSlow",
+      "address": "1ffb:0654",
+      "tags": [
+        "guess",
+        "altbuild"
+      ],
+      "summary": "Initializes CPU-speed-dependent timing constants using AltBuild_CalibrationDelayLoopA -- 'slow machine' profile."
+    },
+    {
+      "name": "AltBuild_SetTimingConstantsFast",
+      "address": "1ffb:0722",
+      "tags": [
+        "guess",
+        "altbuild"
+      ],
+      "summary": "Sibling of AltBuild_SetTimingConstantsSlow with roughly half the constant values -- 'fast machine' profile."
+    },
+    {
+      "name": "AltBuild_CalibrationDelayLoopA",
+      "address": "1ffb:07ea",
+      "tags": [
+        "guess",
+        "altbuild"
+      ],
+      "summary": "Busy-loop delay primitive (CGA-style wraparound) for timing calibration."
+    },
+    {
+      "name": "AltBuild_CalibrationDelayLoopB",
+      "address": "1ffb:07fa",
+      "tags": [
+        "guess",
+        "altbuild"
+      ],
+      "summary": "Busy-loop delay primitive (Tandy-style wraparound) for timing calibration."
+    },
+    {
+      "name": "AltBuild_AndOrRowMirrored",
+      "address": "1ffb:080a",
+      "tags": [
+        "guess",
+        "gfx",
+        "altbuild"
+      ],
+      "summary": "AND/OR row-blit for alt-build tiles, mirrored (LUT at 0x902)."
+    },
+    {
+      "name": "AltBuild_AndOrRow",
+      "address": "1ffb:08c2",
+      "tags": [
+        "guess",
+        "gfx",
+        "altbuild"
+      ],
+      "summary": "Non-mirrored AND/OR row-blit for alt-build tiles."
+    },
+    {
+      "name": "AltBuild_TransposeTileBlock",
+      "address": "1ffb:0a4b",
+      "tags": [
+        "guess",
+        "gfx",
+        "altbuild"
+      ],
+      "summary": "Byte-swap/transpose transform for a tile block -- flip/rotate helper."
+    },
+    {
+      "name": "AltBuild_TransposeTileBlockInverse",
+      "address": "1ffb:0acc",
+      "tags": [
+        "guess",
+        "gfx",
+        "altbuild"
+      ],
+      "summary": "Sibling of AltBuild_TransposeTileBlock, likely the inverse transform."
+    },
+    {
+      "name": "AltBuild_WaitVsyncStart",
+      "address": "1ffb:0b57",
+      "tags": [
+        "verified",
+        "altbuild"
+      ],
+      "summary": "Busy-waits for vertical retrace bit to become set (port 0x3da bit 3)."
+    },
+    {
+      "name": "AltBuild_WaitVsyncEnd",
+      "address": "1ffb:0b68",
+      "tags": [
+        "verified",
+        "altbuild"
+      ],
+      "summary": "Busy-waits for vertical retrace bit to clear. Called from main code (Input_ReadCpuSpeedCalibrationByte), not just alt-build."
+    },
+    {
+      "name": "AltBuild_ClearVideoPage32K",
+      "address": "1ffb:0bbd",
+      "tags": [
+        "guess",
+        "gfx",
+        "altbuild"
+      ],
+      "summary": "Clears 32KB at ES:0 -- video-page clear."
+    },
+    {
+      "name": "AltBuild_ClearVideoPage16K",
+      "address": "1ffb:0bc2",
+      "tags": [
+        "guess",
+        "gfx",
+        "altbuild"
+      ],
+      "summary": "Clears 16KB at ES:0, half of AltBuild_ClearVideoPage32K."
+    },
+    {
+      "name": "AltBuild_ClearAndSelectVideoBank",
+      "address": "1ffb:0bd3",
+      "tags": [
+        "guess",
+        "gfx",
+        "altbuild"
+      ],
+      "summary": "Programs Tandy banking port 0x3df, clears 32KB, restores the port and returns the bank byte."
+    },
+    {
+      "name": "AltBuild_ClearVideoPage16KVariant",
+      "address": "1ffb:0c01",
+      "tags": [
+        "guess",
+        "gfx",
+        "altbuild"
+      ],
+      "summary": "Clears 16KB at ES:0, variant reading a different source global first."
+    },
+    {
+      "name": "AltBuild_ClearCgaBankTails",
+      "address": "1ffb:0c12",
+      "tags": [
+        "guess",
+        "gfx",
+        "altbuild"
+      ],
+      "summary": "Clears four 320-byte regions matching CGA's 4-way interleaved bank layout."
+    },
+    {
+      "name": "AltBuild_WaitForFlagSet",
+      "address": "1ffb:0c39",
+      "tags": [
+        "guess",
+        "altbuild"
+      ],
+      "summary": "INT 21h then busy-waits for flag [8c87] to become nonzero."
+    },
+    {
+      "name": "Gfx_ResetAndClearVideoPageAtLoad",
+      "address": "1000:8626",
+      "tags": [
+        "guess",
+        "gfx"
+      ],
+      "summary": "Driver-dispatch; main VGA path resets GC regs and zeroes 8800 bytes -- called during World*_LoadBanks."
+    },
+    {
+      "name": "World_ApplyAltBuildTimingProfile",
+      "address": "1000:8ee5",
+      "tags": [
+        "guess",
+        "engine"
+      ],
+      "summary": "Applies CPU-speed timing profile for alt-builds (AltBuild_SetTimingConstantsFast/Slow); no-op on main VGA path. Called from every World*_LoadBanks."
+    },
+    {
+      "name": "Gfx_CopyLevelIntroImage",
+      "address": "1000:bd0a",
+      "tags": [
+        "guess",
+        "gfx"
+      ],
+      "summary": "Driver-dispatch; main VGA path copies image data from 40-byte source stride to 44-byte video buffer stride -- displays the level intro picture during World*_LoadBanks."
+    },
+    {
+      "name": "Gfx_CopyLevelIntroImageThunk",
+      "address": "1000:bdee",
+      "tags": [
+        "verified",
+        "gfx"
+      ],
+      "summary": "Thin wrapper for Gfx_CopyLevelIntroImage."
+    },
+    {
+      "name": "World1_CopyIntroImage",
+      "address": "1000:be16",
+      "tags": [
+        "verified",
+        "gfx"
+      ],
+      "summary": "World1's thin wrapper for Gfx_CopyLevelIntroImage."
+    },
+    {
+      "name": "World2_CopyIntroImage",
+      "address": "1000:be2a",
+      "tags": [
+        "verified",
+        "gfx"
+      ],
+      "summary": "World2's thin wrapper for Gfx_CopyLevelIntroImage."
+    },
+    {
+      "name": "World3_CopyIntroImage",
+      "address": "1000:be3e",
+      "tags": [
+        "verified",
+        "gfx"
+      ],
+      "summary": "World3's thin wrapper for Gfx_CopyLevelIntroImage."
+    },
+    {
+      "name": "World4_CopyIntroImage",
+      "address": "1000:be52",
+      "tags": [
+        "verified",
+        "gfx"
+      ],
+      "summary": "World4's thin wrapper for Gfx_CopyLevelIntroImage."
+    },
+    {
+      "name": "AltBuild_ResetAndClearVideoPageCga",
+      "address": "1000:86d1",
+      "tags": [
+        "verified",
+        "gfx",
+        "altbuild"
+      ],
+      "summary": "Thin wrapper for AltBuild_ClearVideoPage16KVariant -- CGA target of Gfx_ResetAndClearVideoPageAtLoad's dispatch."
+    },
+    {
+      "name": "AltBuild_ResetAndClearVideoPageTandy",
+      "address": "1000:86c1",
+      "tags": [
+        "verified",
+        "gfx",
+        "altbuild"
+      ],
+      "summary": "Thin wrapper for AltBuild_ClearAndSelectVideoBank -- Tandy target of Gfx_ResetAndClearVideoPageAtLoad's dispatch."
+    },
+    {
+      "name": "AltBuild_CopyLevelIntroImageCga",
+      "address": "1000:9076",
+      "tags": [
+        "guess",
+        "gfx",
+        "altbuild"
+      ],
+      "summary": "CGA-path word-copy loop, alt-build target of Gfx_CopyLevelIntroImage's dispatch."
+    },
+    {
+      "name": "AltBuild_CopyLevelIntroImageTandy",
+      "address": "1000:9045",
+      "tags": [
+        "guess",
+        "gfx",
+        "altbuild"
+      ],
+      "summary": "Tandy-path copy loop, alt-build target of Gfx_CopyLevelIntroImage's dispatch."
+    },
+    {
+      "name": "Entity_AiOpTurnOrRetreat",
+      "address": "1000:6b13",
+      "tags": [
+        "guess",
+        "entity"
+      ],
+      "summary": "Entity_RunMovementAiScript opcode 'n' handler -- turn-around/retreat decision, dispatches per-world/kind."
+    },
+    {
+      "name": "Entity_AiOpSpecialByKind",
+      "address": "1000:6a82",
+      "tags": [
+        "guess",
+        "entity"
+      ],
+      "summary": "Entity_RunMovementAiScript sub-dispatcher routing by kind to further per-kind AI handlers."
+    },
+    {
+      "name": "Entity_AiOpDespawnOrKill",
+      "address": "1000:6aa7",
+      "tags": [
+        "guess",
+        "entity"
+      ],
+      "summary": "Despawn-or-attach decision: kills a referenced entity or links it, depending on distance/kind."
+    },
+    {
+      "name": "Entity_HitReactDispatchByKind",
+      "address": "1000:682f",
+      "tags": [
+        "guess",
+        "entity"
+      ],
+      "summary": "Hit-reaction dispatch hub feeding the Entity_HitReactToState* leaves, sets a knockback-direction byte from a lookup table."
+    },
+    {
+      "name": "Entity_AiOpMoveOrKindDispatch",
+      "address": "1000:69ca",
+      "tags": [
+        "guess",
+        "entity"
+      ],
+      "summary": "Entity_RunMovementAiScript sub-dispatcher routing by world/kind to further per-kind movement handlers."
+    },
+    {
+      "name": "Entity_HitReactDispatchByKindWithKnockback",
+      "address": "1000:68ec",
+      "tags": [
+        "guess",
+        "entity"
+      ],
+      "summary": "Sibling of Entity_HitReactDispatchByKind that computes a knockback angle before the same per-kind dispatch."
+    },
+    {
+      "name": "Entity_SetOrientationFlagsAndAnimRange",
+      "address": "1000:6c80",
+      "tags": [
+        "guess",
+        "entity"
+      ],
+      "summary": "Merges orientation into collision flags, flips orientation bits, sets an animation frame range."
+    },
+    {
+      "name": "Entity_SetState86",
+      "address": "1000:6c6b",
+      "tags": [
+        "guess",
+        "entity"
+      ],
+      "summary": "Trivial state+script setter: state=0x86, script=0xcf15."
+    },
+    {
+      "name": "Entity_ComputeDirectionAndDistanceToEntity",
+      "address": "1000:7227",
+      "tags": [
+        "guess",
+        "entity"
+      ],
+      "summary": "Sibling of Entity_ComputeDirectionAndDistanceToTarget taking an already-known reference entity directly."
+    },
+    {
+      "name": "Entity_ScanTileColumnForFlag",
+      "address": "1000:728b",
+      "tags": [
+        "guess",
+        "entity"
+      ],
+      "summary": "Scans a vertical tile column (0x80-spaced steps) via the swappable [0xef23] table."
+    },
+    {
+      "name": "Entity_ScanTilesBackwardForFlag",
+      "address": "1000:72d9",
+      "tags": [
+        "guess",
+        "entity"
+      ],
+      "summary": "Backward-scanning sibling of Entity_ScanNearbyTilesForFlag."
+    },
+    {
+      "name": "Entity_SetState8BIfAnimating",
+      "address": "1000:6baa",
+      "tags": [
+        "guess",
+        "entity"
+      ],
+      "summary": "If animating, stores distance byte and transitions to state 0x8b."
+    },
+    {
+      "name": "Entity_SetState8C",
+      "address": "1000:6bc0",
+      "tags": [
+        "guess",
+        "entity"
+      ],
+      "summary": "Unconditionally stores distance byte and transitions to state 0x8c."
+    },
+    {
+      "name": "Entity_AiOpCaptureNearbyPreyA",
+      "address": "1000:6bd0",
+      "tags": [
+        "guess",
+        "entity"
+      ],
+      "summary": "Capture-nearby-prey AI op: kills a nearby target and resets self position/animation. Sibling of several capture-prey variants."
+    },
+    {
+      "name": "Entity_SetState9AIfAnimating",
+      "address": "1000:6c14",
+      "tags": [
+        "guess",
+        "entity"
+      ],
+      "summary": "If distance>4 tiles defers to Entity_RunMovementAiScript; else if animating transitions to state 0x9a."
+    },
+    {
+      "name": "Entity_ToggleOrientationFlags",
+      "address": "1000:6c56",
+      "tags": [
+        "guess",
+        "entity"
+      ],
+      "summary": "Flips orientation bits and merges into collision flags -- subset of Entity_SetOrientationFlagsAndAnimRange."
+    },
+    {
+      "name": "Entity_SetState85",
+      "address": "1000:6c61",
+      "tags": [
+        "guess",
+        "entity"
+      ],
+      "summary": "Trivial state+script setter: state=0x85, script=0xcf07."
+    },
+    {
+      "name": "Entity_DecrementCounter3D",
+      "address": "1000:6c75",
+      "tags": [
+        "guess",
+        "entity"
+      ],
+      "summary": "Decrements a counter at +0x3d if positive."
+    },
+    {
+      "name": "Entity_AiOpCaptureNearbyPreyB",
+      "address": "1000:6cb2",
+      "tags": [
+        "guess",
+        "entity"
+      ],
+      "summary": "Capture-nearby-prey variant with a reaction-value lookup and a captured-state sub-branch."
+    },
+    {
+      "name": "Entity_AiOpChooseAttackVariant",
+      "address": "1000:6cd4",
+      "tags": [
+        "guess",
+        "entity"
+      ],
+      "summary": "Rolls a random attack variant when close; otherwise looks up a distance-indexed attack-variant pair."
+    },
+    {
+      "name": "Entity_AiOpCaptureNearbyPreyC",
+      "address": "1000:6d0e",
+      "tags": [
+        "guess",
+        "entity"
+      ],
+      "summary": "Byte-identical to Entity_AiOpCaptureNearbyPreyB's capture-prey branch, another kind's copy."
+    },
+    {
+      "name": "Entity_SetStateD1",
+      "address": "1000:6d74",
+      "tags": [
+        "guess",
+        "entity"
+      ],
+      "summary": "Trivial state+script setter: state=0xd1, script=0xd555."
+    },
+    {
+      "name": "Entity_SetStateE1",
+      "address": "1000:6db1",
+      "tags": [
+        "guess",
+        "entity"
+      ],
+      "summary": "Stores distance byte, transitions to state 0xe1/script 0xd799."
+    },
+    {
+      "name": "Entity_AiOpCaptureNearbyPreyD",
+      "address": "1000:6dc1",
+      "tags": [
+        "guess",
+        "entity"
+      ],
+      "summary": "Capture-nearby-prey variant that kills the target outright without linking it."
+    },
+    {
+      "name": "Entity_AiOpCaptureNearbyPreyOrSpecialC",
+      "address": "1000:6e11",
+      "tags": [
+        "guess",
+        "entity"
+      ],
+      "summary": "Dual-branch: world-3-special state 0x7d transition, or capture-prey that pushes a simple event (opcode 0x2f)."
+    },
+    {
+      "name": "Entity_AiOpCaptureNearbyPreyOrSpecialD",
+      "address": "1000:6e27",
+      "tags": [
+        "guess",
+        "entity"
+      ],
+      "summary": "Same dual-branch pattern as Entity_AiOpCaptureNearbyPreyOrSpecialC, branch order reversed."
+    },
+    {
+      "name": "Entity_SetStateED",
+      "address": "1000:6e87",
+      "tags": [
+        "guess",
+        "entity"
+      ],
+      "summary": "Stores distance byte, transitions to state 0xed/script 0xd85b."
+    },
+    {
+      "name": "Entity_SetStateE7WithTable",
+      "address": "1000:6eac",
+      "tags": [
+        "guess",
+        "entity"
+      ],
+      "summary": "Distance-indexed table lookup into +0x26, transitions to state 0xe7/script 0xd80a."
+    },
+    {
+      "name": "Entity_ResolveCollisionKnockback",
+      "address": "1000:d73a",
+      "tags": [
+        "guess",
+        "entity"
+      ],
+      "summary": "Resolves X-axis collision (orientation flip + offset) then Y-axis knockback via a global wobble counter."
+    },
+    {
+      "name": "Entity_ResolveCollisionXAndToggleState",
+      "address": "1000:d81f",
+      "tags": [
+        "guess",
+        "entity"
+      ],
+      "summary": "Resolves X-axis collision, toggles a target-position value between 0x5e/0x59, or configures a linked entity. Called from Entity_SnapXByOrientation/Entity_HandleAnimatedBarrierCollision."
+    },
+    {
+      "name": "Entity_ResetOrMoveOnCollision",
+      "address": "1000:d984",
+      "tags": [
+        "guess",
+        "entity"
+      ],
+      "summary": "If in_AX==0, resets animation-range fields; else moves X and animates if collision flags allow. Called from Entity_ProcessCollisionState15."
+    },
+    {
+      "name": "Entity_CheckAabbOverlapOrBroadcast",
+      "address": "1000:dfac",
+      "tags": [
+        "guess",
+        "entity"
+      ],
+      "summary": "Per-target callback for Entity_BroadcastEventToVisibleByKindFlag. Performs an AABB overlap test using hitbox-extent fields (+0x1c/+0x1e/+0x20/+0x22), confirming those are bounding-box deltas matching Entity_SpawnFromQueuedEvent's opcode 0x1f table."
+    },
+    {
+      "name": "Entity_SyncViewportTargetFromEntity",
+      "address": "1000:e067",
+      "tags": [
+        "guess",
+        "entity"
+      ],
+      "summary": "Computes a tile-quantized delta between two entities, snaps a target position to the tile grid, resets viewport/tracking globals. Resolves EntityOp_SyncCameraTargetThenUnknown's second half."
+    },
+    {
+      "name": "Entity_FindNextEntityByKind",
+      "address": "1000:c192",
+      "tags": [
+        "guess",
+        "entity"
+      ],
+      "summary": "Iterator variant of Entity_FindEntityByKind, scanning from a caller-supplied position."
+    },
+    {
+      "name": "Entity_InitFromTemplateRecord",
+      "address": "1000:c8c0",
+      "tags": [
+        "guess",
+        "entity"
+      ],
+      "summary": "Full entity initializer from a template record -- standalone counterpart to Entity_SpawnFromQueuedEvent's opcode 0x1f inline setup."
+    },
+    {
+      "name": "Entity_ResolveGroundCollision",
+      "address": "1000:e14f",
+      "tags": [
+        "guess",
+        "entity"
+      ],
+      "summary": "Core ground/floor collision resolution: dispatches by kind/hitbox to ground-scan helpers, sets collision-flag bits on contact. Dense, not decoded branch-by-branch."
+    },
+    {
+      "name": "Entity_ResolveGroundCollisionByHitbox",
+      "address": "1000:e2af",
+      "tags": [
+        "guess",
+        "entity"
+      ],
+      "summary": "Dispatches by orientation/hitbox to FUN_1000_e961/e8d7."
+    },
+    {
+      "name": "Entity_ResolveGroundCollisionByFlag",
+      "address": "1000:e2c2",
+      "tags": [
+        "guess",
+        "entity"
+      ],
+      "summary": "Dispatches by sign of +0x26 to Entity_ApplyGroundStateTransition or Entity_ApplyGroundCollisionFlags."
+    },
+    {
+      "name": "Entity_CheckGroundAheadFlag",
+      "address": "1000:e2d3",
+      "tags": [
+        "guess",
+        "entity"
+      ],
+      "summary": "Checks tile flags ahead/behind via [0xef23], sets [8be9] edge/solid-ground flag."
+    },
+    {
+      "name": "Entity_ScanGroundRow",
+      "address": "1000:e366",
+      "tags": [
+        "guess",
+        "entity"
+      ],
+      "summary": "Scans a tile row via [0xef23], accumulating a ground-contact score into [8bc9]."
+    },
+    {
+      "name": "Entity_ScanGroundRowVariant",
+      "address": "1000:e3ca",
+      "tags": [
+        "guess",
+        "entity"
+      ],
+      "summary": "Sibling of Entity_ScanGroundRow accumulating into [8bca]/[8be7]."
+    },
+    {
+      "name": "Entity_ScanGroundColumn",
+      "address": "1000:e47c",
+      "tags": [
+        "guess",
+        "entity"
+      ],
+      "summary": "Scans a tile column via [0xef23], accumulating into [8bcb]."
+    },
+    {
+      "name": "Entity_ScanGroundColumnVariant",
+      "address": "1000:e4ed",
+      "tags": [
+        "guess",
+        "entity"
+      ],
+      "summary": "Sibling of Entity_ScanGroundColumn accumulating into [8bcc]/[8bc8]."
+    },
+    {
+      "name": "Entity_MergeGroundScanResults",
+      "address": "1000:e57b",
+      "tags": [
+        "guess",
+        "entity"
+      ],
+      "summary": "World-3-only: merges ground-scan accumulator high nibbles into [8bea]."
+    },
+    {
+      "name": "Entity_ApplyGroundCollisionFlags",
+      "address": "1000:e5b3",
+      "tags": [
+        "guess",
+        "entity"
+      ],
+      "summary": "Applies per-kind ground-collision-flag responses after scan accumulation."
+    },
+    {
+      "name": "Entity_ApplyGroundStateTransition",
+      "address": "1000:e696",
+      "tags": [
+        "guess",
+        "entity"
+      ],
+      "summary": "The densest function found this session (~250 lines): per-kind/per-shape ground-contact state-transition dispatcher. Not decoded branch-by-branch -- future dedicated-session target."
+    },
+    {
+      "name": "Entity_DispatchGroundStateByKindA",
+      "address": "1000:e8d7",
+      "tags": [
+        "guess",
+        "entity"
+      ],
+      "summary": "Dispatches by kind to per-kind ground-state handlers depending on ground-scan flags."
+    },
+    {
+      "name": "Entity_DispatchGroundStateByKindB",
+      "address": "1000:e961",
+      "tags": [
+        "guess",
+        "entity"
+      ],
+      "summary": "Near-identical sibling of Entity_DispatchGroundStateByKindA, keyed on different scan-flag globals."
+    },
+    {
+      "name": "Entity_BreakTileOrBounce",
+      "address": "1000:e9d8",
+      "tags": [
+        "guess",
+        "entity"
+      ],
+      "summary": "BREAKABLE-TILE mechanic: destroys '<'-marked tiles ahead (rewrites the tile byte, mirroring Level_RewriteAnimatedTileIndex), kills self with sound; else bounces."
+    },
+    {
+      "name": "Entity_BreakTilesBehind",
+      "address": "1000:ea41",
+      "tags": [
+        "guess",
+        "entity"
+      ],
+      "summary": "Sibling of Entity_BreakTileOrBounce checking/breaking up to 3 tiles behind the entity."
+    },
+    {
+      "name": "Entity_BreakTilesAhead",
+      "address": "1000:ea46",
+      "tags": [
+        "guess",
+        "entity"
+      ],
+      "summary": "Sibling of Entity_BreakTilesBehind checking tiles ahead instead."
+    },
+    {
+      "name": "Entity_BreakTilesAtOffset",
+      "address": "1000:ea4b",
+      "tags": [
+        "guess",
+        "entity"
+      ],
+      "summary": "Sibling using a computed offset based on ground-scan flag and orientation."
+    },
+    {
+      "name": "Entity_ProcessGroundStateByWorldAndKind",
+      "address": "1000:eb20",
+      "tags": [
+        "guess",
+        "entity"
+      ],
+      "summary": "Large per-world x per-kind ground-state-transition dispatcher including tile-breaking checks. Sibling of Entity_ApplyGroundStateTransition."
+    },
+    {
+      "name": "Entity_BreakSpecificTileChar",
+      "address": "1000:ed74",
+      "tags": [
+        "guess",
+        "entity"
+      ],
+      "summary": "Breaks a tile matching one of 4 markers, rewrites it, kills entity, triggers sound."
+    },
+    {
+      "name": "Entity_BreakTileAndSetState84",
+      "address": "1000:ed9b",
+      "tags": [
+        "guess",
+        "entity"
+      ],
+      "summary": "Breaks a tile marked 'n', transitions entity to state 0x65."
+    },
+    {
+      "name": "Entity_SetStateOnWorld4Kind",
+      "address": "1000:edcc",
+      "tags": [
+        "guess",
+        "entity"
+      ],
+      "summary": "World-4-only state reset/transition for kinds 0x3a-0x3e."
+    },
+    {
+      "name": "Entity_ApplyGroundStateTransitionByKind",
+      "address": "1000:ee60",
+      "tags": [
+        "guess",
+        "entity"
+      ],
+      "summary": "Large per-kind/per-world ground-state-transition dispatcher, sibling of Entity_ApplyGroundStateTransition/Entity_ProcessGroundStateByWorldAndKind."
+    },
+    {
+      "name": "Entity_SetAttackStateWorld3",
+      "address": "1000:ef00",
+      "tags": [
+        "guess",
+        "entity"
+      ],
+      "summary": "World-3-specific attack-state transitions for kinds 0x35-0x39."
+    },
+    {
+      "name": "Entity_SetAttackStateWorld4",
+      "address": "1000:efa7",
+      "tags": [
+        "guess",
+        "entity"
+      ],
+      "summary": "World-4-specific attack-state transitions for kinds 0x3a-0x3e, sibling of Entity_SetAttackStateWorld3."
+    },
+    {
+      "name": "Entity_SetAttackStateWorld2",
+      "address": "1000:f02e",
+      "tags": [
+        "guess",
+        "entity"
+      ],
+      "summary": "World-2 attack-state transitions for kinds 0x30-0x33."
+    },
+    {
+      "name": "Entity_SetAttackStateWorld1",
+      "address": "1000:f08f",
+      "tags": [
+        "guess",
+        "entity"
+      ],
+      "summary": "World-1 attack-state transitions for kinds 10/0xb/0xc/0xd."
+    },
+    {
+      "name": "Entity_SpawnLinkedChildOnGroundContact",
+      "address": "1000:f0f5",
+      "tags": [
+        "guess",
+        "entity"
+      ],
+      "summary": "Per-world/kind ground-contact response including spawning a linked child entity via Entity_InitFromTemplateRecord."
+    },
+    {
+      "name": "Entity_SplitOrSpawnChild",
+      "address": "1000:f1f6",
+      "tags": [
+        "guess",
+        "entity"
+      ],
+      "summary": "Spawns a linked child entity offset from self for kinds 0xb/0xc/0xd -- a split/duplicate mechanic."
+    },
+    {
+      "name": "Entity_MergeOrientationFlagsIfIdleOrForward",
+      "address": "1000:f270",
+      "tags": [
+        "guess",
+        "entity"
+      ],
+      "summary": "Merges orientation into collision flags when idle or facing forward."
+    },
+    {
+      "name": "Entity_SnapGroundBoundaryThenMergeFlags",
+      "address": "1000:f283",
+      "tags": [
+        "guess",
+        "entity"
+      ],
+      "summary": "Calls Entity_SnapToGroundBoundaryX then merges orientation flags."
+    },
+    {
+      "name": "Entity_ApplyGroundStateTransitionVariant",
+      "address": "1000:f28d",
+      "tags": [
+        "guess",
+        "entity"
+      ],
+      "summary": "Sibling of Entity_ApplyGroundStateTransitionByKind, first snaps Y boundary."
+    },
+    {
+      "name": "Entity_SetIdleAnimFrameByKind",
+      "address": "1000:f37d",
+      "tags": [
+        "guess",
+        "entity"
+      ],
+      "summary": "Sets a per-kind idle animation-frame index, defaults to state 0x8d."
+    },
+    {
+      "name": "Entity_SetIdleStateByKind",
+      "address": "1000:f3ea",
+      "tags": [
+        "guess",
+        "entity"
+      ],
+      "summary": "Per-kind idle/settle transitions; one branch pushes a position event."
+    },
+    {
+      "name": "Entity_ApplyComplexGroundResponse",
+      "address": "1000:f489",
+      "tags": [
+        "guess",
+        "entity"
+      ],
+      "summary": "Dense state-dependent ground response keyed on global transition state. Part of the ground-collision cluster; not decoded branch-by-branch."
+    },
+    {
+      "name": "Entity_ApplyGroundContactResponse",
+      "address": "1000:f842",
+      "tags": [
+        "guess",
+        "entity"
+      ],
+      "summary": "Dense per-state ground-contact handler invoking Entity_SnapAndClearGroundFlags repeatedly."
+    },
+    {
+      "name": "Entity_SnapAndClearGroundFlags",
+      "address": "1000:f960",
+      "tags": [
+        "guess",
+        "entity"
+      ],
+      "summary": "Shared worker: snaps position to detected boundary and clears ground-scan contact flags."
+    },
+    {
+      "name": "Entity_SnapToGroundBoundaryX",
+      "address": "1000:fa46",
+      "tags": [
+        "guess",
+        "entity"
+      ],
+      "summary": "Snaps entity X to the detected ground/wall boundary, decrements scan counters."
+    },
+    {
+      "name": "Entity_SnapToGroundBoundaryY",
+      "address": "1000:fabd",
+      "tags": [
+        "guess",
+        "entity"
+      ],
+      "summary": "Snaps entity Y to a detected boundary, decrements scan counters."
+    },
+    {
+      "name": "Entity_SnapToGroundBoundaryYAlt",
+      "address": "1000:faf5",
+      "tags": [
+        "guess",
+        "entity"
+      ],
+      "summary": "Sibling of Entity_SnapToGroundBoundaryY snapping to a different detected boundary."
+    },
+    {
+      "name": "Entity_RoundYToNextTileBoundary",
+      "address": "1000:f6d3",
+      "tags": [
+        "guess",
+        "entity"
+      ],
+      "summary": "Rounds Y up to the next 16-unit tile boundary if not aligned."
+    },
+    {
+      "name": "Entity_ClearStateIfGroundContact",
+      "address": "1000:f6e4",
+      "tags": [
+        "guess",
+        "entity"
+      ],
+      "summary": "Clears entity state when ground contact and a specific scan result both hold."
+    },
+    {
+      "name": "Entity_BreakBlockChainWorld3",
+      "address": "1000:f6f7",
+      "tags": [
+        "guess",
+        "entity"
+      ],
+      "summary": "World-3 block-chain-break mechanic: breaks a marked tile and cascades vertically via Entity_BreakTileChainUp/Down, breaking a whole stack of blocks."
+    },
+    {
+      "name": "Entity_BreakTileChainUp",
+      "address": "1000:f75f",
+      "tags": [
+        "guess",
+        "entity"
+      ],
+      "summary": "Walks upward breaking every consecutive marked tile -- upward half of the vertical chain-break."
+    },
+    {
+      "name": "Entity_BreakTileChainDown",
+      "address": "1000:f76d",
+      "tags": [
+        "guess",
+        "entity"
+      ],
+      "summary": "Downward counterpart of Entity_BreakTileChainUp."
+    },
+    {
+      "name": "Entity_ProcessGroundStateWorld1",
+      "address": "1000:f77b",
+      "tags": [
+        "guess",
+        "entity"
+      ],
+      "summary": "World-1 ground-state response: extensive state-keyed transitions. Dense; not decoded branch-by-branch."
+    },
+    {
+      "name": "Entity_HandleSpecialInteraction",
+      "address": "1000:3e15",
+      "tags": [
+        "guess",
+        "entity"
+      ],
+      "summary": "Large collision-effect dispatcher for checkpoint/pickup/hazard reactions. Dense, not decoded branch-by-branch."
+    },
+    {
+      "name": "Entity_ResetToIdleIfLowCharge",
+      "address": "1000:4233",
+      "tags": [
+        "guess",
+        "entity"
+      ],
+      "summary": "If charge below 5, resets to idle and pushes a position event."
+    },
+    {
+      "name": "Entity_ProcessDamageAccumulation",
+      "address": "1000:4269",
+      "tags": [
+        "guess",
+        "entity"
+      ],
+      "summary": "Core damage/invincibility-timer accumulator, dispatches to per-interaction-phase handlers. Dense."
+    },
+    {
+      "name": "Entity_UpdatePeriodicBonusTimer",
+      "address": "1000:4464",
+      "tags": [
+        "guess",
+        "entity"
+      ],
+      "summary": "Per-world periodic ticker that spawns a bonus event every 100 frames."
+    },
+    {
+      "name": "Entity_SetInteractionPhase1B",
+      "address": "1000:44f2",
+      "tags": [
+        "guess",
+        "entity"
+      ],
+      "summary": "Sets interaction-phase globals, decrements a phase counter, clears phase at 0."
+    },
+    {
+      "name": "Entity_SetInteractionPhase0E",
+      "address": "1000:451d",
+      "tags": [
+        "guess",
+        "entity"
+      ],
+      "summary": "Sets phase globals and clears the interaction phase."
+    },
+    {
+      "name": "Entity_SetInteractionPhase1DFindTarget",
+      "address": "1000:4539",
+      "tags": [
+        "guess",
+        "entity"
+      ],
+      "summary": "Finds the first live entity and sets its state if idle."
+    },
+    {
+      "name": "Entity_SetInteractionPhase27WithSound",
+      "address": "1000:4564",
+      "tags": [
+        "guess",
+        "entity"
+      ],
+      "summary": "Triggers a sound, sets phase, calls Entity_ClampCameraOffset."
+    },
+    {
+      "name": "Entity_SetInteractionState5DOr5B",
+      "address": "1000:458d",
+      "tags": [
+        "guess",
+        "entity"
+      ],
+      "summary": "Sets entity state to 0x5d or 0x5b depending on current state."
+    },
+    {
+      "name": "Entity_ClampCameraOffset",
+      "address": "1000:45cf",
+      "tags": [
+        "guess",
+        "entity"
+      ],
+      "summary": "Resets a negative camera-offset field and pushes an Fx opcode."
+    },
+    {
+      "name": "Entity_InteractionPhaseJumpTable",
+      "address": "1000:45f8",
+      "tags": [
+        "guess",
+        "entity"
+      ],
+      "summary": "Indirect jump through a computed function-pointer table -- switch-statement dispatcher, not decoded (jump table unrecoverable)."
+    },
+    {
+      "name": "Entity_ChooseAndSpawnBonusItem",
+      "address": "1000:4a50",
+      "tags": [
+        "guess",
+        "entity"
+      ],
+      "summary": "BONUS-ITEM SPAWN LOGIC: evaluates per-world difficulty heuristics to choose and spawn a bonus item. Dense."
+    },
+    {
+      "name": "Entity_SpawnScorePopup",
+      "address": "1000:4bd1",
+      "tags": [
+        "guess",
+        "entity"
+      ],
+      "summary": "Writes an HUD glyph digit and pushes a spawn event -- a score/counter popup display."
+    },
+    {
+      "name": "Entity_SpawnDualPositionEvents",
+      "address": "1000:5440",
+      "tags": [
+        "guess",
+        "entity"
+      ],
+      "summary": "Pushes two spawn events with different subtypes -- a paired particle/effect spawn."
+    },
+    {
+      "name": "Entity_ChooseAndPlaceBonusMarker",
+      "address": "1000:5609",
+      "tags": [
+        "guess",
+        "entity"
+      ],
+      "summary": "Bonus-marker placement/update logic based on distance-since-last-marker and difficulty table."
+    },
+    {
+      "name": "Entity_SyncViewportOrGetKind",
+      "address": "1000:5761",
+      "tags": [
+        "guess",
+        "entity"
+      ],
+      "summary": "Conditionally syncs viewport target, returns entity type field. Called from Entity_CheckAabbOverlapOrBroadcast."
+    },
+    {
+      "name": "AltBuild_ComputeXorKey",
+      "address": "1000:af1b",
+      "tags": [
+        "guess",
+        "altbuild"
+      ],
+      "summary": "Computes an XOR lookup key (BX ^ (BX+0x10)) for the alt-build tile decompression pipeline."
+    },
+    {
+      "name": "AltBuild_AdvanceRleDecoder",
+      "address": "1000:af2a",
+      "tags": [
+        "guess",
+        "altbuild"
+      ],
+      "summary": "RLE-stream decoder step for the alt-build compressed tile-bank format."
+    },
+    {
+      "name": "AltBuild_InitRleDecoder",
+      "address": "1000:af32",
+      "tags": [
+        "guess",
+        "altbuild"
+      ],
+      "summary": "Initial read of the first RLE pair, setup counterpart of AltBuild_AdvanceRleDecoder."
+    },
+    {
+      "name": "AltBuild_PackBitsToNibbles",
+      "address": "1000:af71",
+      "tags": [
+        "guess",
+        "gfx",
+        "altbuild"
+      ],
+      "summary": "CGA-only: packs sign bits from 4 registers into 2 bytes via AltBuild_ExtractSignBitPair."
+    },
+    {
+      "name": "AltBuild_ExtractSignBitPair",
+      "address": "1000:afa3",
+      "tags": [
+        "guess",
+        "gfx",
+        "altbuild"
+      ],
+      "summary": "Extracts sign bits into a packed value -- bit-packing primitive for CGA tile conversion."
+    },
+    {
+      "name": "AltBuild_ConvertTileBankRle",
+      "address": "1000:afb1",
+      "tags": [
+        "guess",
+        "gfx",
+        "altbuild"
+      ],
+      "summary": "Main CGA-path RLE-decompressing tile-bank converter. Low priority for the VGA-targeted JS port."
+    },
+    {
+      "name": "AltBuild_ConvertTileBankRleVariant",
+      "address": "1000:afcd",
+      "tags": [
+        "guess",
+        "gfx",
+        "altbuild"
+      ],
+      "summary": "Sibling of AltBuild_ConvertTileBankRle with a different XOR key."
+    },
+    {
+      "name": "AltBuild_LoadTandyIntroImage",
+      "address": "1000:b05b",
+      "tags": [
+        "guess",
+        "gfx",
+        "altbuild"
+      ],
+      "summary": "Sets a fixed table pointer then converts/copies the Tandy intro image."
+    },
+    {
+      "name": "AltBuild_ConvertIntroImageBank",
+      "address": "1000:b07c",
+      "tags": [
+        "guess",
+        "gfx",
+        "altbuild"
+      ],
+      "summary": "Converts 192 rows of the intro image (192 matches .pip picture height)."
+    },
+    {
+      "name": "AltBuild_ConvertIntroImageRow",
+      "address": "1000:b0b7",
+      "tags": [
+        "guess",
+        "gfx",
+        "altbuild"
+      ],
+      "summary": "Converts one intro-image row."
+    },
+    {
+      "name": "AltBuild_ConvertTileNibbleDispatch",
+      "address": "1000:b0ef",
+      "tags": [
+        "guess",
+        "gfx",
+        "altbuild"
+      ],
+      "summary": "Driver-dispatch for tile-nibble conversion (CGA vs default path)."
+    },
+    {
+      "name": "AltBuild_ConvertTileNibbleGroup",
+      "address": "1000:b0fa",
+      "tags": [
+        "guess",
+        "gfx",
+        "altbuild"
+      ],
+      "summary": "Unconditional sibling of AltBuild_ConvertTileNibbleDispatch's default case."
+    },
+    {
+      "name": "AltBuild_PackNibbleFromSignBits",
+      "address": "1000:b10c",
+      "tags": [
+        "guess",
+        "gfx",
+        "altbuild"
+      ],
+      "summary": "Core bit-packing primitive: CGA/EGA plane de-interlacing step for the alt-build tile format."
+    },
+    {
+      "name": "AltBuild_LoadCgaIntroImage",
+      "address": "1000:b158",
+      "tags": [
+        "guess",
+        "gfx",
+        "altbuild"
+      ],
+      "summary": "CGA sibling of AltBuild_LoadTandyIntroImage."
+    },
+    {
+      "name": "AltBuild_ConvertIntroImageBankCga",
+      "address": "1000:b1ce",
+      "tags": [
+        "guess",
+        "gfx",
+        "altbuild"
+      ],
+      "summary": "CGA sibling of AltBuild_ConvertIntroImageBank."
+    },
+    {
+      "name": "AltBuild_ConvertIntroImageRowCga",
+      "address": "1000:b20c",
+      "tags": [
+        "guess",
+        "gfx",
+        "altbuild"
+      ],
+      "summary": "CGA sibling of AltBuild_ConvertIntroImageRow."
+    },
+    {
+      "name": "AltBuild_ConvertTileNibbleGroupCga",
+      "address": "1000:b243",
+      "tags": [
+        "guess",
+        "gfx",
+        "altbuild"
+      ],
+      "summary": "CGA sibling of AltBuild_ConvertTileNibbleGroup."
+    },
+    {
+      "name": "AltBuild_PackByteFromSignBitsCga",
+      "address": "1000:b255",
+      "tags": [
+        "guess",
+        "gfx",
+        "altbuild"
+      ],
+      "summary": "Builds a full byte from 4 sign-bit-pair groups, CGA variant of AltBuild_PackNibbleFromSignBits."
+    },
+    {
+      "name": "AltBuild_PackTwoBitsFromSignBits",
+      "address": "1000:b26b",
+      "tags": [
+        "guess",
+        "gfx",
+        "altbuild"
+      ],
+      "summary": "CGA-specific bit-packing primitive via shift-accumulation."
+    },
+    {
+      "name": "AltBuild_ShiftCgaFramebufferBlock",
+      "address": "1000:b30b",
+      "tags": [
+        "guess",
+        "gfx",
+        "altbuild"
+      ],
+      "summary": "Shifts/copies word blocks within a bank-wrapped CGA framebuffer region."
+    },
+    {
+      "name": "AltBuild_ClearAndSelectVideoBankCga",
+      "address": "1000:b332",
+      "tags": [
+        "guess",
+        "gfx",
+        "altbuild"
+      ],
+      "summary": "Clears CGA bank tails, clears video page, sets Tandy banking port."
+    },
+    {
+      "name": "AltBuild_PrepareCgaFramebuffer",
+      "address": "1000:b352",
+      "tags": [
+        "guess",
+        "gfx",
+        "altbuild"
+      ],
+      "summary": "Prepares the CGA composite/tinted framebuffer via AltBuild_ShiftCgaFramebufferBlock + AltBuild_TintCgaFramebuffer."
+    },
+    {
+      "name": "Sys_CallDosService",
+      "address": "1000:b3a3",
+      "tags": [
+        "verified",
+        "engine",
+        "spine"
+      ],
+      "summary": "Single INT 21h call, part of entry's early init sequence -- resolves an earlier 'unexamined' note."
+    },
+    {
+      "name": "Sys_InitStub2",
+      "address": "1000:b3c2",
+      "tags": [
+        "verified",
+        "engine",
+        "spine"
+      ],
+      "summary": "Empty stub, part of entry's early init sequence, paired with Sys_CallDosService."
+    },
+    {
+      "name": "Gfx_BuildBitReversalTable",
+      "address": "1000:b4aa",
+      "tags": [
+        "verified",
+        "gfx"
+      ],
+      "summary": "CONFIRMS Gfx_MirrorRowThroughLut's hypothesis: builds the 256-byte bit-reversal table at 0x8eee."
+    },
+    {
+      "name": "Gfx_CopyTileBankPlanes",
+      "address": "1000:85d0",
+      "tags": [
+        "verified",
+        "gfx"
+      ],
+      "summary": "THE blocks*.pak DECODER. Dispatches on DAT_1000_22d7 (-1=CGA->AltBuild_ConvertTileBankRleVariant, 0xff=Tandy->AltBuild_ConvertTileBankRle, else=real VGA path). VGA path copies 4 bitplanes via 4x Gfx_CopyPlaneRow32Words cycling Sequencer Map Mask 0x1/0x2/0x4/0x8. CX=120 is a TILE count: blocks*.pak is 120 unmasked 32x16 tiles (256 bytes/tile, 4 planes x 64 bytes, no mask plane). See docs/formats/pak.md."
+    },
+    {
+      "name": "Gfx_CopyPlaneRow32Words",
+      "address": "1000:860e",
+      "tags": [
+        "verified",
+        "gfx"
+      ],
+      "summary": "Copies one bitplane for CX tiles: per tile, REP MOVSW of 64 bytes (one 32x16 tile's single bitplane) then SI+=0xC0 to skip that tile's other 3 planes and reach the next tile's chunk. DI restored via POP after the loop (all 4 planes share the same destination, selected only by Map Mask). See docs/formats/pak.md."
+    },
+    {
+      "name": "Gfx_ConvertAndClearIntroImageBank",
+      "address": "1000:8722",
+      "tags": [
+        "guess",
+        "gfx"
+      ],
+      "summary": "Driver-dispatch; main VGA path does a byte-shuffle transform over 192 rows then clears GC registers."
+    },
+    {
+      "name": "Gfx_UpdateViewportClipBounds",
+      "address": "1000:87a1",
+      "tags": [
+        "guess",
+        "gfx"
+      ],
+      "summary": "Manages horizontal-scroll viewport clip bounds, applying AND-mask clipping at the newly-exposed screen edge during smooth scrolling."
+    },
+    {
+      "name": "Gfx_ClearViewportEdgeColumn",
+      "address": "1000:88d2",
+      "tags": [
+        "guess",
+        "gfx"
+      ],
+      "summary": "Clears one tile-row's worth of bytes -- clears the newly-exposed viewport edge column during scroll."
+    },
+    {
+      "name": "Gfx_MaskViewportEdgeColumn",
+      "address": "1000:88f5",
+      "tags": [
+        "guess",
+        "gfx"
+      ],
+      "summary": "ANDs a mask into the viewport-edge column across all 4 bitplanes over 192 rows."
+    },
+    {
+      "name": "Gfx_CopyViewportColumn",
+      "address": "1000:8952",
+      "tags": [
+        "guess",
+        "gfx"
+      ],
+      "summary": "Copies a column for viewport scroll-edge management."
+    },
+    {
+      "name": "AltBuild_ShiftFramebufferRowsWordThunk",
+      "address": "1000:8f1b",
+      "tags": [
+        "verified",
+        "gfx",
+        "altbuild"
+      ],
+      "summary": "Thin wrapper for AltBuild_ShiftFramebufferRowsWord."
+    },
+    {
+      "name": "AltBuild_ShiftFramebufferRowsThunk",
+      "address": "1000:8f21",
+      "tags": [
+        "verified",
+        "gfx",
+        "altbuild"
+      ],
+      "summary": "Thin wrapper for AltBuild_ShiftFramebufferRows."
+    },
+    {
+      "name": "AltBuild_AndOrRowMirroredThunk",
+      "address": "1000:8f27",
+      "tags": [
+        "verified",
+        "gfx",
+        "altbuild"
+      ],
+      "summary": "Thin wrapper for AltBuild_AndOrRowMirrored."
+    },
+    {
+      "name": "AltBuild_AndOrRowThunk",
+      "address": "1000:8f2d",
+      "tags": [
+        "verified",
+        "gfx",
+        "altbuild"
+      ],
+      "summary": "Thin wrapper for AltBuild_AndOrRow."
+    },
+    {
+      "name": "Entity_FindEntityByKindFar",
+      "address": "1000:8f37",
+      "tags": [
+        "verified",
+        "entity"
+      ],
+      "summary": "Far-call thin wrapper for Entity_FindEntityByKind."
+    },
+    {
+      "name": "AltBuild_TransposeTileBlockThunk",
+      "address": "1000:8f58",
+      "tags": [
+        "verified",
+        "gfx",
+        "altbuild"
+      ],
+      "summary": "Thin wrapper for AltBuild_TransposeTileBlock."
+    },
+    {
+      "name": "AltBuild_TransposeTileBlockInverseThunk",
+      "address": "1000:8f5e",
+      "tags": [
+        "verified",
+        "gfx",
+        "altbuild"
+      ],
+      "summary": "Thin wrapper for AltBuild_TransposeTileBlockInverse."
+    },
+    {
+      "name": "Gfx_ComputeViewportEdgeMaskThunk",
+      "address": "1000:8f64",
+      "tags": [
+        "verified",
+        "gfx"
+      ],
+      "summary": "Thin wrapper for Gfx_ComputeViewportEdgeMask."
+    },
+    {
+      "name": "Gfx_ComputeViewportEdgeMask",
+      "address": "1000:8f6a",
+      "tags": [
+        "guess",
+        "gfx"
+      ],
+      "summary": "Computes a viewport-edge AND-mask from destination X adjusted by pixel-panning remainder, feeding Gfx_MaskViewportEdgeColumn."
+    },
+    {
+      "name": "Gfx_ComputeFramebufferRowOffset",
+      "address": "1000:8fa0",
+      "tags": [
+        "guess",
+        "gfx"
+      ],
+      "summary": "Computes framebuffer byte-offset from [8c25]/[8c23] with bank-interleave (+0x2000/+0x4000), structurally parallel to Gfx_ComputeViewportEdgeMask."
+    },
+    {
+      "name": "Gfx_ComputeViewportEdgeMaskVariantThunk",
+      "address": "1000:8fd2",
+      "tags": [
+        "verified",
+        "gfx"
+      ],
+      "summary": "Thin wrapper for Gfx_ComputeViewportEdgeMaskVariant."
+    },
+    {
+      "name": "Gfx_ComputeViewportEdgeMaskVariant",
+      "address": "1000:8fd8",
+      "tags": [
+        "guess",
+        "gfx"
+      ],
+      "summary": "Sibling of Gfx_ComputeViewportEdgeMask with different mask width/extra +0x4000 branch (2-plane vs 4-plane variant)."
+    },
+    {
+      "name": "Gfx_ComputeFramebufferRowOffsetVariant",
+      "address": "1000:900c",
+      "tags": [
+        "guess",
+        "gfx"
+      ],
+      "summary": "Sibling of Gfx_ComputeFramebufferRowOffset with an extra bank term."
+    },
+    {
+      "name": "Gfx_BlitScaledGlyphRowCga",
+      "address": "1000:90a4",
+      "tags": [
+        "guess",
+        "gfx"
+      ],
+      "summary": "CGA HUD-text scaled-blit family: 4-word row copy with sign-wraparound source indexing via *unaff_BP. CGA fallback counterpart of the VGA Gfx_BlitScaledGlyphString family."
+    },
+    {
+      "name": "Gfx_BlitScaledSpriteRowCga",
+      "address": "1000:90ec",
+      "tags": [
+        "guess",
+        "gfx"
+      ],
+      "summary": "Variable-width sibling of Gfx_BlitScaledGlyphRowCga, driven by DAT_1000_90e2/90e4/90ea globals -- CGA scaled-sprite row copy."
+    },
+    {
+      "name": "Gfx_BlitScaledSpriteCga",
+      "address": "1000:913c",
+      "tags": [
+        "guess",
+        "gfx"
+      ],
+      "summary": "Looping wrapper around Gfx_BlitScaledSpriteRowCga; checks countdown DAT_6de3_8b9c, recurses via Gfx_BlitScaledGlyphRowCga(0x6de3). CGA counterpart of the VGA masked scaled-sprite blit."
+    },
+    {
+      "name": "Gfx_BlitScaledGlyphStringCga",
+      "address": "1000:91bd",
+      "tags": [
+        "guess",
+        "gfx"
+      ],
+      "summary": "Massive ~20x-unrolled version of Gfx_BlitScaledGlyphRowCga's copy pattern; ends by calling Gfx_BlitScaledSpriteRowCga(0x6de3). CGA HUD text scaled-blit entry."
+    },
+    {
+      "name": "Gfx_BlitScaledGlyphRowCgaWide",
+      "address": "1000:9331",
+      "tags": [
+        "guess",
+        "gfx"
+      ],
+      "summary": "8-word-boundary sibling of Gfx_BlitScaledGlyphRowCga (0x8000-boundary wrap instead of 0x4000)."
+    },
+    {
+      "name": "Gfx_BlitScaledSpriteRowCgaWide",
+      "address": "1000:936f",
+      "tags": [
+        "guess",
+        "gfx"
+      ],
+      "summary": "8-word-boundary sibling of Gfx_BlitScaledSpriteRowCga, driven by DAT_1000_90e2/90e4/90ea globals."
+    },
+    {
+      "name": "Gfx_BlitScaledSpriteCgaWide",
+      "address": "1000:93c1",
+      "tags": [
+        "guess",
+        "gfx"
+      ],
+      "summary": "Looping wrapper around Gfx_BlitScaledSpriteRowCgaWide; sibling of Gfx_BlitScaledSpriteCga for the 8-word/wide variant, checks DAT_1000_90ea."
+    },
+    {
+      "name": "Gfx_BlitScaledGlyphStringCgaWide",
+      "address": "1000:9444",
+      "tags": [
+        "guess",
+        "gfx"
+      ],
+      "summary": "Massive unrolled 8-word/wide sibling of Gfx_BlitScaledGlyphStringCga, calling Gfx_BlitScaledGlyphRowCgaWide."
+    },
+    {
+      "name": "Gfx_RenderHudTextCgaA",
+      "address": "1000:9a0e",
+      "tags": [
+        "guess",
+        "gfx"
+      ],
+      "summary": "Top-level narrow/4-word CGA HUD scaled-text entry point: conditionally invokes the row copy then sets DAT_6de3_8b9c=10 and calls the looping wrapper (Gfx_BlitScaledSpriteCga family)."
+    },
+    {
+      "name": "Gfx_RenderHudTextCgaB",
+      "address": "1000:9b2f",
+      "tags": [
+        "guess",
+        "gfx"
+      ],
+      "summary": "Top-level wide/8-word CGA HUD scaled-text entry point: sibling of Gfx_RenderHudTextCgaA, sets DAT_1000_90ea=0x10 and calls the wide looping wrapper."
+    },
+    {
+      "name": "AltBuild_AdvanceScrollBankState",
+      "address": "1000:a3e3",
+      "tags": [
+        "guess",
+        "gfx",
+        "altbuild"
+      ],
+      "summary": "Top driver of a second viewport-edge/scroll-bank subsystem parallel to the Gfx_ComputeViewportEdgeMask family, keyed on DAT_1000_22d7 mode flag. Counts *0x8c3c to 100 then resets scroll state via AltBuild_ResetScrollBankState and writes CRTC-offset constant 0x16 to [8c34] (matches the 352px virtual-width value from docs/memory-map.md)."
+    },
+    {
+      "name": "AltBuild_ResetScrollBankState",
+      "address": "1000:a4ab",
+      "tags": [
+        "guess",
+        "gfx",
+        "altbuild"
+      ],
+      "summary": "Resets scroll-bank offset globals (DAT_1000_a5a0/a5a4/a5a8) and sets mode-dependent mask pair (a5a6/a5a7) differently for DAT_1000_22d7==-1 vs the alt path."
+    },
+    {
+      "name": "AltBuild_ComputeScrollBankBase",
+      "address": "1000:a500",
+      "tags": [
+        "guess",
+        "gfx",
+        "altbuild"
+      ],
+      "summary": "192-iteration loop computing DAT_1000_a5a2 via the same +0x2000 bank-interleave wraparound pattern used throughout the Gfx viewport-edge family."
+    },
+    {
+      "name": "AltBuild_RotateScrollMaskBits",
+      "address": "1000:a535",
+      "tags": [
+        "guess",
+        "gfx",
+        "altbuild"
+      ],
+      "summary": "Bit-rotates the DAT_1000_a5a6/a5a7 mask pair across a phase counter (a5a8); on full cycle adjusts a5aa/a5ac -- scroll-mask bit-shift stepper."
+    },
+    {
+      "name": "AltBuild_ClearScrollBankRegion",
+      "address": "1000:a5ae",
+      "tags": [
+        "guess",
+        "gfx",
+        "altbuild"
+      ],
+      "summary": "Zeroes a mode-dependent-width region (0x50 or 0xa0 bytes) at unaff_DI."
+    },
+    {
+      "name": "AltBuild_AndMaskScrollBankColumn",
+      "address": "1000:a5c5",
+      "tags": [
+        "guess",
+        "gfx",
+        "altbuild"
+      ],
+      "summary": "ANDs a mask into a column across 192 bank-wrapped rows -- parallel to Gfx_MaskViewportEdgeColumn for this second scroll-bank subsystem."
+    },
+    {
+      "name": "AltBuild_AndMaskScrollBankColumnPair",
+      "address": "1000:a5fc",
+      "tags": [
+        "guess",
+        "gfx",
+        "altbuild"
+      ],
+      "summary": "Calls AltBuild_AndMaskScrollBankColumnLoop twice."
+    },
+    {
+      "name": "AltBuild_AndMaskScrollBankColumnLoop",
+      "address": "1000:a63b",
+      "tags": [
+        "guess",
+        "gfx",
+        "altbuild"
+      ],
+      "summary": "16x loop calling AltBuild_ClearScrollBankRegion while advancing the bank-wrapped DI offset."
+    },
+    {
+      "name": "AltBuild_ShiftCgaFramebufferBlockThunk",
+      "address": "1000:b2e4",
+      "tags": [
+        "verified",
+        "gfx",
+        "altbuild"
+      ],
+      "summary": "Thin wrapper for AltBuild_ShiftCgaFramebufferBlock."
+    },
+    {
+      "name": "Gfx_CopyLevelIntroImageTwice",
+      "address": "1000:bdc7",
+      "tags": [
+        "guess",
+        "gfx"
+      ],
+      "summary": "Calls Gfx_CopyLevelIntroImage twice -- likely a double-buffer/two-page copy."
+    },
+    {
+      "name": "Gfx_CopyLevelIntroImageThunkAlt",
+      "address": "1000:be02",
+      "tags": [
+        "verified",
+        "gfx"
+      ],
+      "summary": "Second thin wrapper for Gfx_CopyLevelIntroImage, distinct call site from Gfx_CopyLevelIntroImageThunk (1000:bdee)."
+    },
+    {
+      "name": "Fx_PushQueuedPositionEvent4",
+      "address": "1000:bf6d",
+      "tags": [
+        "guess",
+        "entity"
+      ],
+      "summary": "Pushes a 4-field position event (from globals at [8c23]/[8c25]/[8c27]/[8c29]) plus type tag 0x400 and sentinel 0xeeee onto the queue at [8bb5], with underflow bounds check against -0x6d97."
+    },
+    {
+      "name": "Fx_PushQueuedPositionEvent5",
+      "address": "1000:bfca",
+      "tags": [
+        "guess",
+        "entity"
+      ],
+      "summary": "5-field sibling of Fx_PushQueuedPositionEvent4 (adds [8c21]), type tag 0x500."
+    },
+    {
+      "name": "Sys_ReadByteSwappedWord",
+      "address": "1000:fe6f",
+      "tags": [
+        "guess",
+        "engine"
+      ],
+      "summary": "Generic big-endian word read from *unaff_SI (byte-swaps a little-endian word) -- likely used by the RNC header parser (CRC16/size fields are stored big-endian per docs/formats)."
     }
   ],
   "openQuestions": [

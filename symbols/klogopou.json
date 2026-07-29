@@ -1,0 +1,289 @@
+{
+  "program": "KLOGOPOU.EXE",
+  "namedFunctions": 31,
+  "totalFunctions": 31,
+  "functions": [
+    {
+      "name": "entry",
+      "address": "1000:002c",
+      "tags": [
+        "verified",
+        "spine"
+      ],
+      "summary": "Entry point: parses /m /t /c command-line switches if present, installs the custom timer, saves 2 interrupt vectors, then loops: parses embedded resource string tables, App_LoadAndDisplayLogoForMode, waits on a countdown or abort flag, and re-installs the saved interrupt vectors each iteration."
+    },
+    {
+      "name": "Config_ParseCommandLineSwitches",
+      "address": "1000:005e",
+      "tags": [
+        "guess",
+        "engine"
+      ],
+      "summary": "Parses the PSP command tail for /m<char> (display mode -> DAT_1000_03bd), /t<digits> (duration*50 -> DAT_1000_00c3), and /c (sets a flag byte)."
+    },
+    {
+      "name": "App_LoadAndDisplayLogoForMode",
+      "address": "1000:013b",
+      "tags": [
+        "guess",
+        "spine",
+        "gfx"
+      ],
+      "summary": "Dispatches on the display-mode byte DAT_1000_03bd (0/1/2/3/4/default), loading the matching resource via Dos_LoadOverlayResource, then sets video mode, programs the palette table, draws the logo strips, and fades in (mode '1' only)."
+    },
+    {
+      "name": "Sys_SaveInterruptVectors",
+      "address": "1000:0237",
+      "tags": [
+        "guess",
+        "engine"
+      ],
+      "summary": "Saves two interrupt vectors via INT21h AH=35h into [0x30a]/[0x30c] and [0x344]/[0x346]."
+    },
+    {
+      "name": "Sys_InstallSavedInterruptVectors",
+      "address": "1000:0276",
+      "tags": [
+        "guess",
+        "engine"
+      ],
+      "summary": "Installs the two saved vectors via INT21h AH=25h -- re-asserts them each main-loop iteration."
+    },
+    {
+      "name": "Sys_InstallCustomTimerHandler",
+      "address": "1000:034a",
+      "tags": [
+        "guess",
+        "engine"
+      ],
+      "summary": "Reprograms PIT channel 0 (divisor 0x5d2e) for a faster tick, and reprograms/reads channel 2 (speaker) mode, saving its value. Simpler than GAMEU.EXE/INTROU.EXE's version -- no INT21h vector install here."
+    },
+    {
+      "name": "Sys_RestoreOriginalTimerHandler",
+      "address": "1000:036c",
+      "tags": [
+        "guess",
+        "engine"
+      ],
+      "summary": "Restores PIT channel 0 to the default 0xffff divisor and channel 2 to the saved value."
+    },
+    {
+      "name": "Sys_WaitForVsyncCounter",
+      "address": "1000:038f",
+      "tags": [
+        "guess",
+        "engine"
+      ],
+      "summary": "Busy-waits for DAT_1000_0389 (an ISR-decremented frame/vsync counter) to reach zero."
+    },
+    {
+      "name": "Dos_LoadOverlayResource",
+      "address": "1000:03c8",
+      "tags": [
+        "guess",
+        "engine"
+      ],
+      "summary": "Loads a mode-specific resource: calls Dos_SearchAndValidateResourcePath then Lzh_Decompress, and issues a DOS EXEC-family call reconstructing a full FLAGS word from individually-tracked flag bits. Not fully verified against disassembly."
+    },
+    {
+      "name": "Dos_SearchAndValidateResourcePath",
+      "address": "1000:03f7",
+      "tags": [
+        "guess",
+        "engine"
+      ],
+      "summary": "Dense DOS-call-heavy routine: scans a null-terminated, -1-sentinel-terminated multi-string list (environment-block style) comparing against a fixed 6-char string, with carry-flag-gated INT21h calls and free-memory arithmetic -- consistent with DOS EXEC/environment-search internals, not fully decoded."
+    },
+    {
+      "name": "Dos_ParseResourceStringTable",
+      "address": "1000:0578",
+      "tags": [
+        "guess",
+        "engine"
+      ],
+      "summary": "Builds/searches null-terminated multi-string tables (terminated by a 0xff sentinel) used by Dos_SearchAndValidateResourcePath."
+    },
+    {
+      "name": "Lzh_Decompress",
+      "address": "1000:06fb",
+      "tags": [
+        "verified",
+        "engine"
+      ],
+      "summary": "Classic LZSS+adaptive-Huffman (LHA-style) decompression loop: reads literal chars or copies matches from a 4096-byte ring buffer. A completely distinct compression scheme from the RNC ProPack used by GAMEU.EXE/INTROU.EXE's data files -- decodes an image bundled directly in KLOGOPOK.EXE's own code segment."
+    },
+    {
+      "name": "Sys_NoOpStub",
+      "address": "1000:0752",
+      "tags": [
+        "verified",
+        "engine"
+      ],
+      "summary": "Empty stub -- always returns immediately."
+    },
+    {
+      "name": "Lzh_InitHuffmanTree",
+      "address": "1000:0864",
+      "tags": [
+        "verified",
+        "engine"
+      ],
+      "summary": "Initializes the adaptive Huffman tree's frequency/parent/child node arrays -- the classic LHA \"start_huff\" setup."
+    },
+    {
+      "name": "Lzh_RebalanceHuffmanTree",
+      "address": "1000:08c6",
+      "tags": [
+        "verified",
+        "engine"
+      ],
+      "summary": "Rebuilds/rebalances the adaptive Huffman tree when a frequency counter overflows -- the classic LHA \"reconst\" routine."
+    },
+    {
+      "name": "Lzh_DecodeChar",
+      "address": "1000:09a8",
+      "tags": [
+        "verified",
+        "engine"
+      ],
+      "summary": "Decodes one literal/length code by walking the adaptive Huffman tree bit-by-bit, incrementing the node's frequency and triggering Lzh_RebalanceHuffmanTree on overflow."
+    },
+    {
+      "name": "Lzh_DecodePosition",
+      "address": "1000:0a6a",
+      "tags": [
+        "verified",
+        "engine"
+      ],
+      "summary": "Decodes a match-distance code via fixed lookup tables -- the classic LHA \"decode_p\" routine."
+    },
+    {
+      "name": "Lzh_ReadBit",
+      "address": "1000:0ad6",
+      "tags": [
+        "verified",
+        "engine"
+      ],
+      "summary": "Bitstream reader over the compressed data embedded at a fixed offset within KLOGOPOK.EXE's own code segment."
+    },
+    {
+      "name": "Sys_NoOpStub2",
+      "address": "1000:3123",
+      "tags": [
+        "verified",
+        "engine"
+      ],
+      "summary": "Empty stub, sibling of Sys_NoOpStub."
+    },
+    {
+      "name": "App_InitStub",
+      "address": "1000:3183",
+      "tags": [
+        "guess",
+        "engine"
+      ],
+      "summary": "Thin wrapper for Dos_CallInt21h, called once early in entry."
+    },
+    {
+      "name": "Dos_CallInt21h",
+      "address": "1000:318c",
+      "tags": [
+        "verified",
+        "engine"
+      ],
+      "summary": "Trivial INT 21h call wrapper."
+    },
+    {
+      "name": "Gfx_ConvertDecompressedImageToPlanes",
+      "address": "1000:31a2",
+      "tags": [
+        "guess",
+        "gfx"
+      ],
+      "summary": "Converts the LZH-decompressed direct-color logo image into 4 separate EGA bitplanes by bit-testing each source word -- 200 rows x 0x28 word-groups."
+    },
+    {
+      "name": "Gfx_DrawLogoStripsAndFadeIn",
+      "address": "1000:325c",
+      "tags": [
+        "guess",
+        "gfx"
+      ],
+      "summary": "Initial logo draw: sets fade start state, calls Video_FadeInPalette, then draws 8 vertical strips via Gfx_BlitStripEga/Cga/Tandy, waiting on Sys_WaitForVsyncCounter between strips."
+    },
+    {
+      "name": "Gfx_DrawLogoStrips",
+      "address": "1000:326c",
+      "tags": [
+        "guess",
+        "gfx"
+      ],
+      "summary": "Redraw variant of Gfx_DrawLogoStripsAndFadeIn without the initial fade-state setup -- same 8-strip draw loop."
+    },
+    {
+      "name": "Gfx_BlitStripEga",
+      "address": "1000:3350",
+      "tags": [
+        "guess",
+        "gfx"
+      ],
+      "summary": "EGA strip blit: cycles Sequencer Map Mask through 0x1,0x2,0x4,0x8 copying (or zero-filling) one plane row at a time."
+    },
+    {
+      "name": "Gfx_BlitStripCga",
+      "address": "1000:3399",
+      "tags": [
+        "guess",
+        "gfx",
+        "altbuild"
+      ],
+      "summary": "CGA strip blit: word-copy (or zero-fill) with +0x1000 bank-interleave wrapping at 0x4000."
+    },
+    {
+      "name": "Gfx_BlitStripTandy",
+      "address": "1000:3440",
+      "tags": [
+        "guess",
+        "gfx",
+        "altbuild"
+      ],
+      "summary": "Tandy strip blit: word-copy (or zero-fill) with +0x1000 bank-interleave wrapping at 0x8000."
+    },
+    {
+      "name": "Video_SetMode",
+      "address": "1000:3501",
+      "tags": [
+        "guess",
+        "gfx"
+      ],
+      "summary": "Dispatches INT10h by the display-mode byte (0x30-0x34, with 0x30 remapped to 0x31); mode '1' additionally runs a 16-step palette-register init loop via INT10h."
+    },
+    {
+      "name": "Video_FadeInPalette",
+      "address": "1000:358c",
+      "tags": [
+        "guess",
+        "gfx"
+      ],
+      "summary": "Mode-'1'-only fade-in: over 0x20 steps, increments palette component bytes toward a target table, applying via Video_SetPaletteFadeTable and waiting for vsync each step."
+    },
+    {
+      "name": "Video_SetPaletteFadeTable",
+      "address": "1000:3600",
+      "tags": [
+        "guess",
+        "gfx"
+      ],
+      "summary": "Loops all 16 palette colors calling Video_WriteVgaDacEntry with a per-step-shifted color table."
+    },
+    {
+      "name": "Video_WriteVgaDacEntry",
+      "address": "1000:3636",
+      "tags": [
+        "verified",
+        "gfx"
+      ],
+      "summary": "Writes one VGA DAC palette entry directly via ports 0x3c8 (index) / 0x3c9 (R,G,B) -- a genuine, direct VGA palette setter, distinct from GAMEU.EXE/INTROU.EXE's INT10h-mediated approach."
+    }
+  ]
+}

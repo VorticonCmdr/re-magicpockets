@@ -1,0 +1,63 @@
+{
+  "program": "pockets.com",
+  "namedFunctions": 6,
+  "totalFunctions": 6,
+  "note": "Third-party copy-protection loader (\"RawCopy PC TSR Patch\", Micro Systems International, 1992-93) -- not Renegade/Bitmap Brothers code. Imported as raw binary with image base 0010:0000 (segment 0x10 = linear 0x100, matching real COM-file PSP-relative loading) so Ghidra CALL/JMP-resolved addresses line up directly with file offsets. See docs/launcher.md.",
+  "functions": [
+    {
+      "name": "entry",
+      "address": "0010:023f",
+      "tags": [
+        "verified",
+        "spine"
+      ],
+      "summary": "Runs Copy_ScanMemoryForSignature; on failure shows Copy_ShowVendorNoticeScreen; on success falls into Sys_HookInt21hAndRunGame."
+    },
+    {
+      "name": "Copy_ScanMemoryForSignature",
+      "address": "0010:0156",
+      "tags": [
+        "guess",
+        "engine"
+      ],
+      "summary": "Scans memory segments (up to 0xa000) via REPNE SCASB for a marker byte, then calls Copy_AppendMatchedString to verify a following string. Likely anti-debugger/anti-monitor scan, not disk-based."
+    },
+    {
+      "name": "Copy_AppendMatchedString",
+      "address": "0010:019c",
+      "tags": [
+        "guess",
+        "engine"
+      ],
+      "summary": "REP MOVSB-copies a length-prefixed entry to the match location if non-empty; returns success/failure via carry flag."
+    },
+    {
+      "name": "Copy_ShowVendorNoticeScreen",
+      "address": "0010:01a9",
+      "tags": [
+        "guess",
+        "gfx"
+      ],
+      "summary": "Paints a BIOS-text-mode box displaying the vendor identification strings (RawCopy PC TSR Patch, Micro Systems International, address/phone/fax) -- the failure-path notice screen."
+    },
+    {
+      "name": "Sys_HookInt21hAndRunGame",
+      "address": "0010:025d",
+      "tags": [
+        "verified",
+        "engine",
+        "spine"
+      ],
+      "summary": "Saves the original INT21h vector, installs Int21_ProtectionHook, resizes memory, EXECs pockets.exe, waits, restores the vector, and terminates."
+    },
+    {
+      "name": "Video_SetRomFont8x16",
+      "address": "0010:02f7",
+      "tags": [
+        "guess",
+        "gfx"
+      ],
+      "summary": "Loads the ROM 8x16 font (INT10 AH=11h) to guarantee standard 25-line text mode before Copy_ShowVendorNoticeScreen paints."
+    }
+  ]
+}

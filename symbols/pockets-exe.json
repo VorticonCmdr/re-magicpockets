@@ -1,0 +1,16 @@
+{
+  "program": "pockets.exe",
+  "namedFunctions": 1,
+  "totalFunctions": 1,
+  "functions": [
+    {
+      "name": "entry",
+      "address": "1000:0000",
+      "tags": [
+        "verified",
+        "spine"
+      ],
+      "summary": "THE GAME LAUNCHER: reads pockets.ini's video-driver line, EXECs klogopok.exe (with /m<X> /t5 0, X derived from the driver char), then intro.exe, then loops EXECing game.exe (relaunching on non-zero exit code). Restores video mode and terminates on zero exit. See docs/launcher.md."
+    }
+  ]
+}
