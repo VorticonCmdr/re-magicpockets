@@ -89,6 +89,39 @@ segments, direction-vector setups, etc.) — **not decoded field-by-field here**
 extraction still works because every branch checked writes the same entity `+6`/`+8` fields from
 the same leading payload positions.
 
+## Entity sprite rendering (which tile does entity type `T` actually draw?)
+
+Every entity's `type` (the level-script `AX` field above) is also the index into a **96-entry,
+28-byte shape-descriptor table at `6de3:b91a`** (indexed via `Entity_LookupShapeDescriptor`,
+`1000:c16a`, see `docs/formats/pak.md`). Two of its fields matter for rendering:
+
+- `+0xe` = **bank id** — an index into a small segment table (`6de3:f941`) giving which loaded
+  segment this shape's pixel data lives in (e.g. bank 6 → segment `0x5c53`).
+- `+2` = **animStart** — the entity's initial animation-frame index, copied into the runtime
+  entity struct's own current-frame field (`entity+0xa`) at spawn time
+  (`Entity_InitFromTemplateRecord`/`Entity_SpawnFromQueuedEvent`).
+
+**Confirmed exact** for bank id 6 (segment `0x5c53` = `extras.pak` (240 tiles) + `extraxN.pak` (80
+tiles) concatenated, world N's per-world bonus/HUD icon bank — see `docs/formats/pak.md`):
+`animStart` is a direct flat tile index into that combined 320-tile space (index < 240 →
+`extras.pak`, else `extraxN.pak` at `index - 240`). Verified two ways: (1) every one of the ~44
+bank-6 descriptors' `animStart`/`animEnd` values falls exactly inside 0–319 with zero exceptions
+— not a coincidence at that sample size; (2) rendering each resolved entity's actual sprite tile
+at its level position produces recognizable bonus-item art (stars, spinning icons, sparkles)
+sitting at sensible in-level spawn points, not noise.
+
+**Not yet resolved** for the other bank ids (2 = `kidxN.pak`, 3 = `specialN.pak`, 5 = `blocksN.pak`,
+7 = `nastyN.pak`) — these cover most enemies/characters. `animStart` values there exceed each
+file's own tile count, meaning (like bank 6) each segment concatenates more than one file — e.g.
+bank 2's segment loads `bitkid.pak` (60 tiles) *before* `kidxN.pak` (20 tiles), confirmed from the
+loader disassembly, but even accounting for that the numbers don't fully add up yet (`special`'s
+values still exceed a two-file concatenation), so the exact tile-index formula for these banks is
+still open. `tools/viewer.html` renders bank-6 entities as real sprites and falls back to a
+colored dot for everything else, rather than guess wrong tiles.
+
+`symbols/entity-shapes.json` (Ghidra-derived, checked into git like other symbol exports, copied
+into `build/` by `tools/build-all.js`) holds the decoded descriptor table + bank-to-segment map.
+
 ## Verification
 
 `node tools/extract-level-script.js build/raw/<file>.pin.raw` parses every sub-level stream. All

@@ -97,6 +97,16 @@ let currentGrid = null; // {width, height, rows}
 let currentAtlasMeta = null; // {tileWidth, tileHeight, cols, rows, tileCount}
 let currentAtlasImage = null;
 let currentEntities = null; // {fileSize, sublevelCount, entities: [{offset,type,x,y,...}]}
+let entityShapes = null; // symbols/entity-shapes.json: {bankToSegment, descriptors: [{id,bankId,animStart,height,...}]}
+let extrasAtlas = null; // {meta, image} for extras.pak (shared across worlds)
+let extraxAtlas = null; // {meta, image} for extrax<world>.pak (per-world)
+let extraxWorldLoaded = null;
+
+// Only bankId 6 (extras.pak + extraxN.pak) has a CONFIRMED animStart -> tile-index mapping --
+// see docs/formats/pin-level-script.md's entity-sprite-rendering section. Other banks fall back
+// to a colored dot until their segment concatenation is fully mapped.
+const RESOLVED_BANK_ID = 6;
+const EXTRAS_TILE_COUNT = 240;
 
 // Deterministic, visually-distinct color per entity type id.
 function colorForType(type) {
@@ -155,6 +165,51 @@ async function loadEntities(name) {
   currentEntities = name ? await fetchJson(`/build/png/${name}.pin.json`) : null;
 }
 
+function worldOfLevel(levelName) {
+  const m = levelName.match(/([1-4])/);
+  return m ? Number(m[1]) : null;
+}
+
+// Loads the extras.pak (shared) + extrax<world>.pak (per-world) atlases needed to render
+// bankId=6 entities' real sprites. Cheap to call repeatedly -- extras.pak loads once, extrax
+// reloads only when the world changes.
+async function loadSpriteAtlasesForWorld(world) {
+  if (!world) return;
+  try {
+    if (!extrasAtlas) {
+      const [meta, image] = await Promise.all([
+        fetchJson('/build/png/extras.pak.json'),
+        loadImage('/build/png/extras.pak.png'),
+      ]);
+      extrasAtlas = { meta, image };
+    }
+    if (extraxWorldLoaded !== world) {
+      const [meta, image] = await Promise.all([
+        fetchJson(`/build/png/extrax${world}.pak.json`),
+        loadImage(`/build/png/extrax${world}.pak.png`),
+      ]);
+      extraxAtlas = { meta, image };
+      extraxWorldLoaded = world;
+    }
+  } catch (e) {
+    // non-fatal -- bankId=6 entities just fall back to dots for this world
+    extraxAtlas = null;
+  }
+}
+
+// Returns {atlas, tileIndex} for entities whose shape resolves to the confirmed extras/extrax
+// bank, or null if unresolved (caller should fall back to a colored dot).
+function resolveEntitySprite(entity) {
+  if (!entityShapes || entity.type == null || entity.type >= entityShapes.descriptors.length) return null;
+  const desc = entityShapes.descriptors[entity.type];
+  if (desc.bankId !== RESOLVED_BANK_ID) return null;
+  const tileIndex = desc.animStart;
+  if (tileIndex < EXTRAS_TILE_COUNT) {
+    return extrasAtlas ? { atlas: extrasAtlas, tileIndex } : null;
+  }
+  return extraxAtlas ? { atlas: extraxAtlas, tileIndex: tileIndex - EXTRAS_TILE_COUNT } : null;
+}
+
 function render() {
   if (!currentGrid || !currentAtlasMeta || !currentAtlasImage) return;
   const { width, height, rows } = currentGrid;
@@ -186,20 +241,30 @@ function render() {
   let entityStatus = '';
   if (currentEntities && entityToggle.checked) {
     const r = 5;
-    let drawn = 0, offMap = 0;
+    let drawn = 0, offMap = 0, sprited = 0;
     for (const e of currentEntities.entities) {
       if (e.x === undefined || e.y === undefined) continue;
       if (e.x < -500 || e.x > canvas.width + 500 || e.y < -500 || e.y > canvas.height + 500) { offMap++; continue; }
       drawn++;
-      ctx.beginPath();
-      ctx.arc(e.x, e.y, r, 0, Math.PI * 2);
-      ctx.fillStyle = colorForType(e.type);
-      ctx.fill();
-      ctx.lineWidth = 1;
-      ctx.strokeStyle = 'rgba(0,0,0,0.6)';
-      ctx.stroke();
+      const resolved = resolveEntitySprite(e);
+      if (resolved) {
+        sprited++;
+        const { atlas, tileIndex } = resolved;
+        const { tileWidth: tw, tileHeight: th, cols: acols } = atlas.meta;
+        const sx = (tileIndex % acols) * tw;
+        const sy = Math.floor(tileIndex / acols) * th;
+        ctx.drawImage(atlas.image, sx, sy, tw, th, e.x, e.y, tw, th);
+      } else {
+        ctx.beginPath();
+        ctx.arc(e.x, e.y, r, 0, Math.PI * 2);
+        ctx.fillStyle = colorForType(e.type);
+        ctx.fill();
+        ctx.lineWidth = 1;
+        ctx.strokeStyle = 'rgba(0,0,0,0.6)';
+        ctx.stroke();
+      }
     }
-    entityStatus = ` -- ${drawn} entities shown (${offMap} far off-map, coords unresolved)`;
+    entityStatus = ` -- ${drawn} entities shown (${sprited} real sprites, ${drawn - sprited} dots, ${offMap} far off-map)`;
   }
 
   const zoom = Number(zoomInput.value);
@@ -229,6 +294,7 @@ async function onLevelChange() {
   try {
     await loadLevel(levelName);
     await loadEntities(entitySelect.value);
+    await loadSpriteAtlasesForWorld(worldOfLevel(levelName));
     await onTilesetChangeInner();
   } catch (e) {
     setStatus(String(e), true);
@@ -300,6 +366,11 @@ async function init() {
   } catch (e) {
     setStatus(`Could not load /build/manifest.json (${e.message}) -- run "node tools/build-all.js" first.`, true);
     return;
+  }
+  try {
+    entityShapes = await fetchJson('/build/png/entity-shapes.json');
+  } catch (e) {
+    entityShapes = null; // non-fatal -- entities just render as dots without it
   }
 
   for (const level of manifest.levels) {

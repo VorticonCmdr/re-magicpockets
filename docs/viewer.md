@@ -20,13 +20,18 @@ resolved atlas index. Zoom slider covers 25%–400%; the canvas itself is always
 native tile resolution (`gridWidth*32 x gridHeight*16` px) and scaled via CSS so pixel art stays
 crisp (`image-rendering: pixelated`).
 
-An **Entities** dropdown overlays enemy/item/trigger placements (colored dots, one hue per
-entity type) decoded from that world's level-script `.pin` file — see
-`docs/formats/pin-level-script.md`. Auto-selected by world like the tileset; toggle off with the
-"show" checkbox. Hover a dot to see its type, position, file offset, and raw payload words. A
-meaningful fraction of entities have unresolved (often negative/off-map) coordinates — these are
-still plotted (the status line reports how many), not hidden, since the coordinate-origin
-question is still open.
+An **Entities** dropdown overlays enemy/item/trigger placements decoded from that world's
+level-script `.pin` file — see `docs/formats/pin-level-script.md`. Auto-selected by world like
+the tileset; toggle off with the "show" checkbox. Hover a marker to see its type, position, file
+offset, and raw payload words. A meaningful fraction of entities have unresolved (often
+negative/off-map) coordinates — these are still plotted (the status line reports how many), not
+hidden, since the coordinate-origin question is still open.
+
+Entities render as their **actual sprite tile** when the mapping is confirmed exact (currently
+only bonus/HUD-icon entities, via `extras.pak`/`extraxN.pak` — see
+`docs/formats/pin-level-script.md`'s "Entity sprite rendering" section); everything else
+(enemies/characters, whose sprite-bank tile-index formula isn't fully resolved yet) falls back to
+a colored dot (one hue per type) rather than guessing the wrong tile.
 
 ## How it works
 
@@ -44,4 +49,8 @@ question is still open.
   `docs/formats/pap.md`'s former open questions in one shot.
 - `build/png/<entityScript>.pin.json` (written by `tools/extract-level-script.js`) is the decoded
   entity list — `{entities: [{type, x, y, offset, bx, payload}, ...]}` — drawn directly in level
-  pixel coordinates, no atlas involved.
+  pixel coordinates.
+- `build/png/entity-shapes.json` (copied from `symbols/entity-shapes.json`, Ghidra-derived) maps
+  entity `type` → shape descriptor (bank id + starting animation frame). For bank id 6, the
+  viewer resolves this to a real tile in `extras.pak.png`/`extrax<world>.pak.png` and draws it at
+  the entity's position instead of a dot.

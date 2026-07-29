@@ -1,0 +1,973 @@
+{
+ "note": "Entity shape-descriptor table (6de3:b91a, 96 x 28-byte records), indexed by entity type (the same value stored in level-script records -- see docs/formats/pin-level-script.md). Only bankId=6 (extras.pak+extraxN.pak) has a CONFIRMED animStart->tile-index mapping (verified: every bankId=6 animStart/animEnd value falls exactly within the combined extras.pak(240 tiles)+extraxN.pak(80 tiles) 0-319 flat tile range). Other bankIds' segments concatenate additional files (e.g. bitkid.pak precedes kidxN.pak in segment 0x4353) not yet fully mapped -- animStart is NOT yet reliable as a tile index for those. See docs/formats/pin-level-script.md's entity-sprite-rendering section.",
+ "bankToSegment": {
+  "2": 17235,
+  "3": 27235,
+  "5": 15299,
+  "6": 23635,
+  "7": 8425,
+  "8": 10825
+ },
+ "descriptors": [
+  {
+   "id": 0,
+   "animStart": 0,
+   "animEnd": 0,
+   "orientation": 0,
+   "frameCount": 0,
+   "frameStride": 0,
+   "bankId": 0,
+   "height": 0
+  },
+  {
+   "id": 1,
+   "animStart": 1,
+   "animEnd": 4,
+   "orientation": 11,
+   "frameCount": 128,
+   "frameStride": 128,
+   "bankId": 5,
+   "height": 16
+  },
+  {
+   "id": 2,
+   "animStart": 176,
+   "animEnd": 176,
+   "orientation": 14,
+   "frameCount": 1,
+   "frameStride": 1,
+   "bankId": 6,
+   "height": 16
+  },
+  {
+   "id": 3,
+   "animStart": 65,
+   "animEnd": 72,
+   "orientation": 10,
+   "frameCount": 1,
+   "frameStride": 2,
+   "bankId": 2,
+   "height": 16
+  },
+  {
+   "id": 4,
+   "animStart": 0,
+   "animEnd": 0,
+   "orientation": 14,
+   "frameCount": 1,
+   "frameStride": 1,
+   "bankId": 6,
+   "height": 16
+  },
+  {
+   "id": 5,
+   "animStart": 65,
+   "animEnd": 72,
+   "orientation": 10,
+   "frameCount": 1,
+   "frameStride": 2,
+   "bankId": 2,
+   "height": 16
+  },
+  {
+   "id": 6,
+   "animStart": 148,
+   "animEnd": 148,
+   "orientation": 0,
+   "frameCount": 2,
+   "frameStride": 2,
+   "bankId": 6,
+   "height": 16
+  },
+  {
+   "id": 7,
+   "animStart": 2,
+   "animEnd": 2,
+   "orientation": 14,
+   "frameCount": 6,
+   "frameStride": 1,
+   "bankId": 6,
+   "height": 16
+  },
+  {
+   "id": 8,
+   "animStart": 0,
+   "animEnd": 0,
+   "orientation": 14,
+   "frameCount": 1,
+   "frameStride": 1,
+   "bankId": 6,
+   "height": 16
+  },
+  {
+   "id": 9,
+   "animStart": 1,
+   "animEnd": 1,
+   "orientation": 14,
+   "frameCount": 8,
+   "frameStride": 2,
+   "bankId": 6,
+   "height": 16
+  },
+  {
+   "id": 10,
+   "animStart": 243,
+   "animEnd": 246,
+   "orientation": 14,
+   "frameCount": 1,
+   "frameStride": 1,
+   "bankId": 6,
+   "height": 16
+  },
+  {
+   "id": 11,
+   "animStart": 4,
+   "animEnd": 7,
+   "orientation": 15,
+   "frameCount": 1,
+   "frameStride": 1,
+   "bankId": 3,
+   "height": 20
+  },
+  {
+   "id": 12,
+   "animStart": 10,
+   "animEnd": 13,
+   "orientation": 15,
+   "frameCount": 1,
+   "frameStride": 1,
+   "bankId": 3,
+   "height": 26
+  },
+  {
+   "id": 13,
+   "animStart": 0,
+   "animEnd": 3,
+   "orientation": 15,
+   "frameCount": 1,
+   "frameStride": 1,
+   "bankId": 3,
+   "height": 32
+  },
+  {
+   "id": 14,
+   "animStart": 0,
+   "animEnd": 0,
+   "orientation": 14,
+   "frameCount": 1,
+   "frameStride": 1,
+   "bankId": 6,
+   "height": 16
+  },
+  {
+   "id": 15,
+   "animStart": 70,
+   "animEnd": 79,
+   "orientation": 14,
+   "frameCount": 1,
+   "frameStride": 1,
+   "bankId": 6,
+   "height": 16
+  },
+  {
+   "id": 16,
+   "animStart": 14,
+   "animEnd": 17,
+   "orientation": 15,
+   "frameCount": 1,
+   "frameStride": 1,
+   "bankId": 3,
+   "height": 32
+  },
+  {
+   "id": 17,
+   "animStart": 128,
+   "animEnd": 131,
+   "orientation": 14,
+   "frameCount": 2,
+   "frameStride": 1,
+   "bankId": 6,
+   "height": 16
+  },
+  {
+   "id": 18,
+   "animStart": 132,
+   "animEnd": 135,
+   "orientation": 15,
+   "frameCount": 1,
+   "frameStride": 1,
+   "bankId": 7,
+   "height": 32
+  },
+  {
+   "id": 19,
+   "animStart": 41,
+   "animEnd": 41,
+   "orientation": 15,
+   "frameCount": 1,
+   "frameStride": 1,
+   "bankId": 7,
+   "height": 32
+  },
+  {
+   "id": 20,
+   "animStart": 12,
+   "animEnd": 12,
+   "orientation": 15,
+   "frameCount": 1,
+   "frameStride": 1,
+   "bankId": 7,
+   "height": 32
+  },
+  {
+   "id": 21,
+   "animStart": 13,
+   "animEnd": 13,
+   "orientation": 15,
+   "frameCount": 1,
+   "frameStride": 1,
+   "bankId": 2,
+   "height": 32
+  },
+  {
+   "id": 22,
+   "animStart": 260,
+   "animEnd": 262,
+   "orientation": 14,
+   "frameCount": 1,
+   "frameStride": 1,
+   "bankId": 6,
+   "height": 16
+  },
+  {
+   "id": 23,
+   "animStart": 135,
+   "animEnd": 135,
+   "orientation": 14,
+   "frameCount": 2,
+   "frameStride": 1,
+   "bankId": 6,
+   "height": 16
+  },
+  {
+   "id": 24,
+   "animStart": 127,
+   "animEnd": 127,
+   "orientation": 14,
+   "frameCount": 2,
+   "frameStride": 2,
+   "bankId": 6,
+   "height": 16
+  },
+  {
+   "id": 25,
+   "animStart": 122,
+   "animEnd": 122,
+   "orientation": 13,
+   "frameCount": 1,
+   "frameStride": 1,
+   "bankId": 2,
+   "height": 32
+  },
+  {
+   "id": 26,
+   "animStart": 230,
+   "animEnd": 230,
+   "orientation": 14,
+   "frameCount": 2,
+   "frameStride": 1,
+   "bankId": 6,
+   "height": 16
+  },
+  {
+   "id": 27,
+   "animStart": 20,
+   "animEnd": 20,
+   "orientation": 14,
+   "frameCount": 1,
+   "frameStride": 1,
+   "bankId": 6,
+   "height": 16
+  },
+  {
+   "id": 28,
+   "animStart": 132,
+   "animEnd": 132,
+   "orientation": 14,
+   "frameCount": 2,
+   "frameStride": 2,
+   "bankId": 6,
+   "height": 16
+  },
+  {
+   "id": 29,
+   "animStart": 174,
+   "animEnd": 174,
+   "orientation": 14,
+   "frameCount": 2,
+   "frameStride": 1,
+   "bankId": 6,
+   "height": 16
+  },
+  {
+   "id": 30,
+   "animStart": 166,
+   "animEnd": 173,
+   "orientation": 14,
+   "frameCount": 1,
+   "frameStride": 1,
+   "bankId": 6,
+   "height": 16
+  },
+  {
+   "id": 31,
+   "animStart": 80,
+   "animEnd": 80,
+   "orientation": 14,
+   "frameCount": 1,
+   "frameStride": 1,
+   "bankId": 6,
+   "height": 16
+  },
+  {
+   "id": 32,
+   "animStart": 196,
+   "animEnd": 203,
+   "orientation": 15,
+   "frameCount": 1,
+   "frameStride": 1,
+   "bankId": 7,
+   "height": 32
+  },
+  {
+   "id": 33,
+   "animStart": 161,
+   "animEnd": 161,
+   "orientation": 15,
+   "frameCount": 1,
+   "frameStride": 1,
+   "bankId": 2,
+   "height": 32
+  },
+  {
+   "id": 34,
+   "animStart": 212,
+   "animEnd": 212,
+   "orientation": 14,
+   "frameCount": 2,
+   "frameStride": 1,
+   "bankId": 6,
+   "height": 16
+  },
+  {
+   "id": 35,
+   "animStart": 214,
+   "animEnd": 214,
+   "orientation": 15,
+   "frameCount": 1,
+   "frameStride": 1,
+   "bankId": 7,
+   "height": 32
+  },
+  {
+   "id": 36,
+   "animStart": 187,
+   "animEnd": 187,
+   "orientation": 14,
+   "frameCount": 2,
+   "frameStride": 2,
+   "bankId": 6,
+   "height": 16
+  },
+  {
+   "id": 37,
+   "animStart": 242,
+   "animEnd": 242,
+   "orientation": 14,
+   "frameCount": 4,
+   "frameStride": 1,
+   "bankId": 6,
+   "height": 16
+  },
+  {
+   "id": 38,
+   "animStart": 184,
+   "animEnd": 184,
+   "orientation": 14,
+   "frameCount": 2,
+   "frameStride": 2,
+   "bankId": 6,
+   "height": 16
+  },
+  {
+   "id": 39,
+   "animStart": 104,
+   "animEnd": 107,
+   "orientation": 14,
+   "frameCount": 1,
+   "frameStride": 1,
+   "bankId": 6,
+   "height": 16
+  },
+  {
+   "id": 40,
+   "animStart": 247,
+   "animEnd": 252,
+   "orientation": 14,
+   "frameCount": 1,
+   "frameStride": 1,
+   "bankId": 6,
+   "height": 16
+  },
+  {
+   "id": 41,
+   "animStart": 192,
+   "animEnd": 192,
+   "orientation": 14,
+   "frameCount": 2,
+   "frameStride": 2,
+   "bankId": 6,
+   "height": 16
+  },
+  {
+   "id": 42,
+   "animStart": 191,
+   "animEnd": 191,
+   "orientation": 14,
+   "frameCount": 2,
+   "frameStride": 2,
+   "bankId": 6,
+   "height": 16
+  },
+  {
+   "id": 43,
+   "animStart": 26,
+   "animEnd": 28,
+   "orientation": 15,
+   "frameCount": 1,
+   "frameStride": 1,
+   "bankId": 2,
+   "height": 32
+  },
+  {
+   "id": 44,
+   "animStart": 246,
+   "animEnd": 246,
+   "orientation": 14,
+   "frameCount": 1,
+   "frameStride": 1,
+   "bankId": 6,
+   "height": 16
+  },
+  {
+   "id": 45,
+   "animStart": 45,
+   "animEnd": 45,
+   "orientation": 14,
+   "frameCount": 16,
+   "frameStride": 1,
+   "bankId": 6,
+   "height": 16
+  },
+  {
+   "id": 46,
+   "animStart": 53,
+   "animEnd": 53,
+   "orientation": 14,
+   "frameCount": 2,
+   "frameStride": 2,
+   "bankId": 6,
+   "height": 16
+  },
+  {
+   "id": 47,
+   "animStart": 70,
+   "animEnd": 70,
+   "orientation": 15,
+   "frameCount": 1,
+   "frameStride": 1,
+   "bankId": 2,
+   "height": 16
+  },
+  {
+   "id": 48,
+   "animStart": 243,
+   "animEnd": 246,
+   "orientation": 14,
+   "frameCount": 1,
+   "frameStride": 1,
+   "bankId": 6,
+   "height": 16
+  },
+  {
+   "id": 49,
+   "animStart": 4,
+   "animEnd": 7,
+   "orientation": 15,
+   "frameCount": 1,
+   "frameStride": 1,
+   "bankId": 3,
+   "height": 20
+  },
+  {
+   "id": 50,
+   "animStart": 10,
+   "animEnd": 13,
+   "orientation": 15,
+   "frameCount": 1,
+   "frameStride": 1,
+   "bankId": 3,
+   "height": 26
+  },
+  {
+   "id": 51,
+   "animStart": 0,
+   "animEnd": 3,
+   "orientation": 15,
+   "frameCount": 1,
+   "frameStride": 1,
+   "bankId": 3,
+   "height": 32
+  },
+  {
+   "id": 52,
+   "animStart": 14,
+   "animEnd": 17,
+   "orientation": 15,
+   "frameCount": 1,
+   "frameStride": 1,
+   "bankId": 3,
+   "height": 32
+  },
+  {
+   "id": 53,
+   "animStart": 248,
+   "animEnd": 251,
+   "orientation": 14,
+   "frameCount": 1,
+   "frameStride": 1,
+   "bankId": 6,
+   "height": 16
+  },
+  {
+   "id": 54,
+   "animStart": 27,
+   "animEnd": 30,
+   "orientation": 14,
+   "frameCount": 2,
+   "frameStride": 1,
+   "bankId": 6,
+   "height": 16
+  },
+  {
+   "id": 55,
+   "animStart": 0,
+   "animEnd": 5,
+   "orientation": 15,
+   "frameCount": 1,
+   "frameStride": 1,
+   "bankId": 3,
+   "height": 26
+  },
+  {
+   "id": 56,
+   "animStart": 6,
+   "animEnd": 11,
+   "orientation": 15,
+   "frameCount": 1,
+   "frameStride": 1,
+   "bankId": 3,
+   "height": 32
+  },
+  {
+   "id": 57,
+   "animStart": 51,
+   "animEnd": 51,
+   "orientation": 15,
+   "frameCount": 1,
+   "frameStride": 1,
+   "bankId": 3,
+   "height": 32
+  },
+  {
+   "id": 58,
+   "animStart": 240,
+   "animEnd": 243,
+   "orientation": 14,
+   "frameCount": 1,
+   "frameStride": 1,
+   "bankId": 6,
+   "height": 16
+  },
+  {
+   "id": 59,
+   "animStart": 4,
+   "animEnd": 7,
+   "orientation": 15,
+   "frameCount": 1,
+   "frameStride": 1,
+   "bankId": 3,
+   "height": 20
+  },
+  {
+   "id": 60,
+   "animStart": 10,
+   "animEnd": 13,
+   "orientation": 15,
+   "frameCount": 1,
+   "frameStride": 1,
+   "bankId": 3,
+   "height": 26
+  },
+  {
+   "id": 61,
+   "animStart": 0,
+   "animEnd": 3,
+   "orientation": 15,
+   "frameCount": 1,
+   "frameStride": 1,
+   "bankId": 3,
+   "height": 32
+  },
+  {
+   "id": 62,
+   "animStart": 14,
+   "animEnd": 14,
+   "orientation": 15,
+   "frameCount": 1,
+   "frameStride": 1,
+   "bankId": 3,
+   "height": 32
+  },
+  {
+   "id": 63,
+   "animStart": 214,
+   "animEnd": 214,
+   "orientation": 15,
+   "frameCount": 1,
+   "frameStride": 1,
+   "bankId": 2,
+   "height": 16
+  },
+  {
+   "id": 64,
+   "animStart": 8,
+   "animEnd": 8,
+   "orientation": 14,
+   "frameCount": 1,
+   "frameStride": 1,
+   "bankId": 6,
+   "height": 16
+  },
+  {
+   "id": 65,
+   "animStart": 225,
+   "animEnd": 225,
+   "orientation": 15,
+   "frameCount": 1,
+   "frameStride": 1,
+   "bankId": 3,
+   "height": 32
+  },
+  {
+   "id": 66,
+   "animStart": 84,
+   "animEnd": 84,
+   "orientation": 15,
+   "frameCount": 2,
+   "frameStride": 2,
+   "bankId": 7,
+   "height": 32
+  },
+  {
+   "id": 67,
+   "animStart": 12,
+   "animEnd": 12,
+   "orientation": 15,
+   "frameCount": 1,
+   "frameStride": 1,
+   "bankId": 2,
+   "height": 32
+  },
+  {
+   "id": 68,
+   "animStart": 108,
+   "animEnd": 115,
+   "orientation": 14,
+   "frameCount": 1,
+   "frameStride": 1,
+   "bankId": 6,
+   "height": 16
+  },
+  {
+   "id": 69,
+   "animStart": 10,
+   "animEnd": 10,
+   "orientation": 14,
+   "frameCount": 2,
+   "frameStride": 2,
+   "bankId": 6,
+   "height": 16
+  },
+  {
+   "id": 70,
+   "animStart": 3,
+   "animEnd": 38,
+   "orientation": 14,
+   "frameCount": 5,
+   "frameStride": 1,
+   "bankId": 6,
+   "height": 16
+  },
+  {
+   "id": 71,
+   "animStart": 30,
+   "animEnd": 30,
+   "orientation": 15,
+   "frameCount": 15,
+   "frameStride": 1,
+   "bankId": 2,
+   "height": 28
+  },
+  {
+   "id": 72,
+   "animStart": 42,
+   "animEnd": 45,
+   "orientation": 15,
+   "frameCount": 1,
+   "frameStride": 1,
+   "bankId": 7,
+   "height": 32
+  },
+  {
+   "id": 73,
+   "animStart": 49,
+   "animEnd": 52,
+   "orientation": 15,
+   "frameCount": 1,
+   "frameStride": 1,
+   "bankId": 7,
+   "height": 32
+  },
+  {
+   "id": 74,
+   "animStart": 28,
+   "animEnd": 28,
+   "orientation": 15,
+   "frameCount": 1,
+   "frameStride": 1,
+   "bankId": 7,
+   "height": 32
+  },
+  {
+   "id": 75,
+   "animStart": 40,
+   "animEnd": 47,
+   "orientation": 15,
+   "frameCount": 1,
+   "frameStride": 1,
+   "bankId": 7,
+   "height": 32
+  },
+  {
+   "id": 76,
+   "animStart": 10,
+   "animEnd": 10,
+   "orientation": 15,
+   "frameCount": 1,
+   "frameStride": 1,
+   "bankId": 7,
+   "height": 32
+  },
+  {
+   "id": 77,
+   "animStart": 254,
+   "animEnd": 257,
+   "orientation": 14,
+   "frameCount": 1,
+   "frameStride": 1,
+   "bankId": 6,
+   "height": 16
+  },
+  {
+   "id": 78,
+   "animStart": 30,
+   "animEnd": 37,
+   "orientation": 15,
+   "frameCount": 1,
+   "frameStride": 1,
+   "bankId": 7,
+   "height": 32
+  },
+  {
+   "id": 79,
+   "animStart": 20,
+   "animEnd": 20,
+   "orientation": 15,
+   "frameCount": 1,
+   "frameStride": 1,
+   "bankId": 7,
+   "height": 32
+  },
+  {
+   "id": 80,
+   "animStart": 0,
+   "animEnd": 4,
+   "orientation": 15,
+   "frameCount": 1,
+   "frameStride": 1,
+   "bankId": 7,
+   "height": 32
+  },
+  {
+   "id": 81,
+   "animStart": 7,
+   "animEnd": 7,
+   "orientation": 15,
+   "frameCount": 1,
+   "frameStride": 1,
+   "bankId": 7,
+   "height": 32
+  },
+  {
+   "id": 82,
+   "animStart": 35,
+   "animEnd": 35,
+   "orientation": 14,
+   "frameCount": 2,
+   "frameStride": 2,
+   "bankId": 6,
+   "height": 16
+  },
+  {
+   "id": 83,
+   "animStart": 264,
+   "animEnd": 264,
+   "orientation": 14,
+   "frameCount": 1,
+   "frameStride": 1,
+   "bankId": 6,
+   "height": 16
+  },
+  {
+   "id": 84,
+   "animStart": 40,
+   "animEnd": 43,
+   "orientation": 15,
+   "frameCount": 1,
+   "frameStride": 1,
+   "bankId": 7,
+   "height": 32
+  },
+  {
+   "id": 85,
+   "animStart": 256,
+   "animEnd": 256,
+   "orientation": 14,
+   "frameCount": 1,
+   "frameStride": 1,
+   "bankId": 6,
+   "height": 16
+  },
+  {
+   "id": 86,
+   "animStart": 148,
+   "animEnd": 148,
+   "orientation": 15,
+   "frameCount": 1,
+   "frameStride": 1,
+   "bankId": 2,
+   "height": 32
+  },
+  {
+   "id": 87,
+   "animStart": 0,
+   "animEnd": 7,
+   "orientation": 15,
+   "frameCount": 1,
+   "frameStride": 1,
+   "bankId": 7,
+   "height": 32
+  },
+  {
+   "id": 88,
+   "animStart": 20,
+   "animEnd": 27,
+   "orientation": 15,
+   "frameCount": 1,
+   "frameStride": 1,
+   "bankId": 7,
+   "height": 32
+  },
+  {
+   "id": 89,
+   "animStart": 10,
+   "animEnd": 17,
+   "orientation": 15,
+   "frameCount": 1,
+   "frameStride": 1,
+   "bankId": 7,
+   "height": 32
+  },
+  {
+   "id": 90,
+   "animStart": 50,
+   "animEnd": 55,
+   "orientation": 15,
+   "frameCount": 1,
+   "frameStride": 1,
+   "bankId": 7,
+   "height": 32
+  },
+  {
+   "id": 91,
+   "animStart": 58,
+   "animEnd": 58,
+   "orientation": 15,
+   "frameCount": 1,
+   "frameStride": 1,
+   "bankId": 7,
+   "height": 32
+  },
+  {
+   "id": 92,
+   "animStart": 54,
+   "animEnd": 54,
+   "orientation": 15,
+   "frameCount": 1,
+   "frameStride": 1,
+   "bankId": 2,
+   "height": 16
+  },
+  {
+   "id": 93,
+   "animStart": 40,
+   "animEnd": 45,
+   "orientation": 15,
+   "frameCount": 1,
+   "frameStride": 1,
+   "bankId": 7,
+   "height": 32
+  },
+  {
+   "id": 94,
+   "animStart": 16,
+   "animEnd": 29,
+   "orientation": 14,
+   "frameCount": 1,
+   "frameStride": 1,
+   "bankId": 6,
+   "height": 16
+  },
+  {
+   "id": 95,
+   "animStart": 240,
+   "animEnd": 243,
+   "orientation": 14,
+   "frameCount": 1,
+   "frameStride": 1,
+   "bankId": 6,
+   "height": 16
+  }
+ ]
+}
