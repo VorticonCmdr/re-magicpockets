@@ -58,6 +58,10 @@
   <label>Tileset
     <select id="tilesetSelect"></select>
   </label>
+  <label>Entities
+    <select id="entitySelect"><option value="">(none)</option></select>
+  </label>
+  <label><input type="checkbox" id="entityToggle" checked> show</label>
   <label>Zoom
     <input type="range" id="zoom" min="0.25" max="4" step="0.25" value="1">
     <span id="zoomLabel">100%</span>
@@ -69,12 +73,17 @@
   Tile value <code>V</code> at grid (row, col) draws atlas tile <code>V-1</code> from the
   selected <code>blocksN.pak</code> sheet (32x16 px/tile, 1-based on-disk indices) --
   see docs/formats/pak.md and docs/formats/pap.md. Hover a tile to see its raw index.
+  Entity markers (colored dots) are enemy/item/trigger placements decoded from the level-script
+  <code>.pin</code> files -- see docs/formats/pin-level-script.md. A meaningful fraction have
+  unresolved (often negative or off-map) coordinates -- shown as-is, not clipped.
 </div>
 <script>
 'use strict';
 
 const levelSelect = document.getElementById('levelSelect');
 const tilesetSelect = document.getElementById('tilesetSelect');
+const entitySelect = document.getElementById('entitySelect');
+const entityToggle = document.getElementById('entityToggle');
 const zoomInput = document.getElementById('zoom');
 const zoomLabel = document.getElementById('zoomLabel');
 const statusEl = document.getElementById('status');
@@ -87,6 +96,13 @@ let manifest = null;
 let currentGrid = null; // {width, height, rows}
 let currentAtlasMeta = null; // {tileWidth, tileHeight, cols, rows, tileCount}
 let currentAtlasImage = null;
+let currentEntities = null; // {fileSize, sublevelCount, entities: [{offset,type,x,y,...}]}
+
+// Deterministic, visually-distinct color per entity type id.
+function colorForType(type) {
+  const hue = (type * 47) % 360;
+  return `hsl(${hue}, 85%, 60%)`;
+}
 
 function setStatus(msg, isError) {
   statusEl.textContent = msg;
@@ -116,6 +132,16 @@ function guessTilesetForLevel(levelName) {
   return manifest.tilesets[0] ? manifest.tilesets[0].name : null;
 }
 
+function guessEntityScriptForLevel(levelName) {
+  const m = levelName.match(/([1-4])/);
+  if (!m) return '';
+  const candidates = manifest.entityScripts.filter((e) => e.world === Number(m[1]));
+  // level3 has three script variants (level3a/b/c); prefer the one whose own suffix matches
+  // the level's suffix (level3a.pap -> level3a.pin), else just take the first match.
+  const bySuffix = candidates.find((e) => e.name === levelName);
+  return (bySuffix || candidates[0] || { name: '' }).name;
+}
+
 async function loadLevel(levelName) {
   currentGrid = await fetchJson(`/build/png/${levelName}.pap.json`);
 }
@@ -123,6 +149,10 @@ async function loadLevel(levelName) {
 async function loadTileset(tilesetName) {
   currentAtlasMeta = await fetchJson(`/build/png/${tilesetName}.pak.json`);
   currentAtlasImage = await loadImage(`/build/png/${tilesetName}.pak.png`);
+}
+
+async function loadEntities(name) {
+  currentEntities = name ? await fetchJson(`/build/png/${name}.pin.json`) : null;
 }
 
 function render() {
@@ -153,6 +183,25 @@ function render() {
     }
   }
 
+  let entityStatus = '';
+  if (currentEntities && entityToggle.checked) {
+    const r = 5;
+    let drawn = 0, offMap = 0;
+    for (const e of currentEntities.entities) {
+      if (e.x === undefined || e.y === undefined) continue;
+      if (e.x < -500 || e.x > canvas.width + 500 || e.y < -500 || e.y > canvas.height + 500) { offMap++; continue; }
+      drawn++;
+      ctx.beginPath();
+      ctx.arc(e.x, e.y, r, 0, Math.PI * 2);
+      ctx.fillStyle = colorForType(e.type);
+      ctx.fill();
+      ctx.lineWidth = 1;
+      ctx.strokeStyle = 'rgba(0,0,0,0.6)';
+      ctx.stroke();
+    }
+    entityStatus = ` -- ${drawn} entities shown (${offMap} far off-map, coords unresolved)`;
+  }
+
   const zoom = Number(zoomInput.value);
   canvas.style.width = `${canvas.width * zoom}px`;
   canvas.style.height = `${canvas.height * zoom}px`;
@@ -160,20 +209,26 @@ function render() {
   setStatus(
     `${width}x${height} tiles (${canvas.width}x${canvas.height}px) -- ${tilesetSelect.value}.pak.png ` +
       `(${tileCount} tiles, ${tileWidth}x${tileHeight})` +
-      (outOfRange ? ` -- ${outOfRange} cell(s) out of tileset range!` : ''),
+      (outOfRange ? ` -- ${outOfRange} cell(s) out of tileset range!` : '') +
+      entityStatus,
     outOfRange > 0
   );
 }
 
 async function onLevelChange() {
   const levelName = levelSelect.value;
-  const guessed = guessTilesetForLevel(levelName);
-  if (guessed && tilesetSelect.value !== guessed && [...tilesetSelect.options].some((o) => o.value === guessed)) {
-    tilesetSelect.value = guessed;
+  const guessedTileset = guessTilesetForLevel(levelName);
+  if (guessedTileset && tilesetSelect.value !== guessedTileset && [...tilesetSelect.options].some((o) => o.value === guessedTileset)) {
+    tilesetSelect.value = guessedTileset;
+  }
+  const guessedEntities = guessEntityScriptForLevel(levelName);
+  if ([...entitySelect.options].some((o) => o.value === guessedEntities)) {
+    entitySelect.value = guessedEntities;
   }
   setStatus(`loading ${levelName}...`);
   try {
     await loadLevel(levelName);
+    await loadEntities(entitySelect.value);
     await onTilesetChangeInner();
   } catch (e) {
     setStatus(String(e), true);
@@ -195,6 +250,16 @@ async function onTilesetChange() {
   }
 }
 
+async function onEntitySelectChange() {
+  setStatus(`loading entities: ${entitySelect.value || '(none)'}...`);
+  try {
+    await loadEntities(entitySelect.value);
+    render();
+  } catch (e) {
+    setStatus(String(e), true);
+  }
+}
+
 canvas.addEventListener('mousemove', (ev) => {
   if (!currentGrid || !currentAtlasMeta) return;
   const rect = canvas.getBoundingClientRect();
@@ -202,6 +267,15 @@ canvas.addEventListener('mousemove', (ev) => {
   const scaleY = canvas.height / rect.height;
   const px = (ev.clientX - rect.left) * scaleX;
   const py = (ev.clientY - rect.top) * scaleY;
+
+  if (currentEntities && entityToggle.checked) {
+    const hit = currentEntities.entities.find((e) => e.x !== undefined && Math.hypot(e.x - px, e.y - py) <= 6);
+    if (hit) {
+      tip.textContent = `entity type ${hit.type} at (${hit.x}, ${hit.y}) -- file offset 0x${hit.offset.toString(16)}, layout-selector ${hit.bx}, payload [${hit.payload.join(', ')}]`;
+      return;
+    }
+  }
+
   const col = Math.floor(px / currentAtlasMeta.tileWidth);
   const row = Math.floor(py / currentAtlasMeta.tileHeight);
   if (row >= 0 && row < currentGrid.height && col >= 0 && col < currentGrid.width) {
@@ -217,6 +291,8 @@ zoomInput.addEventListener('input', () => {
 });
 levelSelect.addEventListener('change', onLevelChange);
 tilesetSelect.addEventListener('change', onTilesetChange);
+entitySelect.addEventListener('change', onEntitySelectChange);
+entityToggle.addEventListener('change', render);
 
 async function init() {
   try {
@@ -237,6 +313,12 @@ async function init() {
     opt.value = tileset.name;
     opt.textContent = tileset.name;
     tilesetSelect.appendChild(opt);
+  }
+  for (const script of manifest.entityScripts || []) {
+    const opt = document.createElement('option');
+    opt.value = script.name;
+    opt.textContent = `${script.name}  (world ${script.world})`;
+    entitySelect.appendChild(opt);
   }
 
   if (manifest.levels.length === 0) {

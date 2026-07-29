@@ -20,6 +20,14 @@ resolved atlas index. Zoom slider covers 25%–400%; the canvas itself is always
 native tile resolution (`gridWidth*32 x gridHeight*16` px) and scaled via CSS so pixel art stays
 crisp (`image-rendering: pixelated`).
 
+An **Entities** dropdown overlays enemy/item/trigger placements (colored dots, one hue per
+entity type) decoded from that world's level-script `.pin` file — see
+`docs/formats/pin-level-script.md`. Auto-selected by world like the tileset; toggle off with the
+"show" checkbox. Hover a dot to see its type, position, file offset, and raw payload words. A
+meaningful fraction of entities have unresolved (often negative/off-map) coordinates — these are
+still plotted (the status line reports how many), not hidden, since the coordinate-origin
+question is still open.
+
 ## How it works
 
 - `build/manifest.json` (written by `tools/build-all.js`) lists every `.pap` level and every
@@ -34,3 +42,6 @@ crisp (`image-rendering: pixelated`).
   value-to-tile mapping, and the resulting coherent, seamless level renders (real corridors,
   platforms, ladders — not noise), is the empirical confirmation that closed both of
   `docs/formats/pap.md`'s former open questions in one shot.
+- `build/png/<entityScript>.pin.json` (written by `tools/extract-level-script.js`) is the decoded
+  entity list — `{entities: [{type, x, y, offset, bx, payload}, ...]}` — drawn directly in level
+  pixel coordinates, no atlas involved.

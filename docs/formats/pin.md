@@ -38,7 +38,20 @@ of the OPL/MT-32 driver bytecode required — a complete, verified audio-asset w
 JS port (playable via any JS MIDI synth, no need to emulate period sound hardware for these
 specific files).
 
-## The other 14 `.pin` files — not yet decoded, tentatively classified by header shape
+## RESOLVED — `level0/new1/level2/level3a-c/level4.pin` are level-scripting bytecode, not music
+
+An earlier pass here classified these by header-shape similarity and guessed "per-level music/
+cue-sequence data... but the internal structure is not decoded". That guess was wrong: these
+seven files are **entity/object placement scripts** (enemy, item, and trigger spawn records with
+type + X/Y position), consumed by `Level_RunScriptedEventStream`/`Entity_SpawnFromQueuedEvent`,
+not by any sound driver. Traced from the actual load site (`World*_LoadBanks` loads each straight
+into the main data segment at its own exact unpacked size — a different pattern from every sound
+`.pin`, which load into the shared `38b7`/`33a9` driver-code segments) and confirmed by decoding
+the full record format and overlaying the extracted positions on rendered levels. Full writeup:
+`docs/formats/pin-level-script.md`. `tools/extract-level-script.js` does the extraction; wired
+into `tools/build-all.js`.
+
+## The other 12 `.pin` files — not yet decoded, tentatively classified by header shape
 
 No `"MThd"` was found anywhere in these; classification below is a first-pass guess from the
 leading bytes only, **not decoded**:
@@ -62,25 +75,14 @@ leading bytes only, **not decoded**:
   `adlib2`-style wrapper (`01 00 7a 00 08 00 ff 78 ...`). Not decoded.
   Given `data\*.pin`'s file-size the largest by a wide margin, likely contains the most complete
   driver code and/or the richest sound-effect/music resource of any file here.
-- **`level0.pin`, `level2.pin`, `level3a.pin`, `level3b.pin`, `level3c.pin`, `level4.pin`** — all
-  share a `00 1E 00 40 ...` opening (`level3c.pin` repeats `00 40` many times further than the
-  others). Filenames correlate 1:1 with the world/sub-level naming used by `.pap` level maps
-  (see `docs/formats/pap.md`), strongly suggesting **per-level music/cue-sequence data** selected
-  at level load time — but the internal structure is not decoded, and no consumer function for
-  these specific files has been traced yet (`Config_ParseIniAndLoadSoundDriver` only loads the
-  *driver* `.pin` named by `pockets.ini`; whatever loads `level*.pin` per-level hasn't been
-  located). `level4.pin` and `new1.pin` happen to share an identical file size (16662 bytes)
-  despite differing headers — noted, not yet explained.
-- **`autoplay.pin`, `extra_2.pin`, `new1.pin`** — each a distinct, unclassified header shape.
-  Not decoded.
+- **`autoplay.pin`, `extra_2.pin`** — each a distinct, unclassified header shape. Not decoded.
+  (`level0/new1/level2/level3a-c/level4.pin`, previously listed here, are RESOLVED — see above.)
 
 ## Open questions
 
 - The `adlib2.pin`/`adlib3.pin`/`sblaster.pin` payload format (presumably raw OPL2/OPL3 register
   command streams) is undecoded — would need tracing the Adlib/SoundBlaster driver's own
   interpretation loop, not just the container header.
-- What loads `level*.pin` and when — no call site found yet. A dosbox-x breakpoint on
-  `Load_PackedFile` while stepping through a level transition would settle this quickly.
 - `soundbnk.pin`'s 17259 bytes of post-MIDI trailing data.
 - Whether `adlib.pin`/`roland.pin`'s resource-offset table (confirmed structure: leading words,
   one of which is exactly the first cue's file offset) fully enumerates all 78/81 cues in order,

@@ -303,14 +303,15 @@ respectively), so the fix is scoped exactly to `extras.pak`/`extrax1-4.pak` and 
 
 ## Open questions
 
-- **RESOLVED (partially)**: sprite *placement/identity* metadata (per-shape frame count, height,
-  bank/segment) **is** found — the 96-entry, 28-byte-record descriptor table at `6de3:b91a`
-  (indexed via `Entity_LookupShapeDescriptor`'s table lookup, `6de3:c39a`), see the `extras.pak`
-  resolution above. Still untraced: fields `+0x0`..`+0x8`, `+0x12`, `+0x16` (only `+0xa`
-  frame-count, `+0xc` frame-stride, `+0xe` bank-id, and `+0x14` height are decoded/named so far),
-  and which *entity records* (not shape-class ids) reference which specific tile index within a
-  bank — that placement layer likely still lives in the `.pap` files or in per-level entity-spawn
-  tables, not yet traced.
+- **RESOLVED**: sprite *placement/identity* metadata is found at two levels. (1) Per-shape-class
+  metadata (frame count, height, bank/segment) — the 96-entry, 28-byte-record descriptor table at
+  `6de3:b91a` (indexed via `Entity_LookupShapeDescriptor`'s table lookup, `6de3:c39a`), see the
+  `extras.pak` resolution above. Still untraced there: fields `+0x0`..`+0x8`, `+0x12`, `+0x16`
+  (only `+0xa` frame-count, `+0xc` frame-stride, `+0xe` bank-id, and `+0x14` height are
+  decoded/named so far). (2) Per-level entity *placement* (which specific X/Y positions in a
+  given level spawn which shape-class) — found in the per-world `new1/level2/level3a-c/level4.pin`
+  files (previously miscategorized as unclassified/music `.pin` files), NOT the `.pap` files. Full
+  writeup: `docs/formats/pin-level-script.md`.
 - **CORRECTION**: `Gfx_BlitSpriteMaskedWide`'s disassembly was checked directly — it is NOT a
   48-pixel-wide *source* format. It reads the same 2 words (4 bytes) per row per plane as the
   regular byte-aligned path; "Wide" refers to a 5-byte *destination* footprint from sub-pixel

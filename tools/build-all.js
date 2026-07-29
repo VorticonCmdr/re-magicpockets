@@ -77,11 +77,23 @@ function main() {
     run('node', ['tools/extract-pap.js', rawPath, pngPath]);
   }
 
+  console.log('\n=== Extracting level-script entity placements (new1/level2/level3*/level4.pin) ===');
+  // These .pin files are level-scripting bytecode (enemy/item placements), NOT sound -- see
+  // docs/formats/pin-level-script.md. Every other .pin is a sound driver/bank, handled below.
+  const LEVEL_SCRIPT_FILES = ['level0.pin', 'new1.pin', 'level2.pin', 'level3a.pin', 'level3b.pin', 'level3c.pin', 'level4.pin'];
+  for (const f of LEVEL_SCRIPT_FILES) {
+    if (!dataFiles.includes(f)) continue;
+    const rawPath = path.join(RAW_DIR, `${f}.raw`);
+    const jsonPath = path.join(PNG_DIR, `${f}.json`);
+    run('node', ['tools/extract-level-script.js', rawPath, jsonPath]);
+  }
+
   console.log('\n=== Writing build/manifest.json (for tools/viewer.html) ===');
   const levelFiles = dataFiles.filter((f) => f.endsWith('.pap')).map((f) => f.replace(/\.pap$/, ''));
   const tilesetFiles = dataFiles
     .filter((f) => /^blocks[1-4]\.pak$/.test(f))
     .map((f) => f.replace(/\.pak$/, ''));
+  const entityScriptFiles = LEVEL_SCRIPT_FILES.filter((f) => dataFiles.includes(f)).map((f) => f.replace(/\.pin$/, ''));
   const worldOf = (name) => {
     const m = name.match(/([1-4])/);
     return m ? Number(m[1]) : null;
@@ -89,9 +101,10 @@ function main() {
   const manifest = {
     levels: levelFiles.map((name) => ({ name, world: worldOf(name) })),
     tilesets: tilesetFiles.map((name) => ({ name, world: worldOf(name) })),
+    entityScripts: entityScriptFiles.map((name) => ({ name, world: worldOf(name) })),
   };
   fs.writeFileSync(path.join('build', 'manifest.json'), JSON.stringify(manifest, null, 2));
-  console.log(`${levelFiles.length} levels, ${tilesetFiles.length} tilesets`);
+  console.log(`${levelFiles.length} levels, ${tilesetFiles.length} tilesets, ${entityScriptFiles.length} entity scripts`);
 
   console.log('\n=== Extracting .pin embedded MIDI (best-effort; most files have none) ===');
   for (const f of dataFiles.filter((f) => f.endsWith('.pin'))) {

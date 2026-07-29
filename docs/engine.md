@@ -363,3 +363,13 @@ Found while naming `Entity_UpdateBehavior`'s callee graph, this resolves the ope
 - **`Level_RunScriptedEventStream`** (`1000:c1e6`) is a second, *static* level-scripted-event
   system (sentinels `0xaaaa`/`0xbbbb`/`0xcccc`/`0xdddd`), distinct from this dynamic runtime
   queue — see the cross-cutting findings section above.
+- **RESOLVED: found the on-disk file this static stream reads from.** `Level_RunScriptedEventStream`
+  walks data loaded from `new1.pin`/`level2.pin`/`level3a-c.pin`/`level4.pin` (one per world,
+  `level0.pin` an alternate world-1 variant) straight into the main data segment at level-load
+  time — these were previously miscategorized as unclassified/music `.pin` files (see
+  `docs/formats/pin.md`). The full on-disk record format (byte-exact, derived from this
+  function's raw disassembly) — including a header table of per-sub-level entry-point offsets,
+  and the entity-spawn record layout giving type + X/Y position — is documented in
+  `docs/formats/pin-level-script.md`. This is exactly the "sprite placement/identity metadata"
+  `docs/formats/pak.md` had flagged as living "elsewhere, not yet traced". Extracted and
+  overlaid on rendered levels via `tools/extract-level-script.js` + `tools/viewer.html`.
