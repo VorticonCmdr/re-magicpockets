@@ -1,37 +1,36 @@
-// Phase 6 checkpoint: world/level flow. All 8 real levels (2 sub-levels x 4 worlds -- see
-// engine/level-registry.js) are reachable and playable in sequence: reaching the Phase-5 exit
-// zone fades out, loads the next level in the sequence, and fades back in (engine/transition.js).
-// A level-select button row is the dev/debug replacement for the original's hidden F2 cheat-code
-// console (docs/port-plan.md Phase 6 explicitly calls for this instead of reimplementing a
-// 4-digit password UI). AI wiring (engine/entity-ai.js) now covers all 4 worlds' CONFIRMED EXACT
-// Entity_DispatchUpdateByKind entries, not just world 1's.
+// Post-Phase-7 fix: real per-level ground collision. Every level now collides against its OWN
+// real geometry, derived from the real `.pap` tile data and the real `[0xef23]` ground-collision
+// table (`6de3:f189`, dumped via Ghidra -- see core/tile-collision.js) -- not Phase 3/5's
+// synthetic, hand-authored placeholder arena, which visibly disagreed with the real cave art and
+// forced an arbitrary, level-independent spawn point. Player and enemy rendering still use
+// placeholder-ish visuals where the real data doesn't resolve cleanly (the player's own sprite
+// descriptor is frameSourceMode 0 -- indirect, undecoded addressing -- so it renders a
+// REPRESENTATIVE real tile from its real character bank, not a frame-accurate pose; enemies whose
+// descriptors are frameSourceMode 0 still fall back to a dot, same as every phase since Phase 1).
+// See engine/real-terrain.js and core/tile-collision.js for the full writeup.
 //
-// NOT ported: World1-4_LoadBanks itself (this port's AssetCache already lazily loads+depacks
-// whatever a level needs, which is a strict superset of what that function's job was) and
-// Fx_UpdateTransition's real 24-bank VGA palette fade (engine/transition.js is a plain canvas
-// alpha fade instead -- see its header for why). Ground collision, pickups, and the exit zone are
-// still Phase 3/5's placeholder terrain, reused unmodified for every level regardless of its real
-// geometry (see placeholder-terrain.js) -- this phase is about level SEQUENCING, not per-level
-// authored content.
+// Phase 6/7 features (world/level flow, audio) are unchanged -- see their own file headers.
 
 'use strict';
 
 import { sourceFromFileList, sourceFromFetch } from './loader/asset-source.js';
 import { AssetCache } from './loader/asset-cache.js';
 import { WORLD_PALETTES } from './core/palette.js';
-import { buildLevelScene, drawCollisionOverlay, loadSpritePaks, drawEntitiesLive } from './render/canvas.js';
-import { paksNeededForWorld } from './core/shapes.js';
+import { buildLevelScene, loadSpritePaks, drawEntitiesLive, tileToCanvas } from './render/canvas.js';
+import { paksNeededForWorld, resolveShapeTileForcedDirect } from './core/shapes.js';
 import { Camera, TILE_WIDTH, TILE_HEIGHT } from './engine/camera.js';
 import { Input } from './engine/input.js';
 import { MainLoop } from './engine/loop.js';
 import { EntityPool } from './engine/entity-pool.js';
 import { Player } from './engine/player.js';
-import { buildPlaceholderCollisionGrid } from './engine/placeholder-terrain.js';
+import { buildLevelPlayfield } from './engine/real-terrain.js';
 import { attachAiIfKnown, tickAllAi, isGateType } from './engine/entity-ai.js';
 import { chooseWorld1BonusType, spawnBonusItem } from './engine/bonus-economy.js';
 import { LEVELS, findLevel, nextLevel } from './engine/level-registry.js';
 import { Transition } from './engine/transition.js';
 import { SoundManager, SFX } from './audio/sound-manager.js';
+
+const PLAYER_TYPE = 3; // class-3/player, confirmed sprite cross-reference (docs/enemies.md)
 
 const SHAPES_URL = '/symbols/entity-shapes.json';
 const VIEWPORT_W = 320;
@@ -132,11 +131,13 @@ async function loadLevel(id) {
       }
     }
 
-    // Ground collision (and the movement-AI's tile-lookahead) uses the same small hand-authored
-    // placeholder surface for every level -- see placeholder-terrain.js for why.
-    const collisionGrid = buildPlaceholderCollisionGrid();
-    const spawnX = collisionGrid.spawnCol * TILE_WIDTH;
-    const spawnY = collisionGrid.spawnRow * TILE_HEIGHT;
+    // Real ground collision + a generically-found spawn/pickups/exit, all on the level's own real
+    // geometry -- see engine/real-terrain.js for what's real (the collision) vs. placeholder
+    // (which exact standable spots get used for what).
+    const playfield = buildLevelPlayfield(scene.pap);
+    const collisionGrid = playfield;
+    const spawnX = playfield.spawnCol * TILE_WIDTH;
+    const spawnY = playfield.spawnRow * TILE_HEIGHT;
 
     const player = sharedPlayer || new Player(0, 0);
     sharedPlayer = player;
@@ -145,6 +146,8 @@ async function loadLevel(id) {
     player.vx = 0;
     player.vy = 0;
     player.reachedExit = false;
+
+    const playerSprite = resolveShapeTileForcedDirect(PLAYER_TYPE, entityShapes, levelEntry.world);
 
     const camera = new Camera({
       levelWidthPx: scene.widthPx,
@@ -216,8 +219,6 @@ async function loadLevel(id) {
           camera.x, camera.y, VIEWPORT_W, VIEWPORT_H,
           0, 0, VIEWPORT_W, VIEWPORT_H
         );
-        drawCollisionOverlay(ctx, collisionGrid, camera, VIEWPORT_W, VIEWPORT_H);
-
         const z = collisionGrid.exitZone;
         ctx.fillStyle = 'rgba(80, 220, 120, 0.35)';
         ctx.fillRect(z.x - camera.x, z.y - camera.y, z.w, z.h);
@@ -236,15 +237,28 @@ async function loadLevel(id) {
 
         const blinkHidden = player.invulnFrames > 0 && Math.floor(loop.frameCount / 4) % 2 === 0;
         if (!blinkHidden) {
-          ctx.fillStyle = player.onGround ? '#ffd23f' : '#ff9f1c';
-          ctx.fillRect(player.x - camera.x, player.y - camera.y, player.w, player.h);
-          ctx.strokeStyle = 'rgba(0,0,0,0.8)';
-          ctx.strokeRect(player.x - camera.x, player.y - camera.y, player.w, player.h);
-          ctx.beginPath();
-          const eyeX = player.x - camera.x + (player.facing > 0 ? player.w - 4 : 4);
-          ctx.arc(eyeX, player.y - camera.y + 6, 2, 0, Math.PI * 2);
-          ctx.fillStyle = '#000';
-          ctx.fill();
+          const playerPak = playerSprite && spritePaks[playerSprite.file];
+          const px = player.x - camera.x;
+          const py = player.y - camera.y;
+          if (playerPak && playerSprite.localTileIndex < playerPak.tileCount) {
+            const rgba = playerPak.tiles[playerSprite.localTileIndex];
+            const c = tileToCanvas(rgba, playerPak.tileWidth, playerPak.tileHeight);
+            ctx.save();
+            if (player.facing < 0) {
+              ctx.translate(px + player.w, py);
+              ctx.scale(-1, 1);
+              ctx.drawImage(c, (player.w - playerPak.tileWidth) / 2, player.h - playerPak.tileHeight);
+            } else {
+              ctx.drawImage(c, px + (player.w - playerPak.tileWidth) / 2, py + player.h - playerPak.tileHeight);
+            }
+            ctx.restore();
+          } else {
+            // Fallback placeholder box -- only reached if the player's real sprite/atlas failed to resolve.
+            ctx.fillStyle = player.onGround ? '#ffd23f' : '#ff9f1c';
+            ctx.fillRect(px, py, player.w, player.h);
+            ctx.strokeStyle = 'rgba(0,0,0,0.8)';
+            ctx.strokeRect(px, py, player.w, player.h);
+          }
         }
 
         // --- HUD (placeholder canvas text) ---
@@ -278,6 +292,7 @@ async function loadLevel(id) {
         const chasing = pool.live.filter((e) => e.ai && (e.ai.state === 'chase' || e.ai.state === 'strike')).length;
         setStatus(
           `world ${levelEntry.world}${levelEntry.id.slice(-1)} (${levelEntry.pap}) live: frame ${loop.frameCount}, ` +
+          `player (${player.x.toFixed(1)}, ${player.y.toFixed(1)})px onGround=${player.onGround}, ` +
           `score=${player.score}, health=${player.health}/${player.maxHealth}, deaths=${player.deaths}, ` +
           `pickups=${player.pickupsCollected}/${collisionGrid.pickups.length}, blocksBroken=${player.brokenCount} ` +
           `-- arrows/WASD move+jump, space/ctrl breaks a block, reach the green exit to advance -- ` +

@@ -31,6 +31,31 @@ export function resolveEntitySprite(entityType, entityShapes, world) {
   return null; // out of range for every part -- shouldn't happen for a confirmed direct mapping
 }
 
+/**
+ * Like resolveEntitySprite, but ALWAYS treats animStart as a direct tile index, even for
+ * frameSourceMode===0 entities (where that's not actually confirmed -- the real frame comes from
+ * an undecoded indirect near-pointer table, docs/formats/pin-level-script.md). Use only for a
+ * representative/placeholder visual (e.g. the player's idle pose, whose descriptor is
+ * frameSourceMode 0) where "a real sprite from the right bank, not necessarily the exact right
+ * frame" is an explicit, labeled improvement over a colored box -- not for anything claiming
+ * frame-accurate rendering.
+ */
+export function resolveShapeTileForcedDirect(entityType, entityShapes, world) {
+  if (!entityShapes || entityType == null || entityType >= entityShapes.descriptors.length) return null;
+  const desc = entityShapes.descriptors[entityType];
+  const atlasSpec = entityShapes.bankAtlas[desc.bankId];
+  if (!atlasSpec) return null;
+  let tileIndex = desc.animStart;
+  for (const part of atlasSpec.parts) {
+    if (tileIndex < part.tiles) {
+      const file = part.perWorld ? `${part.file}${world}` : part.file;
+      return { file, localTileIndex: tileIndex };
+    }
+    tileIndex -= part.tiles;
+  }
+  return null;
+}
+
 /** Every .pak basename (without extension) any bankAtlas entry could need for the given world. */
 export function paksNeededForWorld(entityShapes, world) {
   const files = new Set();

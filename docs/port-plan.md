@@ -361,6 +361,50 @@ and catches transliteration mistakes early rather than at the end.
   not a silent no-op), and breaking a block triggered both its break-sound and bonus-spawn cues
   (23 more oscillators scheduled) with zero JS errors throughout.
 
+### Post-Phase-7 fix — real ground collision, real player sprite
+
+Prompted directly by user feedback after Phase 7 ("doesn't really look like the original game...
+pink placeholder collision overlay doesn't align with the world... starting position isn't level
+1's"). All three complaints traced to the same root cause: Phase 3's placeholder collision was
+never swapped out for real data, exactly as its own comments flagged it would need to be.
+
+- **The `[0xef23]` ground-collision table is dumped.** `read_memory` at `6de3:f189` (256 bytes)
+  returns a clean, real per-tile solid/passable classification, confirmed indexed directly by the
+  `.pap` tile byte value (entries 1-120 line up exactly with the valid on-disk range) — see the
+  updated `docs/engine.md` note. This was a genuinely available fact the whole time (the address
+  was known since Phase 3), just never fetched.
+- **`web/core/tile-collision.js`** (the transcribed table) and **`web/engine/real-terrain.js`**
+  (builds real per-level collision from real `.pap` data + this table, plus a generic standable-
+  spot scanner for spawn/pickups/exit — still placeholder positions, but now always inside real,
+  walkable geometry) replace `web/engine/placeholder-terrain.js` (deleted) and
+  `render/canvas.js`'s pink collision-overlay draw (removed — no longer needed once collision
+  actually matches the art).
+- **The player now renders as a real sprite** from its confirmed character bank
+  (`web/core/shapes.js`'s new `resolveShapeTileForcedDirect`, since the real descriptor is
+  frameSourceMode 0 — indirect, undecoded addressing — so this forces a representative real tile
+  rather than claiming frame-accurate correctness) instead of an orange box.
+- **Two real bugs found and fixed while wiring this up**, both caught by systematic testing rather
+  than eyeballing: (1) the spawn-finder's standable-spot check only verified 1 row of headroom
+  above the floor cell, letting the player spawn with its ~30px-tall (~2-tile) box embedded in
+  solid rock — an automated browser test that held a direction key for 2+ seconds and saw zero
+  net movement caught this; fixed by requiring 2 rows of headroom. (2) `buildLevelPlayfield`
+  returned its collision grid nested under a `grid` key that itself held `{size, grid}`, so
+  `collisionGrid.grid[idx]` in collision.js/movement-ai-vm.js indexed into an object instead of
+  the Uint8Array (`undefined !== 0` reads as "always solid") — reproduced deterministically with a
+  Node simulation of `moveAndCollide` against the real grid before finding the root cause, fixed
+  by flattening the returned shape.
+- **Not fixed / still open**: the exact `1` vs `16` distinction in the table isn't confirmed
+  (treated as equally solid); breaking a block clears real collision at that cell but doesn't yet
+  update the visible background tile art (a visual/collision desync after digging, not present
+  before since the old placeholder terrain had its own separate overlay); enemy sprites whose
+  descriptors are frameSourceMode 0 still fall back to a dot (unchanged since Phase 1 — a separate,
+  harder RE problem, the indirect near-pointer tile-stream tables, not attempted here).
+- **Verified**: a Node-level deterministic simulation of `moveAndCollide` against real
+  `level1a.pap` data (confirming the exact bug reproductions above), and a real (headless
+  Chromium) browser run across multiple worlds — the player visibly moves, falls to real footing,
+  stops against real walls, breaks blocks, and renders as a real sprite over real, correctly-
+  aligned cave art; zero JS errors.
+
 ### Phase 8 — Polish / parity pass
 - Diff against DOSBox for the specific behaviors that were "confirmed structure, guessed
   semantics" during reverse-engineering (anything tagged `guess` rather than `verified` in

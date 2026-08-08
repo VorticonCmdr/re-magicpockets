@@ -15,36 +15,6 @@ function colorForType(type) {
   return `hsl(${hue}, 85%, 60%)`;
 }
 
-const COLLISION_TILE_W = 32; // engine/camera.js's TILE_WIDTH -- duplicated here to avoid an import cycle
-const COLLISION_TILE_H = 16; // engine/camera.js's TILE_HEIGHT
-
-/**
- * Draws a translucent overlay over every solid cell of a placeholder collision grid (see
- * engine/placeholder-terrain.js) that's currently visible in the viewport, so it's visually clear
- * which geometry is actually collidable -- it doesn't correspond to the real cave art underneath
- * (that mapping is still an open item, see docs/engine.md's `[0xef23]` note).
- */
-export function drawCollisionOverlay(ctx, collisionGrid, camera, viewportW, viewportH) {
-  const colStart = Math.max(0, Math.floor(camera.x / COLLISION_TILE_W));
-  const colEnd = Math.min(GRID_SIZE - 1, Math.ceil((camera.x + viewportW) / COLLISION_TILE_W));
-  const rowStart = Math.max(0, Math.floor(camera.y / COLLISION_TILE_H));
-  const rowEnd = Math.min(GRID_SIZE - 1, Math.ceil((camera.y + viewportH) / COLLISION_TILE_H));
-
-  ctx.save();
-  ctx.fillStyle = 'rgba(255, 45, 149, 0.35)';
-  ctx.strokeStyle = 'rgba(255, 45, 149, 0.8)';
-  for (let row = rowStart; row <= rowEnd; row++) {
-    for (let col = colStart; col <= colEnd; col++) {
-      if (collisionGrid.grid[row * GRID_SIZE + col] === 0) continue;
-      const x = col * COLLISION_TILE_W - camera.x;
-      const y = row * COLLISION_TILE_H - camera.y;
-      ctx.fillRect(x, y, COLLISION_TILE_W, COLLISION_TILE_H);
-      ctx.strokeRect(x + 0.5, y + 0.5, COLLISION_TILE_W - 1, COLLISION_TILE_H - 1);
-    }
-  }
-  ctx.restore();
-}
-
 /** Blit every non-empty .pap cell's .pak tile into a fresh canvas. Tiles are opaque, so a single putImageData is correct. */
 export function buildBackgroundCanvas(pak, pap) {
   const tw = pak.tileWidth;
@@ -79,7 +49,8 @@ export function buildBackgroundCanvas(pak, pap) {
 }
 
 const tileCanvasCache = new WeakMap();
-function tileToCanvas(rgba, w, h) {
+/** Memoized RGBA-Uint8Array -> offscreen <canvas>, so alpha-compositing (drawImage) is cheap to reuse. */
+export function tileToCanvas(rgba, w, h) {
   let c = tileCanvasCache.get(rgba);
   if (c) return c;
   c = document.createElement('canvas');

@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="utf-8">
-<title>Magic Pockets port — Phase 7 checkpoint</title>
+<title>Magic Pockets port — real ground collision</title>
 <style>
   body { font-family: system-ui, sans-serif; background: #111; color: #eee; margin: 0; padding: 1.5rem; }
   h1 { font-size: 1.1rem; font-weight: 600; }
@@ -20,20 +20,21 @@
 </style>
 </head>
 <body>
-<h1>Magic Pockets port — Phase 7 checkpoint</h1>
+<h1>Magic Pockets port — real ground collision</h1>
 <p>
-  Audio: pick your local, unmodified <code>data/</code> folder, then click <b>"enable audio"</b>
-  (browsers block sound until a user gesture). Sound effects (block breaks, pickups, damage,
-  death, bonus spawns, reaching the exit) and looping level music now play — real MIDI cues
-  extracted from <code>adlib.pin</code>'s 78-cue sound-effect bank and <code>roland2.pin</code>'s
-  embedded song (<code>docs/formats/pin.md</code>), played through a small Web Audio
-  oscillator-per-note synth (<code>web/audio/synth.js</code>, adapted from
-  <code>tools/midi-player.html</code>) — NOT a real OPL2/MT-32 hardware emulation, so timbre won't
-  match the original AdLib/Roland sound. The event→sound-ID mapping itself is
-  <b>unconfirmed/arbitrary</b> (<code>web/audio/sound-manager.js</code>) — which of the 78 real
-  cues corresponds to which real gameplay event isn't decoded anywhere upstream, so this port just
-  gives each event its own distinct real cue rather than claiming a verified mapping. See
-  <code>docs/port-plan.md</code> Phase 7.
+  <b>Every level now collides against its own real geometry</b>, not the old synthetic pink test
+  arena: the actual per-tile ground-collision table (<code>6de3:f189</code>, referenced but never
+  dumped since Phase 3) was read directly out of the binary, and it's a clean, real
+  solid/passable/special classification indexed by the exact on-disk tile value — see
+  <code>web/core/tile-collision.js</code> and <code>docs/engine.md</code>. Spawn point, pickups,
+  and the exit are found by scanning this real collision for standable spots (still not the
+  game's actual authored positions — that data isn't recoverable from level files alone — but
+  always inside real, walkable geometry now). <b>The player also renders as a real sprite</b> from
+  its confirmed character bank (<code>web/core/shapes.js</code>), not an orange box — though its
+  exact animation frame is a representative placeholder, since the real per-frame addressing is
+  still undecoded. Enemies whose sprite addressing IS resolved (most of them) already rendered
+  real sprites since Phase 1; the rest still fall back to a dot. Audio (Phase 7) and world/level
+  flow (Phase 6) are unchanged. See <code>docs/port-plan.md</code>.
 </p>
 <div class="controls">
   <label>Pick your local <code>data/</code> folder: <input type="file" id="picker" webkitdirectory></label>

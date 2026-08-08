@@ -134,10 +134,20 @@ A full follow-up pass named the entire immediate + one-level-deep callee graph o
   already established from the data side: every shipped `.pap` cell is 1-120 (real tile art),
   zero cells are ever `0` -- so "tile value 0" isn't a usable empty/passable marker for collision
   purposes (it just doesn't occur), and a quick brightness/variance heuristic over the decoded
-  tile art doesn't cleanly separate solid rock from passable cave interior either. Real ground
-  collision needs the `[0xef23]` table's actual contents dumped and cross-referenced against
-  `Entity_ResolveGroundCollision`'s per-kind dispatch -- open item, not yet done; the JS port uses
-  a labeled placeholder collision surface until it is (see `docs/port-plan.md` Phase 3).
+  tile art doesn't cleanly separate solid rock from passable cave interior either.
+  **RESOLVED: the default table's contents are now dumped.** `read_memory` at `6de3:f189`
+  (256 bytes) returns a clean, clearly hand-authored classification -- entries 1-120 (exactly the
+  valid `.pap` range) are `0` (passable), `1` (solid), or `16` (a distinct "special" ground type,
+  meaning unconfirmed -- possibly a ladder or hazard marker; both `1` and `16` are treated as
+  solid-for-standing by the JS port, only `0` as passable). Cross-checked against
+  `level1a.pap`: 9.4% of cells read passable under this table, a plausible fraction for a
+  carved-cave level. The alternate table `Entity_ThinkPatrolWithCustomTileTableA`/`B` swap
+  `[0xef23]` to, `6de3:f27b`, was also dumped -- structurally near-identical but with every `16`
+  replaced by `0` (a stricter variant), which independently corroborates that `0xf189` isn't
+  noise. See `web/core/tile-collision.js` for the transcribed table and
+  `web/engine/real-terrain.js` for the JS port's real (not placeholder) collision built from it --
+  this closes the open item `docs/port-plan.md` Phase 3 left tracked, and the placeholder
+  collision surface it introduced has been retired.
 - **Two independent AI systems exist for entities**: `Entity_RunScript`'s bytecode VM (opcode
   jump table at `1000:2383`, entity-behavior-level) and a second, movement-focused interpreter,
   `Entity_RunMovementAiScript` (`1000:6320`), which consumes opcode *characters*
