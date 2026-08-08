@@ -1,8 +1,8 @@
 {
   "program": "player.pin.raw",
-  "namedFunctions": 3,
+  "namedFunctions": 4,
   "totalFunctions": 94,
-  "note": "Shared sound-driver code module (depacked player.pin, loaded into segment 38b7/33a9 by every hardware backend -- Adlib/Roland/SoundBlaster/Beeper/Tandy). Imported as raw x86:LE:16:Real Mode binary with base 0000:0000. GAMEU.EXE's Snd_TriggerEffect/Snd_TriggerEffectRaw far-call into it with AH=command, AL=sound_id. See docs/formats/pin.md. Only 3 of 94 functions named so far -- the rest are unexplored (voice/channel management, SoundBlaster digital-sample service, hardware-detection code).",
+  "note": "Shared sound-driver code module (depacked player.pin, loaded into segment 38b7/33a9 by every hardware backend -- Adlib/Roland/SoundBlaster/Beeper/Tandy). Imported as raw x86:LE:16:Real Mode binary with base 0000:0000. GAMEU.EXE's Snd_TriggerEffect/Snd_TriggerEffectRaw far-call into it with AH=command, AL=sound_id. See docs/formats/pin.md. Only 4 of 94 functions named so far -- the rest are unexplored (voice/channel management, SoundBlaster digital-sample service, hardware-detection code). The non-MIDI resource-table-entry mystery (docs/formats/pin.md) was NOT resolved by static analysis -- tracing it through the real per-tick interpreter (Snd_DispatchEventByRunningStatus) produces a reading (note-on) that contradicts the original register-reset guess. Needs dynamic tracing (DOSBox) to settle.",
   "functions": [
     {
       "name": "Snd_SelectCueForPlayback",
@@ -20,7 +20,7 @@
         "verified",
         "sound"
       ],
-      "summary": "Was FUN_0000_22e3. The genuine OPL2 register-write primitive: DX loaded from a runtime base-port variable [0x1466] (not hardcoded 0x388, since this module is shared across hardware backends); calling convention AH=register, AL=value; write sequence (select-byte out, 6x status-port-read delay, data-byte out to base+1, 35x status-port-read delay) is an exact match for the documented real-hardware OPL2 write-timing requirement (~3.3us/~23us), strong confirmation this is the right function. Called from ~20 voice/channel-management sites (note-on/off, instrument load) reached from normal MIDI-cue playback. Not yet traced back to the non-MIDI resource-table entries' (register,value) byte-pair sequences (docs/formats/pin.md's open question) -- a concrete target for a future pass."
+      "summary": "Was FUN_0000_22e3. The genuine OPL2 register-write primitive: DX loaded from a runtime base-port variable [0x1466] (not hardcoded 0x388, since this module is shared across hardware backends); calling convention AH=register, AL=value; write sequence (select-byte out, 6x status-port-read delay, data-byte out to base+1, 35x status-port-read delay) is an exact match for the documented real-hardware OPL2 write-timing requirement (~3.3us/~23us), strong confirmation this is the right function. Called from ~20 voice/channel-management sites (note-on/off, instrument load) reached from normal MIDI-cue playback."
     },
     {
       "name": "Snd_ServiceTick",
@@ -29,7 +29,16 @@
         "verified",
         "sound"
       ],
-      "summary": "Was FUN_0000_0206. The real periodic service-tick routine, called every timer interrupt (from the AH=2 command install path, 0x0048/0x009e). Gated on [0xfa] (a hardware-active bitmask): bit1 -> FUN_0000_2384 (per-MIDI-event-type dispatcher, table DAT_0000_23d4, read via read_memory: only 8 entries keyed by running-status nibble [0x2991], 7 of 8 sharing one generic handler -- an ordinary MIDI dispatch, no raw-register escape opcode); bit0/bit2 -> FUN_0000_0cb0 (an 8-channel loop into FUN_0000_0ce2 plus a countdown-triggered FUN_0000_0cfc call, shaped like SoundBlaster digital-sample/DMA-voice service). Neither path is a byte-stream-driven Opl2_WriteRegister consumer, ruling both out as the non-MIDI resource-table entries' processor (docs/formats/pin.md) -- ALSO CONFIRMED this pass: GAMEU.EXE's Game_WarpToLevelStageAndRunLoop (1000:03ff) directly triggers adlib.pin sound ID 11 (one of the non-MIDI entries) via the normal Snd_TriggerEffect(AH=1,AL=11) path, and that entry's raw bytes decode as a real OPL2 register-reset sweep (register,0x00) pairs -- confirming the content is live and the register-reset hypothesis, even though the exact consumer routine remains unfound."
+      "summary": "Was FUN_0000_0206. The real periodic service-tick routine, called every timer interrupt (from the AH=2 command install path, 0x0048/0x009e). Gated on [0xfa] (a hardware-active bitmask): bit1 -> Snd_DispatchEventByRunningStatus; bit0/bit2 -> FUN_0000_0cb0 (an 8-channel loop into FUN_0000_0ce2 plus a countdown-triggered FUN_0000_0cfc call, shaped like SoundBlaster digital-sample/DMA-voice service, unrelated to OPL2). ALSO CONFIRMED this pass: GAMEU.EXE's Game_WarpToLevelStageAndRunLoop (1000:03ff) directly triggers adlib.pin sound ID 11 (one of the non-MIDI resource-table entries, docs/formats/pin.md) via the normal Snd_TriggerEffect(AH=1,AL=11) path -- that content is genuinely live, not dead resource-file padding."
+    },
+    {
+      "name": "Snd_DispatchEventByRunningStatus",
+      "address": "0000:2384",
+      "tags": [
+        "verified",
+        "sound"
+      ],
+      "summary": "Was FUN_0000_2384. Called from Snd_ServiceTick when [0xfa] bit1 is set; gated on [0x2992] (set by Snd_SelectCueForPlayback for every selected cue). Indirect-calls through an 8-entry table DAT_0000_23d4 (read via read_memory) keyed by running-status nibble [0x2991] -- 7 of 8 entries share a handler at 0x23a0 that falls through to the real per-byte reader at 0x23ec (LODSB from [0x297e]; bytes <0x20 -> 16-entry control-code table at 0x23c2; bytes >=0x20 -> note-on handler at 0x256b, note=byte-0x20, frequency-table lookup at 0x29b8, calls FUN_0000_268d). IMPORTANT: tracing adlib.pin's non-MIDI entry 11 (0x63 00 00 01 00 02...) through this exact path reads its first byte (0x63) as a note-on event (note 0x43), NOT a pair-count -- this COMPLICATES the 'OPL2 register-reset sequence' hypothesis (docs/formats/pin.md) rather than confirming it. Static disassembly couldn't settle whether a special-cased raw-register path exists elsewhere or the count-byte reading was simply wrong; recommend dynamic tracing (DOSBox debugger) to resolve."
     }
   ]
 }
