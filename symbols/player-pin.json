@@ -1,8 +1,8 @@
 {
   "program": "player.pin.raw",
-  "namedFunctions": 2,
+  "namedFunctions": 3,
   "totalFunctions": 94,
-  "note": "Shared sound-driver code module (depacked player.pin, loaded into segment 38b7/33a9 by every hardware backend -- Adlib/Roland/SoundBlaster/Beeper/Tandy). Imported as raw x86:LE:16:Real Mode binary with base 0000:0000. GAMEU.EXE's Snd_TriggerEffect/Snd_TriggerEffectRaw far-call into it with AH=command, AL=sound_id. See docs/formats/pin.md. Only 2 of 94 functions named so far -- the rest are unexplored (voice/channel management, MIDI sequencer tick service, hardware-detection code).",
+  "note": "Shared sound-driver code module (depacked player.pin, loaded into segment 38b7/33a9 by every hardware backend -- Adlib/Roland/SoundBlaster/Beeper/Tandy). Imported as raw x86:LE:16:Real Mode binary with base 0000:0000. GAMEU.EXE's Snd_TriggerEffect/Snd_TriggerEffectRaw far-call into it with AH=command, AL=sound_id. See docs/formats/pin.md. Only 3 of 94 functions named so far -- the rest are unexplored (voice/channel management, SoundBlaster digital-sample service, hardware-detection code).",
   "functions": [
     {
       "name": "Snd_SelectCueForPlayback",
@@ -21,6 +21,15 @@
         "sound"
       ],
       "summary": "Was FUN_0000_22e3. The genuine OPL2 register-write primitive: DX loaded from a runtime base-port variable [0x1466] (not hardcoded 0x388, since this module is shared across hardware backends); calling convention AH=register, AL=value; write sequence (select-byte out, 6x status-port-read delay, data-byte out to base+1, 35x status-port-read delay) is an exact match for the documented real-hardware OPL2 write-timing requirement (~3.3us/~23us), strong confirmation this is the right function. Called from ~20 voice/channel-management sites (note-on/off, instrument load) reached from normal MIDI-cue playback. Not yet traced back to the non-MIDI resource-table entries' (register,value) byte-pair sequences (docs/formats/pin.md's open question) -- a concrete target for a future pass."
+    },
+    {
+      "name": "Snd_ServiceTick",
+      "address": "0000:0206",
+      "tags": [
+        "verified",
+        "sound"
+      ],
+      "summary": "Was FUN_0000_0206. The real periodic service-tick routine, called every timer interrupt (from the AH=2 command install path, 0x0048/0x009e). Gated on [0xfa] (a hardware-active bitmask): bit1 -> FUN_0000_2384 (per-MIDI-event-type dispatcher, table DAT_0000_23d4, read via read_memory: only 8 entries keyed by running-status nibble [0x2991], 7 of 8 sharing one generic handler -- an ordinary MIDI dispatch, no raw-register escape opcode); bit0/bit2 -> FUN_0000_0cb0 (an 8-channel loop into FUN_0000_0ce2 plus a countdown-triggered FUN_0000_0cfc call, shaped like SoundBlaster digital-sample/DMA-voice service). Neither path is a byte-stream-driven Opl2_WriteRegister consumer, ruling both out as the non-MIDI resource-table entries' processor (docs/formats/pin.md) -- ALSO CONFIRMED this pass: GAMEU.EXE's Game_WarpToLevelStageAndRunLoop (1000:03ff) directly triggers adlib.pin sound ID 11 (one of the non-MIDI entries) via the normal Snd_TriggerEffect(AH=1,AL=11) path, and that entry's raw bytes decode as a real OPL2 register-reset sweep (register,0x00) pairs -- confirming the content is live and the register-reset hypothesis, even though the exact consumer routine remains unfound."
     }
   ]
 }

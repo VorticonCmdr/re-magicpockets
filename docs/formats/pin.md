@@ -90,22 +90,45 @@ consistent with an OPL2 register-reset sequence (write `0x00` to a run of OPL2 r
 silence all channels) rather than a sequence the MIDI-cue player would ever be asked to play back
 as a tune.
 
-**Follow-up pass, found the real OPL2 write primitive but not yet its caller for these
-sequences.** `player.pin`'s `Opl2_WriteRegister` (`0x22e3`, renamed from `FUN_0000_22e3`) is
-confirmed via raw disassembly as the genuine OPL2 register-write routine: `DX` is loaded from a
-runtime base-port variable at `[0x1466]` (not a hardcoded `0x388` — this driver module is shared
-across the Adlib/SoundBlaster/Roland backends, so the port must be resolved at hardware-detection
-time), the calling convention is `AH`=register number, `AL`=value, and the write sequence — select
-byte out, 6× status-port read as a delay, data byte out to `base+1`, 35× status-port read as a
-second delay — is an exact match for the well-documented real-hardware OPL2 write-timing
-requirement (~3.3µs after register select, ~23µs after data write), strong independent
-confirmation this is the right function. It's called from ~20 sites, all voice/channel management
-(note-on/off, instrument/timbre load reached from normal MIDI-cue playback) — none of them were
-traced this pass back to the non-MIDI table entries above, so **the exact (register, value) pair
-semantics remain unconfirmed**, but a future pass now has a concrete target: check whether any
-caller of `Opl2_WriteRegister` reads its `AH`/`AL` arguments from the non-MIDI cue's own byte
-stream (rather than from a fixed instrument-parameter table), which would settle the "register
-reset sequence" hypothesis directly.
+**Follow-up pass — confirmed these entries are real, live content, and the byte pairs really are
+OPL2 register addresses, but the exact consumer routine is still unfound.**
+
+- **Confirmed live, not dead data**: `GAMEU.EXE`'s `Game_WarpToLevelStageAndRunLoop` (the
+  level-start routine, `1000:03ff`) calls `Snd_TriggerEffect(sound_id=11)` directly
+  (`MOV AH,1; MOV AL,0xb; CALL Snd_TriggerEffect`, `1000:07e1`-`07e5`) — `adlib.pin`'s first
+  non-MIDI table entry. So this isn't leftover/unused resource-file padding; it's genuinely
+  played at a specific game moment (level warp/start), through the *exact same* `AH=1`
+  trigger-effect path as any ordinary MIDI cue.
+- **Confirmed the byte pairs are OPL2 register addresses**: reading `adlib.pin`'s entry-11 payload
+  directly (`build/raw/adlib.pin.raw` offset `2747`) gives `63 00 00 01 00 02 00 03 00 04 00 05 00
+  06 00 08 00 09 00 0a 00 0f 00 10 00 16 00 22 00 3f 00 40 00 5f 00 64 00 6b 00 e0 ...` — count
+  `0x63`=99, then pairs `(0x00,0x00) (0x01,0x00) (0x02,0x00) (0x03,0x00) (0x04,0x00) (0x05,0x00)
+  (0x06,0x00) (0x08,0x00) (0x09,0x00) (0x0a,0x00) (0x0f,0x00) (0x10,0x00) (0x16,0x00) (0x22,0x00)
+  (0x3f,0x00) (0x40,0x00) (0x5f,0x00) (0x64,0x00) (0x6b,0x00) (0xe0,...` — every first byte in the
+  pairs seen so far is a real, individually-addressable OPL2 register (test/timer/CSW registers
+  `0x01`-`0x08`, operator-cell registers in the `0x20`-`0x35`/`0x40`-`0x55`/`0x60`-`0x75` families,
+  waveform-select registers starting `0xE0`), each paired with value `0x00` — this is a textbook
+  **"zero every OPL2 register" full-silence/reset sweep**, exactly the original guess, now with
+  concrete byte-level confirmation rather than just a plausibility argument.
+- **`Opl2_WriteRegister`** (`0x22e3`, renamed from `FUN_0000_22e3`) is confirmed via raw
+  disassembly as the genuine OPL2 register-write routine — `DX` loaded from a runtime base-port
+  variable at `[0x1466]` (not hardcoded `0x388`, since this driver module is shared across
+  Adlib/SoundBlaster/Roland backends), calling convention `AH`=register, `AL`=value, and a
+  write-delay sequence (6 status-port reads after register select, 35 after data write) that
+  exactly matches the documented real-hardware OPL2 timing requirement.
+- **Consumer still not located, but two candidate paths are now ruled out.** The periodic
+  service-tick routine (`FUN_0000_0206`, called every timer interrupt from the `AH=2`
+  install path) dispatches to exactly two places gated on bits of `[0xfa]`: `FUN_0000_2384` (the
+  ordinary per-MIDI-event-type dispatcher, table at `DAT_0000_23d4` — read directly via
+  `read_memory`, only 8 entries keyed by the running-status nibble `[0x2991]`, 7 of 8 sharing one
+  generic handler, no raw-register escape opcode or count-driven loop present) and
+  `FUN_0000_0cb0` (an 8-channel loop into `FUN_0000_0ce2` plus a countdown-triggered call to
+  `FUN_0000_0cfc` — shaped like SoundBlaster digital-sample/DMA-voice service, unrelated to OPL2).
+  Neither is a byte-stream-driven register-pair consumer. The remaining unexplored territory is
+  `player.pin`'s hardware-detection/init code and the ~70 still-unnamed functions this pass didn't
+  reach — a concrete, bounded search space for whoever picks this up next: find what reads
+  `[0x297e]` (the playback cursor `Snd_SelectCueForPlayback` sets) outside of `FUN_0000_2384`'s
+  MIDI-event path, since that's the only unaccounted-for consumer of cue-selected byte streams.
 
 ## RESOLVED — `level0/new1/level2/level3a-c/level4.pin` are level-scripting bytecode, not music
 
@@ -153,10 +176,15 @@ leading bytes only, **not decoded**:
   command streams) is undecoded — would need tracing the Adlib/SoundBlaster driver's own
   interpretation loop, not just the container header.
 - `soundbnk.pin`'s 17259 bytes of post-MIDI trailing data.
-- The non-MIDI table entries' exact byte-pair semantics — still plausible as an OPL2
-  register-reset sequence; the real write primitive is now identified (`Opl2_WriteRegister`,
-  `player.pin` offset `0x22e3`, see above), but no caller of it was traced back to these specific
-  byte streams this pass.
+- **Narrowed but not closed**: the non-MIDI table entries are confirmed live (`GAMEU.EXE`'s
+  `Game_WarpToLevelStageAndRunLoop` triggers `adlib.pin` sound ID 11 directly at level start) and
+  their byte pairs are confirmed to be real OPL2 register addresses each paired with value `0x00`
+  (a full-silence register sweep, read directly from `adlib.pin`'s raw bytes) — see "Resource-offset
+  table" above for the full evidence trail. What's still missing is the exact code path that walks
+  this byte stream and calls `Opl2_WriteRegister` (`player.pin` `0x22e3`) once per pair; two
+  candidate consumers were checked and ruled out this pass (the `AH=0` "stop all voices" handler,
+  and the ordinary per-MIDI-event-type dispatch table) — the remaining search space is
+  `player.pin`'s hardware-detection/init code and its ~70 still-unnamed functions.
 - `adlib.pin`'s MIDI cues embed OPL2 timbre parameters as `FF 7F` (SeqSpec) meta events; a
   standard SMF player (and this project's `tools/midi-player.html`, which just uses Web Audio
   oscillators) ignores them, so playback timbre doesn't match the original AdLib sound. Would
