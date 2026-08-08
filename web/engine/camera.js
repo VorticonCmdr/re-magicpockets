@@ -40,6 +40,14 @@ export class Camera {
     this.y = Math.min(Math.max(this.y, 0), maxY);
   }
 
+  /** Center the viewport on (targetX, targetY) -- e.g. the player -- clamped to level bounds. */
+  centerOn(targetX, targetY) {
+    const maxX = Math.max(0, this.levelWidthPx - this.viewportWidthPx);
+    const maxY = Math.max(0, this.levelHeightPx - this.viewportHeightPx);
+    this.x = Math.min(Math.max(targetX - this.viewportWidthPx / 2, 0), maxX);
+    this.y = Math.min(Math.max(targetY - this.viewportHeightPx / 2, 0), maxY);
+  }
+
   /** Camera_UpdateScroll's whole-tile / sub-tile-remainder split, for parity/debug display. */
   get split() {
     const tileCol = Math.floor(this.x / TILE_WIDTH);

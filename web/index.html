@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="utf-8">
-<title>Magic Pockets port — Phase 2 checkpoint</title>
+<title>Magic Pockets port — Phase 3 checkpoint</title>
 <style>
   body { font-family: system-ui, sans-serif; background: #111; color: #eee; margin: 0; padding: 1.5rem; }
   h1 { font-size: 1.1rem; font-weight: 600; }
@@ -15,15 +15,20 @@
 </style>
 </head>
 <body>
-<h1>Magic Pockets port — Phase 2 checkpoint</h1>
+<h1>Magic Pockets port — Phase 3 checkpoint</h1>
 <p>
-  Core loop skeleton + camera + input: pick your local, unmodified <code>data/</code> folder
-  (still RNC-ProPack-compressed, exactly as shipped). The page builds the full level scene once
-  (background tiles + entity sprites, same as Phase 1) and then runs a
-  <code>requestAnimationFrame</code>-paced loop — <b>arrow keys / WASD scroll the camera</b> over
-  the static level, smoothly, clamped to the level bounds. The status line shows the live
-  whole-tile / sub-tile-pixel-remainder split the original's <code>Camera_UpdateScroll</code> used
-  for its hardware pixel-panning register. See <code>docs/port-plan.md</code>.
+  Entity simulation: pick your local, unmodified <code>data/</code> folder (still
+  RNC-ProPack-compressed, exactly as shipped). A player entity (the orange box) walks, jumps, is
+  blocked by/lands on the <b>pink-outlined</b> collision geometry, and can break the block directly
+  ahead of it — <b>arrow keys/WASD to move + jump, space/ctrl to break a block</b>. Every other
+  level-script entity is spawned into a 146-slot pool (matching the original's real entity
+  capacity) and rendered, but doesn't act yet — no behavior/script VM wiring until Phase 4.
+  <b>The pink collision grid is a hand-authored placeholder, not derived from the real cave art
+  underneath</b> — while building this phase it turned out every real <code>.pap</code> cell is
+  non-zero (no usable "empty" marker), and the actual per-tile solidity table
+  (<code>[0xef23]</code>, confirmed to exist but not yet dumped) is a genuinely open item — see
+  <code>web/engine/placeholder-terrain.js</code>, the updated <code>docs/engine.md</code>, and
+  <code>docs/port-plan.md</code>.
 </p>
 <div class="controls">
   <label>Pick your local <code>data/</code> folder: <input type="file" id="picker" webkitdirectory></label>

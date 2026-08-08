@@ -189,15 +189,30 @@ and catches transliteration mistakes early rather than at the end.
   matching the original's 32px-tile/16px-tile split-scroll math and sub-tile pixel-panning
   remainder.
 
-### Phase 3 — Entity simulation: behavior + collision
-- Port `Entity_UpdateAll`'s dispatch (`Entity_UpdateBehavior` always, `Entity_RunScript`
-  conditionally), the entity free-list allocator (`Entity_FreeSlot`/`Entity_FindFreeSlot`,
-  ~146-slot array), and `Entity_SpawnFromQueuedEvent`'s factory (including the `[8bb5]` event
-  queue `Entity_PushSpawnEvent`/`Level_UpdateEventQueue` round-trip).
-- Port ground collision (`Entity_ResolveGroundCollision` and its per-(world,kind) transition
-  tables) and the breakable-tile mechanic.
-- **Checkpoint**: the player entity can walk, be blocked by/land on level geometry, and break
-  blocks; other entities exist and are visible in the world but don't act yet (idle sprites).
+### Phase 3 — Entity simulation: behavior + collision (DONE, with one scope change)
+- Ported the entity free-list allocator (`EntityPool`, `web/engine/entity-pool.js`, matching
+  `Entity_FreeSlot`/`Entity_FindFreeSlot`'s ~146-slot capacity) and a `Entity_SpawnFromQueuedEvent`
+  stand-in that spawns every on-map level-script entity's generic (type, X, Y) fields. Not yet
+  ported: `Entity_UpdateAll`'s conditional `Entity_RunScript` call, and the `[8bb5]` dynamic
+  spawn-event queue round-trip (`Entity_PushSpawnEvent`/`Level_UpdateEventQueue`) -- both need the
+  bytecode VM from Phase 4 to be meaningful, so they're deferred there.
+- **SCOPE CHANGE, found while implementing this phase**: `Entity_ResolveGroundCollision` and the
+  breakable-tile mechanic are NOT ported -- they're still genuinely undecoded (dense per-(world,
+  kind) dispatch, ~600 decompiled lines, always flagged as future work in docs/engine.md). Worse,
+  the natural placeholder assumption ("`.pap` cell value 0 = passable") turned out to be actively
+  wrong: every real `.pap` file has zero `0`-valued cells (confirmed by scanning `level1a.pap`),
+  so there's no tile-value-based passable/solid distinction to lean on without decoding the real
+  mechanism -- a per-tile collision-flag table at `[0xef23]`, confirmed to exist (`Entity_
+  ScanGroundRow` indexes it directly by the raw tile byte) but not yet dumped. See docs/engine.md's
+  updated `[0xef23]` note. Rather than fake a wrong solidity rule against the real cave art, `web/
+  engine/collision.js` (generic tile-grid AABB collider) is pointed at a small hand-authored test
+  surface (`web/engine/placeholder-terrain.js`), rendered as a translucent pink overlay so it's
+  visually obvious it's not the real level geometry. Swap the grid source once `[0xef23]` is
+  decoded -- collision.js itself doesn't need to change.
+- **Checkpoint (met, on the placeholder surface)**: the player entity walks, is blocked by/lands
+  on collision geometry, and can break a block ahead of it; every other level-script entity is
+  spawned into the 146-slot pool and rendered on the real level art, but doesn't act yet (idle
+  sprites) -- verified in a real (headless Chromium) browser run.
 
 ### Phase 4 — The two bytecode VMs
 - Port `Entity_RunScript` (78 opcodes: movement, spawn, sound, palette-fade, the CALL/RETURN

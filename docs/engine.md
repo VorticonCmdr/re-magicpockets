@@ -124,6 +124,20 @@ A full follow-up pass named the entire immediate + one-level-deep callee graph o
   (`Entity_ThinkPatrolWithCustomTileTableA`/`B`) temporarily redirect `[0xef23]` to their own
   per-kind tile/collision-flag table before calling it, then restore it — a clean data-driven
   mechanism for per-kind terrain rules without duplicating the patrol logic itself.
+  **Sharpened while starting the JS port's ground-collision code (`docs/port-plan.md` Phase 3):**
+  `Entity_ScanGroundRow` (`1000:e366`) reads `*(char*)([0xef23] + tileByte)` — i.e. the table is
+  indexed **directly by the raw level-map tile byte value** (0-255) and returns a per-tile
+  collision-contribution score, accumulated into `[8bc9]`. This is genuinely the tile-solidity
+  rule the port needs, but (a) it's per-kind (several distinct tables, not one universal
+  solid/passable table) and (b) none of the actual table *contents* at `0xef23`'s default target
+  have been dumped yet. This confirms, from the collision side, what `docs/formats/pap.md`
+  already established from the data side: every shipped `.pap` cell is 1-120 (real tile art),
+  zero cells are ever `0` -- so "tile value 0" isn't a usable empty/passable marker for collision
+  purposes (it just doesn't occur), and a quick brightness/variance heuristic over the decoded
+  tile art doesn't cleanly separate solid rock from passable cave interior either. Real ground
+  collision needs the `[0xef23]` table's actual contents dumped and cross-referenced against
+  `Entity_ResolveGroundCollision`'s per-kind dispatch -- open item, not yet done; the JS port uses
+  a labeled placeholder collision surface until it is (see `docs/port-plan.md` Phase 3).
 - **Two independent AI systems exist for entities**: `Entity_RunScript`'s bytecode VM (opcode
   jump table at `1000:2383`, entity-behavior-level) and a second, movement-focused interpreter,
   `Entity_RunMovementAiScript` (`1000:6320`), which consumes opcode *characters*
