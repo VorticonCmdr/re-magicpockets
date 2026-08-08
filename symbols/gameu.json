@@ -2096,13 +2096,13 @@
       "summary": "Computes a Bresenham-like direction vector toward a fixed-point target, storing per-axis sign/magnitude and a speed pair -- likely homing-projectile setup for Entity_SpawnFromQueuedEvent's opcode 0x1f."
     },
     {
-      "name": "Debug_RestoreStateAfterCheatMenu",
+      "name": "Debug_CtrlCAbortAndExit",
       "address": "1000:19e9",
       "tags": [
-        "guess",
+        "verified",
         "engine"
       ],
-      "summary": "Interleaves Sys_RestoreState with INT 10h/21h calls, a vsync wait, and conditional cleanup -- restores video/DOS state after leaving the debug cheat console. Called from Debug_HandleCheatInput."
+      "summary": "Was Debug_RestoreStateAfterCheatMenu. RESOLVED (docs/launcher.md): reached via a direct JMP (not CALL) from two places -- Debug_HandleCheatInput's hidden 'p'-key pause console on Ctrl+C ([0x8c89]==0x2E, 1000:0964-096b), and EntityScriptOp opcode 0x35/53 (tail-jump, 1000:2471, entity-script-vm.md) -- reachable from ordinary scripted gameplay events, not just the debug hotkey. Does cleanup (Sys_RestoreState/INT10/INT21) then hits a genuine, unconditional MOV AH,4Ch; MOV AL,0; INT21h at 1000:19f4 -- real process termination, always exit code 0. The three near-identical INT21/AH=4C blocks following it (AL=0/1/2/3) have no incoming references and are dead code (decompiler artifact from not modeling INT21/AH=4C as non-returning). The ONLY INT21/AH=4C call site in the whole binary -- confirms game.exe never exits non-zero in the shipped build."
     },
     {
       "name": "Gfx_RenderVisibleEntities",
