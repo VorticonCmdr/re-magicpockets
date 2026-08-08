@@ -1,0 +1,33 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Magic Pockets port — Phase 0 checkpoint</title>
+<style>
+  body { font-family: system-ui, sans-serif; background: #111; color: #eee; margin: 0; padding: 1.5rem; }
+  h1 { font-size: 1.1rem; font-weight: 600; }
+  p { color: #aaa; max-width: 60rem; line-height: 1.4; }
+  .controls { margin: 1rem 0; display: flex; gap: 0.75rem; align-items: center; }
+  #status { margin: 0.5rem 0 1rem; font-family: ui-monospace, monospace; font-size: 0.85rem; color: #8f8; }
+  #status.error { color: #f88; }
+  #view { image-rendering: pixelated; border: 1px solid #444; max-width: 100%; background: #000; }
+  button { font: inherit; padding: 0.4rem 0.8rem; }
+</style>
+</head>
+<body>
+<h1>Magic Pockets port — Phase 0 checkpoint</h1>
+<p>
+  Proves the runtime-loading constraint end to end: pick your local, unmodified <code>data/</code>
+  folder (still RNC-ProPack-compressed, exactly as shipped) and this page RNC-depacks and decodes
+  a level's tile bank entirely in the browser — no <code>node tools/build-all.js</code>
+  pre-extraction step, no committed PNG/JSON artifacts. See <code>docs/port-plan.md</code>.
+</p>
+<div class="controls">
+  <label>Pick your local <code>data/</code> folder: <input type="file" id="picker" webkitdirectory></label>
+  <button id="dev-server" type="button">or load from dev server (tools/serve.js, data/ on disk)</button>
+</div>
+<div id="status">waiting for input…</div>
+<canvas id="view"></canvas>
+<script type="module" src="main.js"></script>
+</body>
+</html>
