@@ -32,26 +32,33 @@ export function resolveEntitySprite(entityType, entityShapes, world) {
 }
 
 /**
- * Like resolveEntitySprite, but ALWAYS treats animStart as a direct tile index, even for
- * frameSourceMode===0 entities (where that's not actually confirmed -- the real frame comes from
- * an undecoded indirect near-pointer table, docs/formats/pin-level-script.md). Use only for a
- * representative/placeholder visual (e.g. the player's idle pose, whose descriptor is
- * frameSourceMode 0) where "a real sprite from the right bank, not necessarily the exact right
- * frame" is an explicit, labeled improvement over a colored box -- not for anything claiming
- * frame-accurate rendering.
+ * Resolves a KNOWN-GOOD representative tile for an entity whose descriptor is frameSourceMode 0
+ * (indirect near-pointer addressing, undecoded -- docs/formats/pin-level-script.md), by bank/
+ * world plus an explicitly supplied local tile index, bypassing animStart entirely.
+ *
+ * This exists because the obvious shortcut -- treating animStart as if it were a direct index
+ * anyway -- was tried first and is actively WRONG, not just imprecise: for the player descriptor
+ * (type 3), animStart (65) maps to kidx1.pak local index 5, which is a genuinely EMPTY/unused
+ * tile slot (verified by rendering all 20 of kidx1.pak's tiles -- indices 0-4/6/10-17 are real
+ * character frames -- cap, sunglasses, walk/punch poses -- 5/7/8/9/18/19 are blank placeholders).
+ * A user-reported "player still isn't a sprite" bug traced to exactly this: the sprite pipeline
+ * was working correctly end-to-end, it was just drawing a transparent tile every frame. So this
+ * takes an explicit, verified-by-eye local index instead of derived data that looked plausible
+ * but wasn't -- still not frame-accurate (real per-frame selection needs the undecoded indirect
+ * table), but at minimum guaranteed to draw the right CHARACTER, not a blank square.
  */
-export function resolveShapeTileForcedDirect(entityType, entityShapes, world) {
+export function resolveShapeTileByBank(entityType, entityShapes, world, localTileIndex) {
   if (!entityShapes || entityType == null || entityType >= entityShapes.descriptors.length) return null;
   const desc = entityShapes.descriptors[entityType];
   const atlasSpec = entityShapes.bankAtlas[desc.bankId];
   if (!atlasSpec) return null;
-  let tileIndex = desc.animStart;
+  let remaining = localTileIndex;
   for (const part of atlasSpec.parts) {
-    if (tileIndex < part.tiles) {
+    if (remaining < part.tiles) {
       const file = part.perWorld ? `${part.file}${world}` : part.file;
-      return { file, localTileIndex: tileIndex };
+      return { file, localTileIndex: remaining };
     }
-    tileIndex -= part.tiles;
+    remaining -= part.tiles;
   }
   return null;
 }

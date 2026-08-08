@@ -17,7 +17,7 @@ import { sourceFromFileList, sourceFromFetch } from './loader/asset-source.js';
 import { AssetCache } from './loader/asset-cache.js';
 import { WORLD_PALETTES } from './core/palette.js';
 import { buildLevelScene, loadSpritePaks, drawEntitiesLive, tileToCanvas } from './render/canvas.js';
-import { paksNeededForWorld, resolveShapeTileForcedDirect } from './core/shapes.js';
+import { paksNeededForWorld, resolveShapeTileByBank } from './core/shapes.js';
 import { Camera, TILE_WIDTH, TILE_HEIGHT } from './engine/camera.js';
 import { Input } from './engine/input.js';
 import { MainLoop } from './engine/loop.js';
@@ -31,6 +31,10 @@ import { Transition } from './engine/transition.js';
 import { SoundManager, SFX } from './audio/sound-manager.js';
 
 const PLAYER_TYPE = 3; // class-3/player, confirmed sprite cross-reference (docs/enemies.md)
+// Global index into bank 2's combined tile space (bitkid.pak's 60 tiles + kidxN.pak's 20) landing
+// on kidxN local index 0 -- a verified-by-eye standing/idle pose (cap + sunglasses). See
+// core/shapes.js's resolveShapeTileByBank for why this is hardcoded instead of derived.
+const PLAYER_SPRITE_GLOBAL_INDEX = 60;
 
 const SHAPES_URL = '/symbols/entity-shapes.json';
 const VIEWPORT_W = 320;
@@ -147,7 +151,7 @@ async function loadLevel(id) {
     player.vy = 0;
     player.reachedExit = false;
 
-    const playerSprite = resolveShapeTileForcedDirect(PLAYER_TYPE, entityShapes, levelEntry.world);
+    const playerSprite = resolveShapeTileByBank(PLAYER_TYPE, entityShapes, levelEntry.world, PLAYER_SPRITE_GLOBAL_INDEX);
 
     const camera = new Camera({
       levelWidthPx: scene.widthPx,

@@ -30,9 +30,10 @@
   and the exit are found by scanning this real collision for standable spots (still not the
   game's actual authored positions — that data isn't recoverable from level files alone — but
   always inside real, walkable geometry now). <b>The player also renders as a real sprite</b> from
-  its confirmed character bank (<code>web/core/shapes.js</code>), not an orange box — though its
-  exact animation frame is a representative placeholder, since the real per-frame addressing is
-  still undecoded. Enemies whose sprite addressing IS resolved (most of them) already rendered
+  its confirmed character bank (cap + sunglasses), not an orange box -- a hand-verified
+  representative pose (an earlier attempt landed on a genuinely empty tile and silently rendered
+  nothing; see docs/port-plan.md's "Follow-up fix" entry for how that was found and fixed).
+  Enemies whose sprite addressing IS resolved (most of them) already rendered
   real sprites since Phase 1; the rest still fall back to a dot. Audio (Phase 7) and world/level
   flow (Phase 6) are unchanged. See <code>docs/port-plan.md</code>.
 </p>

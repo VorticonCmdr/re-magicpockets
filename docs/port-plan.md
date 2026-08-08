@@ -379,10 +379,12 @@ never swapped out for real data, exactly as its own comments flagged it would ne
   walkable geometry) replace `web/engine/placeholder-terrain.js` (deleted) and
   `render/canvas.js`'s pink collision-overlay draw (removed — no longer needed once collision
   actually matches the art).
-- **The player now renders as a real sprite** from its confirmed character bank
-  (`web/core/shapes.js`'s new `resolveShapeTileForcedDirect`, since the real descriptor is
-  frameSourceMode 0 — indirect, undecoded addressing — so this forces a representative real tile
-  rather than claiming frame-accurate correctness) instead of an orange box.
+- **The player now renders as a real sprite** from its confirmed character bank instead of an
+  orange box. First attempt used `resolveShapeTileForcedDirect` (treat `animStart` as a direct
+  tile index despite the real descriptor being frameSourceMode 0 — indirect, undecoded
+  addressing). **This shipped broken and was caught by the user, not by this session's own
+  testing** — see the follow-up entry below for the real bug and fix
+  (`resolveShapeTileByBank`, a verified-by-eye hardcoded frame).
 - **Two real bugs found and fixed while wiring this up**, both caught by systematic testing rather
   than eyeballing: (1) the spawn-finder's standable-spot check only verified 1 row of headroom
   above the floor cell, letting the player spawn with its ~30px-tall (~2-tile) box embedded in
@@ -402,8 +404,60 @@ never swapped out for real data, exactly as its own comments flagged it would ne
 - **Verified**: a Node-level deterministic simulation of `moveAndCollide` against real
   `level1a.pap` data (confirming the exact bug reproductions above), and a real (headless
   Chromium) browser run across multiple worlds — the player visibly moves, falls to real footing,
-  stops against real walls, breaks blocks, and renders as a real sprite over real, correctly-
-  aligned cave art; zero JS errors.
+  stops against real walls, breaks blocks; zero JS errors. **This verification pass missed that
+  the player sprite itself was still invisible** — every automated check looked at *state*
+  (position, collision flags, entity counts) and none of them looked at *what the canvas actually
+  drew*, so a real rendering bug shipped in the same commit as the fix above. Caught by the user
+  re-testing against a live DOSBox reference, not by this project's own process.
+
+### Follow-up fix — the player sprite was actually still invisible
+
+The user reported the port still didn't look like DOSBox and the player still wasn't a sprite,
+after the previous entry claimed both were fixed. Investigated by connecting live to the user's
+running DOSBox instance (`dosbox-mcp`, `docs/dosbox-debugging.md`'s workflow) for a ground-truth
+screenshot and world/sublevel read (confirmed world 1 sublevel 1, matching this port's default
+level — the state comparison was valid), then working the actual bug on the JS side.
+
+- **Root cause**: `resolveShapeTileForcedDirect`'s "treat `animStart` as a direct index anyway"
+  approach didn't just risk being frame-inaccurate — for the player specifically it landed on
+  `kidx1.pak` local tile index 5, a genuinely **empty/unused placeholder slot** (verified by
+  rendering all 20 of `kidx1.pak`'s tiles side by side: indices 0-4/6/10-17 are the real character
+  —cap, sunglasses, walk/punch poses — 5/7/8/9/18/19 are blank). The sprite pipeline itself
+  (decode, cache, `drawImage`) was working correctly end to end; it was just drawing a transparent
+  tile every single frame, invisible by construction. No exception, no wrong-looking output to
+  eyeball — a screenshot of "nothing extra drawn" looks identical to "background art with no
+  sprite on top," which is exactly why this survived the previous entry's browser-run
+  verification.
+- **How it was found**: not memory archaeology (a live entity-table read was attempted via
+  `dosbox-mcp`'s `mem_read`/`cpu_read_registers` to cross-check the real player's position/frame,
+  but hand-parsing the raw entity array from live memory proved too fragile to trust — abandoned
+  in favor of a much more direct approach). The actual method: render `kidx1.pak`'s full tile
+  sheet to a PNG and visually inspect it, which immediately showed which indices are real frames
+  vs. empty padding — then confirmed live-browser pixel sampling (`canvas.toDataURL()`, decoded
+  and cropped in Python) showed the exact same mostly-transparent tile at the computed draw
+  position, closing the loop.
+- **Fix**: `web/core/shapes.js`'s `resolveShapeTileForcedDirect` replaced with
+  `resolveShapeTileByBank(entityType, entityShapes, world, localTileIndex)`, which resolves a
+  bank/world's file name the same way but takes an **explicit, verified** tile index instead of
+  trusting `animStart`. `web/main.js` hardcodes `PLAYER_SPRITE_GLOBAL_INDEX = 60` (bitkid.pak's 60
+  tiles + kidxN.pak local index 0 — a clean standing pose), with the reasoning documented inline
+  since this is a hand-picked value, not derived data.
+- **Still not fixed**: this is a representative pose, not frame-accurate animation — the real
+  per-frame selection still needs the undecoded indirect near-pointer table
+  (`docs/formats/pin-level-script.md`). Enemy sprites with the same frameSourceMode-0 addressing
+  still fall back to a dot, unchanged.
+- **Verified**: rendered `kidx1.pak`'s full tile sheet and cross-referenced by eye; live-browser
+  canvas pixel sampling via `toDataURL()` (not screenshot-and-crop, which had already produced two
+  rounds of wrong conclusions in this same investigation due to coordinate-math mistakes) confirmed
+  the fix; full regression pass (movement, block-breaking, jumping, multi-world loads) re-run with
+  zero JS errors.
+- **Process note worth keeping**: two different screenshot-crop-and-eyeball attempts during this
+  investigation reached wrong conclusions from coordinate arithmetic mistakes (camera clamping at
+  the level edge means it doesn't always center on the player, which broke a naive "viewport
+  center" assumption). Reading `canvas.toDataURL()` directly inside the same `page.evaluate()` call
+  that captures the values used to compute a draw position — fully atomic, no cross-call drift, no
+  external scaling math — is the reliable way to inspect canvas output; prefer it over
+  screenshot-and-crop for this kind of pixel-level verification going forward.
 
 ### Phase 8 — Polish / parity pass
 - Diff against DOSBox for the specific behaviors that were "confirmed structure, guessed
