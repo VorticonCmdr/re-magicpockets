@@ -64,6 +64,20 @@ every ID after a non-MIDI table entry was off by however many non-MIDI entries p
 extractor now reads the offset table directly and names each output file by its **table index**,
 leaving a gap at non-MIDI entries instead of shifting later IDs down.
 
+**Follow-up pass, refines the entry layout**: `player.pin`'s own `Snd_SelectCueForPlayback`
+(`0x231f`, renamed from `FUN_0000_231f`) reveals each 4-byte entry isn't really one 32-bit
+offset — it's **`[2-byte file offset][1 flag byte][1 tempo-scale byte]`**, read and stored as
+three separate fields: the 2-byte offset feeds the playback cursor; the 3rd byte is copied to
+`[0xb88]`, a per-cue playback-type flag the `AH=1` command dispatcher checks immediately after
+cue selection; the 4th byte is copied to `[0x2976]`, folded into the tick-interval computation
+inside `FUN_0000_268d` (a per-cue tempo/pitch-scale fine-tune, added to a global base constant
+before scaling the tempo value). Checked against every entry in every shipped resource table
+(`adlib.pin`, `roland.pin`, `roland2.pin`, `soundbnk.pin`): **both extra bytes are `0` in every
+single entry**, in every file — real, driver-supported per-cue fields that this game's own
+content simply never uses. This means `tools/extract-pin.js`'s simpler "read 4 bytes as one
+little-endian offset" always happens to give the right answer for this game's actual files, even
+though the driver code treats the field as three separate values, not one.
+
 **Non-MIDI table entries** (confirmed present, not yet decoded byte-for-byte):
 
 | File | Non-MIDI entries (sound_id -> file offset) |
@@ -74,8 +88,24 @@ leaving a gap at non-MIDI entries instead of shifting later IDs down.
 Each begins with a small count byte (`0x63`/99 or `0x43`/67) followed by that many byte pairs —
 consistent with an OPL2 register-reset sequence (write `0x00` to a run of OPL2 registers to
 silence all channels) rather than a sequence the MIDI-cue player would ever be asked to play back
-as a tune. Not yet traced against the actual OPL2 register-write code to confirm the pair
-semantics.
+as a tune.
+
+**Follow-up pass, found the real OPL2 write primitive but not yet its caller for these
+sequences.** `player.pin`'s `Opl2_WriteRegister` (`0x22e3`, renamed from `FUN_0000_22e3`) is
+confirmed via raw disassembly as the genuine OPL2 register-write routine: `DX` is loaded from a
+runtime base-port variable at `[0x1466]` (not a hardcoded `0x388` — this driver module is shared
+across the Adlib/SoundBlaster/Roland backends, so the port must be resolved at hardware-detection
+time), the calling convention is `AH`=register number, `AL`=value, and the write sequence — select
+byte out, 6× status-port read as a delay, data byte out to `base+1`, 35× status-port read as a
+second delay — is an exact match for the well-documented real-hardware OPL2 write-timing
+requirement (~3.3µs after register select, ~23µs after data write), strong independent
+confirmation this is the right function. It's called from ~20 sites, all voice/channel management
+(note-on/off, instrument/timbre load reached from normal MIDI-cue playback) — none of them were
+traced this pass back to the non-MIDI table entries above, so **the exact (register, value) pair
+semantics remain unconfirmed**, but a future pass now has a concrete target: check whether any
+caller of `Opl2_WriteRegister` reads its `AH`/`AL` arguments from the non-MIDI cue's own byte
+stream (rather than from a fixed instrument-parameter table), which would settle the "register
+reset sequence" hypothesis directly.
 
 ## RESOLVED — `level0/new1/level2/level3a-c/level4.pin` are level-scripting bytecode, not music
 
@@ -123,8 +153,10 @@ leading bytes only, **not decoded**:
   command streams) is undecoded — would need tracing the Adlib/SoundBlaster driver's own
   interpretation loop, not just the container header.
 - `soundbnk.pin`'s 17259 bytes of post-MIDI trailing data.
-- The non-MIDI table entries' exact byte-pair semantics (see above) — plausible as an OPL2
-  register-reset sequence but not confirmed against the OPL2 register-write code.
+- The non-MIDI table entries' exact byte-pair semantics — still plausible as an OPL2
+  register-reset sequence; the real write primitive is now identified (`Opl2_WriteRegister`,
+  `player.pin` offset `0x22e3`, see above), but no caller of it was traced back to these specific
+  byte streams this pass.
 - `adlib.pin`'s MIDI cues embed OPL2 timbre parameters as `FF 7F` (SeqSpec) meta events; a
   standard SMF player (and this project's `tools/midi-player.html`, which just uses Web Audio
   oscillators) ignores them, so playback timbre doesn't match the original AdLib sound. Would

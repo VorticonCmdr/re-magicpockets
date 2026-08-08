@@ -1,0 +1,26 @@
+{
+  "program": "player.pin.raw",
+  "namedFunctions": 2,
+  "totalFunctions": 94,
+  "note": "Shared sound-driver code module (depacked player.pin, loaded into segment 38b7/33a9 by every hardware backend -- Adlib/Roland/SoundBlaster/Beeper/Tandy). Imported as raw x86:LE:16:Real Mode binary with base 0000:0000. GAMEU.EXE's Snd_TriggerEffect/Snd_TriggerEffectRaw far-call into it with AH=command, AL=sound_id. See docs/formats/pin.md. Only 2 of 94 functions named so far -- the rest are unexplored (voice/channel management, MIDI sequencer tick service, hardware-detection code).",
+  "functions": [
+    {
+      "name": "Snd_SelectCueForPlayback",
+      "address": "0000:231f",
+      "tags": [
+        "verified",
+        "sound"
+      ],
+      "summary": "Was FUN_0000_231f. Bounds-checks AL (sound ID) against the resource table's own count byte, then selects that cue for playback. Reveals each 4-byte table entry as [2-byte file offset][1 flag byte -> 0xb88, a playback-type flag checked by the AH=1 command dispatcher][1 tempo-scale byte -> 0x2976, folded into FUN_0000_268d's tick-interval computation] -- not one 32-bit offset as a byte-level-only read would suggest, though both extra bytes are 0 in every entry of every shipped .pin file, so a plain 4-byte LE offset read happens to give the right answer anyway. See docs/formats/pin.md's 'Resource-offset table' section."
+    },
+    {
+      "name": "Opl2_WriteRegister",
+      "address": "0000:22e3",
+      "tags": [
+        "verified",
+        "sound"
+      ],
+      "summary": "Was FUN_0000_22e3. The genuine OPL2 register-write primitive: DX loaded from a runtime base-port variable [0x1466] (not hardcoded 0x388, since this module is shared across hardware backends); calling convention AH=register, AL=value; write sequence (select-byte out, 6x status-port-read delay, data-byte out to base+1, 35x status-port-read delay) is an exact match for the documented real-hardware OPL2 write-timing requirement (~3.3us/~23us), strong confirmation this is the right function. Called from ~20 voice/channel-management sites (note-on/off, instrument load) reached from normal MIDI-cue playback. Not yet traced back to the non-MIDI resource-table entries' (register,value) byte-pair sequences (docs/formats/pin.md's open question) -- a concrete target for a future pass."
+    }
+  ]
+}
