@@ -47,10 +47,18 @@ and mostly non-blocking.
 
 ### Known gaps / open items (tracked so nothing gets silently assumed away)
 
-- **Frame/tick rate**: `Sys_InstallCustomTimerHandler` reprograms PIT channel 0 to a custom rate,
-  but the actual divisor value hasn't been read off the disassembly yet. Needed before Phase 3
-  (main loop) to know whether the game logic runs at the EGA/VGA vsync rate (~60/70Hz) or some
-  other custom rate. **Action**: one focused Ghidra read before Phase 3 starts.
+- **RESOLVED: frame/tick rate.** `Sys_InstallCustomTimerHandler` (`1000:2035`) reprograms PIT
+  channel 0 with reload value `0x5cec` (23788: `OUT 0x43,0x36` mode-3 select, then `OUT 0x40,0xec`
+  / `OUT 0x40,0x5c` low/high reload bytes) — `1193182 / 23788 ≈ 50.15 Hz`. But this installs a
+  reentrant background ISR (`1000:2087`, its own private stack, a `CS:[0x2197]` reentrancy guard)
+  running independently of the visible game loop, **not** the main loop's pacing source. The main
+  loop's actual frame pacing is call #14, `Video_WaitVsyncAndCountFrame` — a busy-wait for the
+  real display's vsync (EGA/VGA hardware rate, ~60-70Hz depending on mode), each of the 14 calls
+  per that wait. Conclusion: `requestAnimationFrame` (the browser's own vsync-paced callback) is
+  the correct analog for the main loop in Phase 2, not a `0x5cec`-derived interval timer. The
+  ~50.15Hz ISR most plausibly drives the sound driver's own tick (a common DOS-game pattern,
+  keeping music/SFX timing independent of variable display refresh rates) — revisit its exact role
+  only if Phase 7 (audio) needs frame-accurate MIDI timing; non-blocking for Phase 2 onward.
 - **`frameSourceMode === 0` indirect sprite addressing** (~30% of bank 7 entities, most of bank
   2's, some of bank 3's): tile index comes from an undecoded near-pointer table walk. Non-blocking
   for a first playable build — falls back to a colored placeholder like `tools/viewer.html`

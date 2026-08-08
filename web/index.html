@@ -2,33 +2,35 @@
 <html lang="en">
 <head>
 <meta charset="utf-8">
-<title>Magic Pockets port — Phase 1 checkpoint</title>
+<title>Magic Pockets port — Phase 2 checkpoint</title>
 <style>
   body { font-family: system-ui, sans-serif; background: #111; color: #eee; margin: 0; padding: 1.5rem; }
   h1 { font-size: 1.1rem; font-weight: 600; }
   p { color: #aaa; max-width: 60rem; line-height: 1.4; }
   .controls { margin: 1rem 0; display: flex; gap: 0.75rem; align-items: center; }
-  #status { margin: 0.5rem 0 1rem; font-family: ui-monospace, monospace; font-size: 0.85rem; color: #8f8; }
+  #status { margin: 0.5rem 0 1rem; font-family: ui-monospace, monospace; font-size: 0.85rem; color: #8f8; white-space: pre-wrap; }
   #status.error { color: #f88; }
-  #view { image-rendering: pixelated; border: 1px solid #444; max-width: 100%; background: #000; }
+  #view { image-rendering: pixelated; border: 1px solid #444; background: #000; width: 960px; height: 576px; }
   button { font: inherit; padding: 0.4rem 0.8rem; }
 </style>
 </head>
 <body>
-<h1>Magic Pockets port — Phase 1 checkpoint</h1>
+<h1>Magic Pockets port — Phase 2 checkpoint</h1>
 <p>
-  Static world rendering: pick your local, unmodified <code>data/</code> folder (still
-  RNC-ProPack-compressed, exactly as shipped) and this page RNC-depacks and decodes a full level
-  — background tiles plus every placed entity's real sprite where the addressing mode is resolved
-  (colored dots otherwise, same as <code>tools/viewer.html</code>) — entirely in the browser, no
-  <code>node tools/build-all.js</code> pre-extraction step. See <code>docs/port-plan.md</code>.
+  Core loop skeleton + camera + input: pick your local, unmodified <code>data/</code> folder
+  (still RNC-ProPack-compressed, exactly as shipped). The page builds the full level scene once
+  (background tiles + entity sprites, same as Phase 1) and then runs a
+  <code>requestAnimationFrame</code>-paced loop — <b>arrow keys / WASD scroll the camera</b> over
+  the static level, smoothly, clamped to the level bounds. The status line shows the live
+  whole-tile / sub-tile-pixel-remainder split the original's <code>Camera_UpdateScroll</code> used
+  for its hardware pixel-panning register. See <code>docs/port-plan.md</code>.
 </p>
 <div class="controls">
   <label>Pick your local <code>data/</code> folder: <input type="file" id="picker" webkitdirectory></label>
   <button id="dev-server" type="button">or load from dev server (tools/serve.js, data/ on disk)</button>
 </div>
 <div id="status">waiting for input…</div>
-<canvas id="view"></canvas>
+<canvas id="view" tabindex="0"></canvas>
 <script type="module" src="main.js"></script>
 </body>
 </html>
