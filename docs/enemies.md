@@ -463,8 +463,13 @@ gated on two ground-scan-result bytes (`[0x8bca]`/`[0x8bc6]`) that pick between 
 per-class (`+4`) dispatch tables (a "no landing yet", "landed cleanly", and "landed hard" variant of
 essentially the same class-keyed routing: `Entity_SetIdleAnimFrameByKind`/`SetIdleStateByKind` for
 classes 2/5/6, `Entity_SetStateOnWorld4Kind`/`Entity_ProcessGroundStateByWorldAndKind` for class 7,
-`Entity_ApplyComplexGroundResponse` for class 3 — i.e. the player). Class 7 is where the interesting
-per-world/type breakable-block logic lives:
+`Entity_ApplyComplexGroundResponse` for class 3 — i.e. the player). **RESOLVED: the "landed hard"
+class-2 entry point, `Entity_ApplyGroundStateTransitionVariant` (`1000:f28d`)**, is not a fourth
+distinct mechanism — it's confirmed as `Entity_SnapToGroundBoundaryYAlt()` followed by a
+byte-for-byte copy of `Entity_ApplyGroundStateTransition`'s own inlined class-2 idle/settle-state
+branch (types `0x14`/`0x20`/`0x2c`/`0x8d`), just reached via the "landed hard" scan-flag path with
+an added Y-boundary snap. Class 7 is where the interesting per-world/type breakable-block logic
+lives:
 
 - **World 1** (`Entity_ProcessGroundStateByWorldAndKind`): types `0xa`/`0xb`/`0xc`/`0xd` flip a `'<'`
   breakable-tile marker byte in the level-map buffer to negative (the same in-place rewrite mechanic
@@ -672,10 +677,27 @@ the sections above). What's left, honestly:
   `Entity_HandleCollisionOrStateDispatch`'s five state-keyed sub-handlers (`Entity_ProcessCollisionState15`
   etc., already named from a prior pass) and `Entity_SetAttackStateWorld1`-`4`'s exact per-state
   script-pointer targets are similarly not traced past their own one-line leaf bodies.
-- **`Entity_RunMovementAiScript`'s sub-handler internals** (`Entity_AiOpTurnOrRetreat`'s own callees
-  for the exact `'n'` turn arithmetic, `Entity_FindNextEntityByKind`'s linked-list-walk details, the
-  exact fold arithmetic `Entity_RollRandomBehaviorIndex` uses to index `0xeca4`) are characterized at
-  the level needed to explain behavior but not re-derived instruction-by-instruction.
+- **RESOLVED: `Entity_RunMovementAiScript`'s three remaining sub-handler internals.**
+  `Entity_AiOpTurnOrRetreat` (`1000:6b13`, the `'n'`-opcode handler): if `[0x8be9]`'s sign bit is
+  clear, it just clears the orientation-masked bits out of the collision-flag field (`+0x24 &=
+  ~(+0x14)`) — a plain "stop pushing into the wall" turn; if set, it's the hit-react variant —
+  animation-sets `5`/`0xf` escalate straight into `Entity_HitReactDispatchByKind` using `+0x36` as
+  the hit-react parameter, everything else no-ops. Absent that flag, it dispatches by kind/world:
+  kind `0x42` and world `1`'s kind `0x14` (→ `Entity_SetState85`, state `0x85`/script `0xcf07`)
+  get bespoke handling, kind `0x2c` calls `Entity_SetOrientationFlagsAndAnimRange`, everything
+  else falls through to `Entity_ToggleOrientationFlags` (XORs `+0x14 ^= 0xc`, then ORs the result
+  into `+0x24`) — i.e. flip facing and merge the new orientation into the collision mask. Both
+  `Entity_ToggleOrientationFlags` and `Entity_SetState85` turned out to already be named,
+  fully-decoded one-liners.
+  `Entity_FindNextEntityByKind` (`1000:c192`): confirmed as a byte-for-byte analog of
+  `Entity_FindEntityByKind`, just starting the linear scan from a caller-supplied record base
+  instead of the table start — same `0x42`-byte struct stride, same match field (current-record
+  `+0x2`, the "type" field), same `-0x46e8` table-end bound. Lets callers resume a search ("find
+  the next match after this one") instead of always restarting from the first entity; used by the
+  `'s'`-opcode capture-AI handlers to walk multiple same-type candidates.
+  `Entity_RollRandomBehaviorIndex`'s fold arithmetic was, on inspection, already fully decoded and
+  tagged `verified` from a prior pass (see the "Movement/behavior AI script system" section above)
+  — the "not re-derived" note in an earlier version of this doc was stale.
   `Entity_AiOpChooseAttackVariant` (`1000:6cd4`, reached from type `0x42`'s move dispatch) **is**
   confirmed as a short leaf: within melee range (`[0x8c1b]<2`) it rolls a chance to jump straight to
   a close-range attack state (`0xd7`); otherwise it looks up a `(+0x26,+0x27)` value pair from a

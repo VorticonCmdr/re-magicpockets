@@ -159,8 +159,9 @@ across many kinds/worlds.
 from `Entity_SyncViewportTargetFromEntity`. It fans out through a cluster of ground-scan helpers
 (`Entity_ScanGroundRow`/`Column` + `Variant`, `Entity_MergeGroundScanResults`) into several very
 dense per-kind/per-world state-transition dispatchers (`Entity_ApplyGroundStateTransition`,
-`Entity_ProcessGroundStateByWorldAndKind`, `Entity_ApplyGroundStateTransitionByKind` — none
-decoded branch-by-branch, all flagged as future-session targets). Along the way this revealed
+`Entity_ProcessGroundStateByWorldAndKind`, `Entity_ApplyGroundStateTransitionByKind` — since
+decoded branch-by-branch in a later pass, see `docs/enemies.md`'s "Ground-collision per-kind
+reactions" section and the "RESOLVED" note below). Along the way this revealed
 the game's **breakable-tile mechanic**: `Entity_BreakTileOrBounce` and its siblings
 (`Entity_BreakTilesAhead`/`Behind`/`AtOffset`, `Entity_BreakSpecificTileChar`) check whether a
 tile in the level-map buffer is marked with a specific breakable-tile byte (e.g. `'<'`) and, if
@@ -189,10 +190,43 @@ damage/interaction dispatcher:
   spawn event every 100 frames — the same "every-100" cadence pattern seen elsewhere in the
   timer-driven subsystems (c.f. `AltBuild_AdvanceScrollBankState`'s 100-frame counter, a
   coincidence worth noting but not yet shown to be related).
-- **`Entity_ChooseAndSpawnBonusItem`** (`1000:4a50`) is the actual bonus-item selection logic:
-  dense per-world difficulty heuristics choose *which* bonus item to spawn and where. Not decoded
-  branch-by-branch (flagged as a future-session target), but its role as the bonus-spawn decision
-  point is confirmed by its callers and its use of `Rng_NextValue`/`Entity_SpawnFromQueuedEvent`.
+- **RESOLVED: `Entity_ChooseAndSpawnBonusItem`** (`1000:4a50`) decoded branch-by-branch. It runs
+  every call (pushing a small "hit" event, playing a sound, and incrementing the bonus-marker
+  frame counter `[0x8bb4]` — the same counter `EntityScriptOp_CheckBonusMarkerAndMaybeSpawn`
+  documents in `docs/entity-script-vm.md`), but only does its actual item-selection work once the
+  kind-`0x18` bonus-marker entity it looks up (via `Entity_FindEntityByKind`) has counted down to
+  state `0x7b` — otherwise it just decrements that entity's state and returns early. Once ready,
+  it plays a second sound, resets/re-tags the marker entity, and — unless a suppression path is
+  hit (`[0x8b98]=-1` early-out, or the marker's own state gets set to `'C'`/0x43 first) — spawns a
+  score popup and evaluates a **purely deterministic, counter-driven difficulty heuristic** (no
+  RNG call anywhere in this function — a correction to an earlier guess that it used
+  `Rng_NextValue`) keyed on world (`[0x8b89]`, falling back to `[0x8b8b]` for `0`, the same
+  world-selector idiom used throughout) to pick which bonus item (entity `type`, written to
+  `[0x8c1f]`) to spawn:
+  - **World 1**: checks, in order, a level-progress counter `[0x8bb3]` (<4 → type `0x3a`), a
+    second counter `[0x8c07]` (>10 → `0x3b`; <4 → `0x3d`; else its ratio against `[0x8c08]`
+    gates → `0x3c`), then the running score/distance global `[0x8b75]` (>200 → `0x38`, shared with
+    world 2's threshold below).
+  - **Worlds 2–4** (the `else` branch): world 2 additionally checks `[0x8b75]` >400 → `0x38`
+    first; then falls through the same three counters worlds 1 doesn't use — `[0x8c09]` >0 →
+    `0x3f`, `[0x8bb2]` >0 → `0x36`, `[0x8bff]` >1 → `0x35` (a *different* consumer of the
+    `[0x8bff]` step-counter than the one `docs/entity-script-vm.md` documents for opcode 68 — same
+    global, unrelated read site).
+  - **Shared fallback** (both branches, when nothing above matched): a final counter `[0x8c05]`
+    picks between `0x37` (< 0x1f) and `0x39` (>= 0x1f).
+  - All ten resulting type values (`0x35`–`0x3d`, `0x3f`) resolve, via the shape-descriptor table
+    (`symbols/entity-shapes.json`), to sprites in bank `3` ("`special`", per-world) or bank `6`
+    ("`extras`"/"`extrax`", the fixed/shared bonus-icon set) — except `0x3f`, the one exception,
+    which draws from bank `2` ("`kidx`", the player-adjacent bank) — confirming these are all
+    genuine spawnable bonus-item entities, not placeholder/debug values. (Numeric coincidence
+    worth flagging: `docs/enemies.md`'s breakable-tile-type table also uses hex values in this
+    same `0x35`–`0x3f` range, but for an unrelated tile-char namespace — don't conflate the two.)
+  - After selection, it always finishes with a fixed-position spawn (`0x8c21`/`0x23`/`0x25`/`0x27`
+    = `0x66`/`4`/`0x20`/`0x155`) via `Entity_PushSpawnEvent` (opcode `0x2d`).
+  The seven difficulty-input globals (`[0x8bb3]`/`[0x8c07]`/`[0x8c08]`/`[0x8c09]`/`[0x8bb2]`/
+  `[0x8bff]`/`[0x8c05]`) aren't cross-referenced against other known counters (distance, score,
+  hit-count) yet beyond `[0x8b75]` and `[0x8bff]` above — a good next-session target for whoever
+  wants to name the exact difficulty axis (deaths? combo streak? tiles broken?) each one tracks.
 - **`Entity_ChooseAndPlaceBonusMarker`** (`1000:5609`) places/updates a *marker* (likely a visual
   indicator of upcoming bonus placement) based on distance-travelled-since-last-marker compared
   against a per-difficulty table — a separate, simpler heuristic from the item-choice logic above.

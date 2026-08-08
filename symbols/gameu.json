@@ -3146,10 +3146,10 @@
       "name": "Entity_FindNextEntityByKind",
       "address": "1000:c192",
       "tags": [
-        "guess",
+        "verified",
         "entity"
       ],
-      "summary": "Iterator variant of Entity_FindEntityByKind, scanning from a caller-supplied position."
+      "summary": "Byte-for-byte analog of Entity_FindEntityByKind, but scanning from a caller-supplied record base (in_BX) instead of the table start -- lets a caller resume a search ('find the next match after this one'). Confirmed identical struct-stride (0x42) and match-field (current-record +0x2, the 'type' field) arithmetic and the same table-end bound (-0x46e8) as Entity_FindEntityByKind. Used by Entity_RunMovementAiScript's 's' opcode handler to walk multiple candidates of a given type. See docs/enemies.md."
     },
     {
       "name": "Entity_InitFromTemplateRecord",
@@ -3434,10 +3434,10 @@
       "name": "Entity_ApplyGroundStateTransitionVariant",
       "address": "1000:f28d",
       "tags": [
-        "guess",
+        "verified",
         "entity"
       ],
-      "summary": "Sibling of Entity_ApplyGroundStateTransitionByKind, first snaps Y boundary."
+      "summary": "Confirmed as Entity_SnapToGroundBoundaryYAlt() followed by a byte-for-byte copy of Entity_ApplyGroundStateTransition's own inlined class==2 branch (idle/settle-state assignment for types 0x14/0x20/0x2c/0x8d) -- the 'landed hard' ([0x8bc6]!=0) sibling entry point for the same class-2 idle-state mechanic reached directly for the 'landed cleanly' case, not a distinct mechanism. See docs/enemies.md's 'Ground-collision per-kind reactions' section."
     },
     {
       "name": "Entity_SetIdleAnimFrameByKind",
@@ -3668,10 +3668,10 @@
       "name": "Entity_ChooseAndSpawnBonusItem",
       "address": "1000:4a50",
       "tags": [
-        "guess",
+        "verified",
         "entity"
       ],
-      "summary": "BONUS-ITEM SPAWN LOGIC: evaluates per-world difficulty heuristics to choose and spawn a bonus item. Dense."
+      "summary": "Decoded branch-by-branch. Gates real work on the kind-0x18 bonus-marker entity's state reaching 0x7b (else just decrements+returns), then runs a purely deterministic (no RNG) counter-driven heuristic keyed on world ([0x8b89]/[0x8b8b]) -- world 1 checks [0x8bb3]/[0x8c07]/[0x8c08]/[0x8b75]; worlds 2-4 check [0x8b75]/[0x8c09]/[0x8bb2]/[0x8bff]; both fall back to a [0x8c05] split -- to pick a bonus-item type ([0x8c1f]) from {0x35-0x3d,0x3f}, which resolve via entity-shapes.json to bank 3 (special)/bank 6 (extras) except 0x3f (bank 2, kidx). Always finishes with a fixed-position Entity_PushSpawnEvent (opcode 0x2d). See docs/engine.md's 'Bonus/checkpoint/score-popup subsystem' section."
     },
     {
       "name": "Entity_SpawnScorePopup",
