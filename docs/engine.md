@@ -223,10 +223,59 @@ damage/interaction dispatcher:
     same `0x35`–`0x3f` range, but for an unrelated tile-char namespace — don't conflate the two.)
   - After selection, it always finishes with a fixed-position spawn (`0x8c21`/`0x23`/`0x25`/`0x27`
     = `0x66`/`4`/`0x20`/`0x155`) via `Entity_PushSpawnEvent` (opcode `0x2d`).
-  The seven difficulty-input globals (`[0x8bb3]`/`[0x8c07]`/`[0x8c08]`/`[0x8c09]`/`[0x8bb2]`/
-  `[0x8bff]`/`[0x8c05]`) aren't cross-referenced against other known counters (distance, score,
-  hit-count) yet beyond `[0x8b75]` and `[0x8bff]` above — a good next-session target for whoever
-  wants to name the exact difficulty axis (deaths? combo streak? tiles broken?) each one tracks.
+  **Follow-up pass, most of the remaining difficulty-input globals now named** (via
+  `search_byte_patterns` on each global's raw address bytes, the same method
+  `docs/entity-script-vm.md` used for `[0x8bff]`/`[0x8bb4]`):
+  - **`[0x8bb3]` — a per-level "special block destroyed" counter**, world-1/2-specific. Reset to 0
+    in `Level_InitStateForSublevel`, incremented in `FUN_1000_3fe2` (state=`0x1c`/script=`0xc655`,
+    also clears the `[0x8b96]` cooldown `Entity_ChooseAndSpawnBonusItem` sets), which is called
+    from `Entity_HandleSpecialInteraction` exactly when the entity collided with has type `0xd`
+    (world 1) or `0x33` (world 2) — the same world-1/2 "four-part breakable block" types
+    `docs/enemies.md`'s ground-collision section documents. So world 1's `[0x8bb3]<4 → item 0x3a`
+    branch really reads as "spawn the basic bonus item until the player has broken at least 4 of
+    this world's special blocks."
+  - **`[0x8c07]`/`[0x8c08]` — a paired "generic hazard block destroyed" counter and its
+    accumulated reward-value total.** Both are written together in
+    `Entity_InteractionPhaseResolveByWorldAndType`'s shared epilogue (table index 5, reached for
+    types `0x10`/`0x34`/`0x39`/`0x3e` — the cross-world generic hazard-block types
+    `docs/enemies.md` already documents): `[0x8c07] += 1` per block destroyed, `[0x8c08] +=` that
+    block's own reward-value byte (`entity+0x3f`). Same epilogue also zeroes `[0x8c05]` — see
+    below.
+  - **`[0x8c09]` — an AI-side "captured/despawned by predator" counter**, incremented in all three
+    branches of `Entity_AiOpDespawnOrKill` (`1000:6aa7`, the movement-AI VM's `'n'`-opcode
+    despawn/attach handler) alongside the acting entity's own `+0x3c` "kills performed" field. This
+    is thematically tight: `[0x8c09]>0` selects bonus type `0x3f`, and `0x3f` is the one bonus item
+    drawn from bank 2 (`bitkid`/`kidx`, the player-adjacent bank) rather than bank 3/6 like every
+    other bonus type — i.e. "if a predator enemy captured a `kidx`-bank companion this level, the
+    replacement/rescue bonus is drawn from that same character bank" is a coherent read, though the
+    exact narrative (kidnapped companion vs. some other `kidx`-bank actor) isn't nailed down by
+    code alone.
+  - **RESOLVED: `[0x8c05]` — a broader "hazard/breakable interaction resolved" tally, distinct
+    from (but overlapping) `[0x8c07]`.** Incremented (`+=1`, alongside a sibling counter
+    `[0x8c06]`) at the top of `Entity_ResolveInteractionRewardAndBonusMarker` (`1000:549c`), the
+    shared reward primitive called from **three** interaction-phase-table entries (1/4/12 —
+    `Entity_InteractionPhaseResolveHitAndPairing`/`ResolveBreakOrHazard`, a wider set of
+    interactions than the single "generic hazard block" epilogue that resets it). Two independent
+    consumers now confirmed: `Entity_ChooseAndSpawnBonusItem`'s final `<0x1f` split (read-only),
+    and `Entity_InteractionPhaseType1bHandler`'s own `0x17`-tag pickup case, which *also*
+    read-and-resets it (`bVar1 = [0x8c05]; [0x8c05] = 0;`) to compute a bonus-item spawn value —
+    a second, independent reset path beyond the `Entity_InteractionPhaseResolveByWorldAndType`
+    epilogue already documented above. Net effect: `[0x8c05]` counts hazard/breakable
+    interactions resolved since the last time either a generic-hazard-block break *or* a specific
+    pickup-type-`0x17` collection last drained it.
+  - **RESOLVED: `[0x8bb2]` — a capped (max 3) "pickup collected" counter, specific to one
+    paired-entity collectible tag.** `Entity_InteractionPhaseType1bHandler` (`1000:5bad`) turned
+    out to be exactly the right function (the earlier pass just hadn't read far enough into it):
+    it dispatches on the *other*, paired entity's `+10` field — a small family of one-shot pickup
+    handlers, each of which kills the collected entity and plays a sound. Tag `0x1b`'s handler
+    increments `[0x8bb2]`, capped at `3` (further collections past the cap instead fall through to
+    a no-reward despawn path, `FUN_1000_596b`); tag `0x17`'s handler (see `[0x8c05]` above) reads
+    `[0x8bb2]==3` as a gate for a bonus spawn value. So worlds 2–4's `[0x8bb2]>0 → item 0x36`
+    branch in `Entity_ChooseAndSpawnBonusItem` reads as "spawn a better bonus once the player has
+    started collecting this specific pickup type" — sibling counters `[0x8b93]`/`[0x8b90]`/
+    `[0x8c03]` in the same handler function are the same "capped pickup-type counter" idiom for
+    three *other* collectible tags (`0x19`/`0x18`/`0x1a`), not yet cross-referenced to their own
+    bonus-heuristic consumers if any.
 - **`Entity_ChooseAndPlaceBonusMarker`** (`1000:5609`) places/updates a *marker* (likely a visual
   indicator of upcoming bonus placement) based on distance-travelled-since-last-marker compared
   against a per-difficulty table — a separate, simpler heuristic from the item-choice logic above.

@@ -2869,7 +2869,7 @@
         "verified",
         "entity"
       ],
-      "summary": "Entity_RunMovementAiScript 's'-opcode sub-handler: if distance nonzero ([0x8c1b]!=0), re-enters Entity_RunMovementAiScript; else for kinds 0x4c/0x50, links the referenced entity ([in_BX]) and transitions state (attach); otherwise kills it (+0x40=0x19) and plays a sound -- a despawn-or-attach decision at the end of a successful chase. See docs/enemies.md."
+      "summary": "Entity_RunMovementAiScript 's'-opcode sub-handler: if distance nonzero ([0x8c1b]!=0), re-enters Entity_RunMovementAiScript; else for kinds 0x4c/0x50, links the referenced entity ([in_BX]) and transitions state (attach); otherwise kills it (+0x40=0x19) and plays a sound -- a despawn-or-attach decision at the end of a successful chase. All three branches increment both the acting entity's own +0x3c 'captures performed' field and the global counter [0x8c09] -- confirmed (docs/engine.md's bonus-item heuristic section) as the input to Entity_ChooseAndSpawnBonusItem's world2-4 '[0x8c09]>0 -> item 0x3f' branch, and 0x3f is itself the one bonus type drawn from bank 2 (kidx), a thematically consistent link. See docs/enemies.md."
     },
     {
       "name": "Entity_HitReactDispatchByKind",
@@ -3564,6 +3564,15 @@
         "entity"
       ],
       "summary": "World-1 ground-state response: extensive state-keyed transitions. Dense; not decoded branch-by-branch."
+    },
+    {
+      "name": "Entity_BreakSpecialBlockAndCount",
+      "address": "1000:3fe2",
+      "tags": [
+        "verified",
+        "entity"
+      ],
+      "summary": "Was FUN_1000_3fe2. Sets the colliding entity to state 0x1c/script 0xc655 (a 'block broken' reaction), resets the target entity's position/anim-range fields, clears the [0x8b96] bonus-item suppression cooldown, and increments [0x8bb3]. Called from Entity_HandleSpecialInteraction exactly for interaction type 0xd (world 1) or 0x33 (world 2) -- the world-1/2 'four-part breakable block' types docs/enemies.md documents -- confirming [0x8bb3] is a per-level 'special block destroyed' counter that gates Entity_ChooseAndSpawnBonusItem's world-1 basic-item branch. See docs/engine.md."
     },
     {
       "name": "Entity_HandleSpecialInteraction",
@@ -4606,7 +4615,7 @@
         "verified",
         "entity"
       ],
-      "summary": "Reached from Entity_DispatchInteractionByOtherEntityType's CMP AX,0x1b case. Dispatches further on its own AX (0x1e/0x67/0x1f/0x20, targets 5d73/5d84/5d9c/5c96/5d5e not traced). Contains a checkpoint-style wait loop (1000:5c23) that spins while [0x8c04]!=0, then kills BX and writes [0x8c04]=0xe. At 1000:5c36-5c40: ADD word ptr [0x8bff],1 once per call until it reaches 6 -- the real setter for [0x8bff], resolving that docs/entity-script-vm.md open question."
+      "summary": "Reached from Entity_DispatchInteractionByOtherEntityType's CMP AX,0x1b case; dispatches further on the PAIRED entity's own +10 'collectible tag' field (a whole family of one-shot pickup handlers, each kills the collected entity (+0x40=0x19) and plays a sound unless already at cap): 0x1b -> increments [0x8bb2] capped at 3 (a 'collected N of this pickup type, max 3' counter -- resolves the [0x8bb2] open item, docs/engine.md); 0x17 -> reads-and-resets [0x8c05] (the same paired hazard-break counter Entity_ResolveInteractionRewardAndBonusMarker increments) into a spawn value, gated/bonused by whether [0x8bb2]==3 (all 3 of the 0x1b pickup collected); 0x19/0x18/0x1a -> similar capped byte counters ([0x8b93] cap 3, [0x8b90] decrement-to-2 floor, [0x8c03]+=5 gated on world!=3); 0x14 -> the real [0x8bff] setter (ADD word ptr [0x8bff],1 once per call until 6, 1000:5c36-5c40 -- resolves that docs/entity-script-vm.md open question); 0x1d/0x15/0x1c -> per-entity state bumps; 0x66/0x1e/0x67/0x1f/0x20 -> misc one-shot triggers ([0x8c0b]+=1, scroll-target set, demo-record flag, world-3 attack-cutscene flag [0x8c04]=0x1b, RNG-indexed sub-dispatch via FUN_1000_58d5). Also contains a checkpoint-style wait loop (1000:5c23) that spins while [0x8c04]!=0, then kills BX and writes [0x8c04]=0xe."
     },
     {
       "name": "Entity_InteractionPhaseResolveHitAndPairing",
@@ -4651,7 +4660,7 @@
         "guess",
         "entity"
       ],
-      "summary": "Entity_InteractionPhaseJumpTable phase handler (table index 5). Per-world dispatch over the same breakable-block type ranges docs/enemies.md's ground-collision section catalogs (world1 0xd/0x10, world2 0x33/0x34, world3 0x38/0x39, world4 0x3a-0x3e) into a shared break-and-reward epilogue. World2 type 0x33 is distinct: gated on [0x8b98] (0/1/0x1a, the player-carried-item type docs/enemies.md documents for class 5), a distance check either sets a new one-shot flag [0x8beb]=0xff (its own downstream reader not traced) or repositions/reinitializes the found entity. World4 types 0x3a-0x3d run a ground-contact chain via Entity_MoveHorizontalByFlags/Entity_ApplyGroundStateTransitionByKind. Dense (~840 bytes), structure/key constants confirmed. See docs/entity-script-vm.md."
+      "summary": "Entity_InteractionPhaseJumpTable phase handler (table index 5). Per-world dispatch over the same breakable-block type ranges docs/enemies.md's ground-collision section catalogs (world1 0xd/0x10, world2 0x33/0x34, world3 0x38/0x39, world4 0x3a-0x3e) into a shared break-and-reward epilogue. That epilogue (types 0x10/0x34/0x39/0x3e) is confirmed as the write site for docs/engine.md's paired bonus-heuristic counters: [0x8c07]+=1 per block destroyed, [0x8c08]+= that block's own reward-value byte (+0x3f), and [0x8c05]=0 (reset on every hazard-block break -- consumed elsewhere as a tie-break idle-time threshold). World2 type 0x33 is distinct: gated on [0x8b98] (0/1/0x1a, the player-carried-item type docs/enemies.md documents for class 5), a distance check either sets a new one-shot flag [0x8beb]=0xff (its own downstream reader not traced) or repositions/reinitializes the found entity. World4 types 0x3a-0x3d run a ground-contact chain via Entity_MoveHorizontalByFlags/Entity_ApplyGroundStateTransitionByKind. Dense (~840 bytes), structure/key constants confirmed. See docs/entity-script-vm.md and docs/engine.md."
     },
     {
       "name": "Entity_ArmChargingHazardInteraction",
