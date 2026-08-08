@@ -254,16 +254,39 @@ and catches transliteration mistakes early rather than at the end.
   interpreter itself doesn't care which world a type came from and would run their scripts the
   same way once entity-ai.js's dispatch table is extended.
 
-### Phase 5 — Player-specific systems, HUD, bonus economy
-- Port `Entity_ApplyComplexGroundResponse` (the class-3/player-specific ground-response branch),
-  player input→movement mapping, the interaction-phase table
-  (`Entity_HandleSpecialInteraction`/`Entity_InteractionPhaseJumpTable`), pickups/hazards.
-- Port `Entity_ChooseAndSpawnBonusItem`'s full heuristic and its six difficulty-input globals,
-  score popups, and `Hud_UpdateScoreDisplay`'s custom glyph rendering (needs the glyph bitmap
-  source — likely inside `extras.pak`'s HUD/digit tiles, already extracted; confirm the exact
-  glyph→tile mapping from the `-0x44`/`+0xBC` ASCII-offset scheme noted in `docs/engine.md`).
-- **Checkpoint**: a fully playable single level — move, jump, collect, break blocks, take damage,
-  see score/HUD update, die/respawn or reach an exit.
+### Phase 5 — Player-specific systems, HUD, bonus economy (DONE, with scope changes)
+- **NOT ported**: `Entity_ApplyComplexGroundResponse` (docs/enemies.md decoded it, but it's a
+  state machine keyed on scratch globals -- `[0x8b98]`, boss/checkpoint states -- produced by
+  subsystems this port hasn't built) and the interaction-phase table
+  (`Entity_HandleSpecialInteraction`/`Entity_InteractionPhaseJumpTable`, similarly dependent on
+  unported machinery). Player physics stay Phase 3's generic tile-AABB collider; damage/pickup/
+  exit detection are plain AABB overlap checks (`web/main.js`), not ports of the real collision-
+  flag-driven dispatch.
+- **`web/engine/bonus-economy.js`**: `Entity_ChooseAndSpawnBonusItem`'s REAL world-1 decision tree
+  (docs/engine.md, branch order preserved), fed approximated inputs -- this port tracks
+  `blocksBroken`/`pickupsCollected`/`score` only, standing in for the six real difficulty-input
+  globals (which are each produced by subsystems -- the four-part breakable-block split, the AI
+  despawn/capture counter -- not ported). Spawned bonus items use REAL resolved sprites (bank 3
+  `specialN.pak`/bank 6 `extras` via the existing shape-descriptor pipeline), triggered every time
+  the player breaks a block.
+- **NOT ported**: `Hud_UpdateScoreDisplay`'s custom glyph-tile rendering -- the glyph→tile mapping
+  within `extras.pak` still isn't resolved (open item, unchanged from before this phase). The HUD
+  (score, hearts, "LEVEL COMPLETE") is real tracked game state, drawn with plain canvas text
+  instead of the real glyph sprites -- a labeled placeholder, not a claim of decoding the font.
+- **New, not in the original plan**: health/damage/invulnerability/respawn
+  (`web/engine/player.js`) and pickups/exit-zone (`web/engine/placeholder-terrain.js`, extended
+  with the same "synthetic, hand-authored, not derived from real data" caveat as its collision
+  geometry) -- needed to give the checkpoint's "take damage, collect, reach an exit" goals
+  something concrete to act on, since the real pickup-identification field
+  (`Entity_InteractionPhaseType1bHandler`'s runtime `+0x10` pairing) isn't available from
+  static level-script data.
+- **Checkpoint (met)**: verified in a real (headless Chromium) browser run — breaking a block
+  raised score and spawned a real-sprited bonus item; touching a chasing enemy cost a heart and
+  (at 0 health) respawned the player at the start with a death counter incrementing; walking onto
+  the placeholder pickups collected them and raised score; the wall/exit-zone geometry rendered
+  and was reachable. Not exercised end-to-end in one run (pickup collection and reaching the exit
+  were verified in separate passes, not the same playthrough) but every mechanic independently
+  confirmed working.
 
 ### Phase 6 — World/level flow
 - Port world selection, `World1-4_LoadBanks`, level transitions (`Fx_UpdateTransition` palette

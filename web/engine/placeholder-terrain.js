@@ -15,6 +15,7 @@
 'use strict';
 
 import { GRID_SIZE } from '../core/pap.js';
+import { TILE_WIDTH, TILE_HEIGHT } from './camera.js';
 
 /** Builds a Uint8Array(GRID_SIZE*GRID_SIZE) collision grid: 0 = passable, nonzero = solid. */
 export function buildPlaceholderCollisionGrid() {
@@ -44,5 +45,19 @@ export function buildPlaceholderCollisionGrid() {
   // A wall further along, past the blocks, to demonstrate horizontal blocking on its own.
   rect(35, 3, 1, 7);
 
-  return { size: GRID_SIZE, grid, spawnCol: 10, spawnRow: 9 };
+  // Placeholder pickups (Phase 5) -- NOT derived from real level-script pickup entities (this
+  // port doesn't have the runtime "+0x10" pairing field docs/engine.md's
+  // Entity_InteractionPhaseType1bHandler note describes, so it can't identify which real entity
+  // types are pickups vs. AI-driven vs. background prop yet). Placed on the jump platforms so
+  // collecting them naturally follows from Phase 3's jump demo.
+  const pickups = [
+    { x: 13 * TILE_WIDTH + 8, y: 7 * TILE_HEIGHT - 4 },
+    { x: 19 * TILE_WIDTH + 16, y: 5 * TILE_HEIGHT - 4 },
+    { x: 27 * TILE_WIDTH + 16, y: 8 * TILE_HEIGHT - 4 },
+  ];
+
+  // Placeholder level-exit zone, past the wall -- reaching it ends the demo run.
+  const exitZone = { x: 37 * TILE_WIDTH, y: 8 * TILE_HEIGHT, w: 3 * TILE_WIDTH, h: 2 * TILE_HEIGHT };
+
+  return { size: GRID_SIZE, grid, spawnCol: 10, spawnRow: 9, pickups, exitZone };
 }

@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="utf-8">
-<title>Magic Pockets port — Phase 4 checkpoint</title>
+<title>Magic Pockets port — Phase 5 checkpoint</title>
 <style>
   body { font-family: system-ui, sans-serif; background: #111; color: #eee; margin: 0; padding: 1.5rem; }
   h1 { font-size: 1.1rem; font-weight: 600; }
@@ -15,22 +15,19 @@
 </style>
 </head>
 <body>
-<h1>Magic Pockets port — Phase 4 checkpoint</h1>
+<h1>Magic Pockets port — Phase 5 checkpoint</h1>
 <p>
-  The movement-AI bytecode VM: pick your local, unmodified <code>data/</code> folder (still
-  RNC-ProPack-compressed, exactly as shipped). The player (orange box) walks/jumps/breaks blocks as
-  in Phase 3, now sharing the world with <b>real level-script entities running real AI</b> —
-  gates patrol back and forth (type <code>0x12</code>), and patrol/charging-hazard enemies
-  (types <code>0x13/0x14/0x20/0x23/0x2c</code>) tile-scan, turn around, and chase the player when
-  close, all per docs/enemies.md's CONFIRMED EXACT world-1
-  <code>Entity_DispatchUpdateByKind</code> table. See <code>web/engine/movement-ai-vm.js</code> and
-  <code>entity-ai.js</code> for exactly which parts are a faithful structural port (the opcode
-  table, the dispatch shape) vs. a labeled placeholder (per-type animation-set/range/speed tuning,
-  which isn't dumped upstream). The general 78-opcode <code>Entity_RunScript</code> VM
-  (<code>entity-script-vm.js</code>) is implemented too but not wired to real content yet — its
-  default-script tables aren't dumped, so there's no real script to run; it's verified against a
-  synthetic test script instead. Collision is still the Phase 3 pink placeholder — see
-  <code>docs/port-plan.md</code> Phase 4.
+  Player systems, HUD, bonus economy — the "first fully playable level" milestone: pick your
+  local, unmodified <code>data/</code> folder. <b>Walk/jump (arrows/WASD), break blocks ahead
+  (space/ctrl), collect the yellow pickups, avoid/survive the chasing enemies from Phase 4 (each
+  hit costs a heart, top-right — 0 hearts respawns you), and reach the green exit zone</b> to
+  finish. Breaking a block spawns a real bonus-item sprite chosen by
+  <code>Entity_ChooseAndSpawnBonusItem</code>'s REAL world-1 decision tree
+  (<code>web/engine/bonus-economy.js</code>), fed approximated inputs since this port doesn't
+  simulate the subsystems that produce the real difficulty-input globals. The score/hearts HUD is
+  a plain canvas-text placeholder — the original's custom glyph-tile rendering needs font data
+  this project hasn't resolved — but every number it shows is real tracked game state. See
+  <code>docs/port-plan.md</code> Phase 5.
 </p>
 <div class="controls">
   <label>Pick your local <code>data/</code> folder: <input type="file" id="picker" webkitdirectory></label>

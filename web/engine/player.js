@@ -1,12 +1,12 @@
 // Minimal player entity: horizontal movement + gravity + jump against the tile collider
-// (collision.js), plus a placeholder "break the block ahead" action on the fire button. This is
-// NOT a port of the original's player-specific ground response
-// (Entity_ApplyComplexGroundResponse) or the real breakable-tile mechanic
-// (Entity_BreakTileOrBounce, which negates a '<'-marked byte in the runtime column-major map
-// buffer -- docs/enemies.md/docs/engine.md) -- both are still undecoded/unconfirmed at the byte
-// level. Movement constants below are placeholder feel-tuned values, not extracted from the
-// disassembly. Real player physics land in Phase 5 (docs/port-plan.md); this phase's job is only
-// to prove the collision+break loop works end to end.
+// (collision.js), a placeholder "break the block ahead" action on the fire button, and (Phase 5)
+// health/damage/respawn + score. This is NOT a port of the original's player-specific ground
+// response (Entity_ApplyComplexGroundResponse, docs/enemies.md -- a state machine keyed on
+// scratch globals set by subsystems this port hasn't built: boss triggers, checkpoint states,
+// carried-item tracking) or the real breakable-tile mechanic (Entity_BreakTileOrBounce) -- both
+// still undecoded/unconfirmed at the byte level, or dependent on unported systems. Movement/
+// damage/respawn constants below are placeholder feel-tuned values, not extracted from the
+// disassembly.
 
 'use strict';
 
@@ -18,6 +18,10 @@ const GRAVITY = 0.5; // px/frame^2, placeholder
 const MOVE_SPEED = 2.2; // px/frame, placeholder
 const JUMP_VELOCITY = -7.5; // px/frame, placeholder
 const MAX_FALL_SPEED = 8; // px/frame, placeholder
+const MAX_HEALTH = 3;
+const INVULN_FRAMES = 90; // ~1.5s at 60fps, placeholder
+const KNOCKBACK_VX = 4;
+const KNOCKBACK_VY = -5;
 
 export class Player {
   constructor(x, y, w = 20, h = 30) {
@@ -32,10 +36,21 @@ export class Player {
     this.brokenCount = 0;
     this.lastBreak = null; // {col, row} the frame a block was broken, else null
     this._firePrev = false;
+
+    this.spawnX = x;
+    this.spawnY = y;
+    this.health = MAX_HEALTH;
+    this.maxHealth = MAX_HEALTH;
+    this.invulnFrames = 0;
+    this.score = 0;
+    this.pickupsCollected = 0;
+    this.deaths = 0;
+    this.reachedExit = false;
   }
 
   update(input, pap) {
     this.lastBreak = null;
+    if (this.invulnFrames > 0) this.invulnFrames--;
 
     this.vx = input.left ? -MOVE_SPEED : input.right ? MOVE_SPEED : 0;
     if (this.vx !== 0) this.facing = Math.sign(this.vx);
@@ -53,6 +68,33 @@ export class Player {
     if (fireEdge) this._tryBreakBlock(pap);
   }
 
+  /** Returns true if damage was actually applied (false during invulnerability). */
+  takeDamage(fromX) {
+    if (this.invulnFrames > 0 || this.reachedExit) return false;
+    this.health--;
+    this.invulnFrames = INVULN_FRAMES;
+    const knockDir = this.x >= fromX ? 1 : -1;
+    this.vx = knockDir * KNOCKBACK_VX;
+    this.vy = KNOCKBACK_VY;
+    if (this.health <= 0) this.respawn();
+    return true;
+  }
+
+  respawn() {
+    this.deaths++;
+    this.health = this.maxHealth;
+    this.x = this.spawnX;
+    this.y = this.spawnY;
+    this.vx = 0;
+    this.vy = 0;
+    this.invulnFrames = INVULN_FRAMES;
+  }
+
+  collectPickup(value = 50) {
+    this.score += value;
+    this.pickupsCollected++;
+  }
+
   /** Placeholder block-break: removes the solid tile directly ahead, at chest height, if any. */
   _tryBreakBlock(pap) {
     const cx = this.x + this.w / 2 + this.facing * (this.w / 2 + TILE_WIDTH / 2);
@@ -64,6 +106,7 @@ export class Player {
     if (pap.grid[idx] !== 0) {
       pap.grid[idx] = 0;
       this.brokenCount++;
+      this.score += 10;
       this.lastBreak = { col, row };
     }
   }
