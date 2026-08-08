@@ -31,6 +31,7 @@ import { attachAiIfKnown, tickAllAi, isGateType } from './engine/entity-ai.js';
 import { chooseWorld1BonusType, spawnBonusItem } from './engine/bonus-economy.js';
 import { LEVELS, findLevel, nextLevel } from './engine/level-registry.js';
 import { Transition } from './engine/transition.js';
+import { SoundManager, SFX } from './audio/sound-manager.js';
 
 const SHAPES_URL = '/symbols/entity-shapes.json';
 const VIEWPORT_W = 320;
@@ -45,6 +46,7 @@ const ctx = canvas.getContext('2d');
 const picker = document.getElementById('picker');
 const devServerBtn = document.getElementById('dev-server');
 const levelSelectEl = document.getElementById('level-select');
+const audioBtn = document.getElementById('enable-audio');
 
 canvas.width = VIEWPORT_W;
 canvas.height = VIEWPORT_H;
@@ -72,6 +74,7 @@ let sharedCache = null;
 let sharedEntityShapes = null;
 let sharedPlayer = null; // score/health persist across level loads within a session
 let currentLevelId = null;
+let sharedSound = null;
 
 function buildLevelSelectUi() {
   levelSelectEl.innerHTML = '';
@@ -98,6 +101,7 @@ async function loadLevel(id) {
 
   if (activeLoop) activeLoop.stop();
   if (activeInput) activeInput.dispose();
+  if (sharedSound) sharedSound.stopMusic();
   currentLevelId = id;
 
   try {
@@ -168,6 +172,8 @@ async function loadLevel(id) {
             score: player.score,
           });
           spawnBonusItem(pool, type, player.lastBreak.col * TILE_WIDTH, player.lastBreak.row * TILE_HEIGHT - 16);
+          sharedSound?.trigger(SFX.BREAK_BLOCK);
+          sharedSound?.trigger(SFX.BONUS_SPAWN);
         }
 
         for (const p of collisionGrid.pickups) {
@@ -175,6 +181,7 @@ async function loadLevel(id) {
           if (aabbOverlap(player.x, player.y, player.w, player.h, p.x - PICKUP_RADIUS, p.y - PICKUP_RADIUS, PICKUP_RADIUS * 2, PICKUP_RADIUS * 2)) {
             p.collected = true;
             player.collectPickup(50);
+            sharedSound?.trigger(SFX.PICKUP);
           }
         }
 
@@ -184,7 +191,10 @@ async function loadLevel(id) {
             player.x, player.y, player.w, player.h,
             e.x - ENEMY_HIT_HALF_SIZE, e.y - ENEMY_HIT_HALF_SIZE, ENEMY_HIT_HALF_SIZE * 2, ENEMY_HIT_HALF_SIZE * 2
           )) {
-            player.takeDamage(e.x);
+            const deathsBefore = player.deaths;
+            if (player.takeDamage(e.x)) {
+              sharedSound?.trigger(player.deaths > deathsBefore ? SFX.DEATH : SFX.DAMAGE);
+            }
             break;
           }
         }
@@ -192,6 +202,7 @@ async function loadLevel(id) {
         const z = collisionGrid.exitZone;
         if (aabbOverlap(player.x, player.y, player.w, player.h, z.x, z.y, z.w, z.h)) {
           player.reachedExit = true;
+          sharedSound?.trigger(SFX.LEVEL_EXIT);
           transition.start(() => loadLevel(nextLevel(currentLevelId).id));
         }
       },
@@ -276,6 +287,7 @@ async function loadLevel(id) {
     });
     activeLoop = loop;
     loop.start();
+    sharedSound?.startMusic();
   } catch (err) {
     setStatus(`error: ${err.message}`, true);
     throw err;
@@ -284,6 +296,7 @@ async function loadLevel(id) {
 
 async function startSession(cache) {
   sharedCache = cache;
+  sharedSound = new SoundManager(cache);
   if (!sharedEntityShapes) sharedEntityShapes = await loadEntityShapes();
   buildLevelSelectUi();
   await loadLevel(LEVELS[0].id);
@@ -302,7 +315,7 @@ picker.addEventListener('change', () => {
 devServerBtn.addEventListener('click', async () => {
   setStatus('loading entity-shapes.json + building the full-session file list...');
   if (!sharedEntityShapes) sharedEntityShapes = await loadEntityShapes();
-  const files = new Set();
+  const files = new Set(['adlib.pin', 'roland2.pin']);
   for (const level of LEVELS) {
     files.add(level.pak);
     files.add(level.pap);
@@ -313,4 +326,16 @@ devServerBtn.addEventListener('click', async () => {
   }
   const source = sourceFromFetch('/data', [...files]);
   startSession(new AssetCache(source));
+});
+
+audioBtn.addEventListener('click', async () => {
+  if (!sharedSound) {
+    setStatus('pick a data source first, then enable audio.', true);
+    return;
+  }
+  audioBtn.textContent = 'enabling audio...';
+  await sharedSound.unlock();
+  audioBtn.textContent = sharedSound.unlocked ? 'audio on' : 'audio failed to unlock';
+  audioBtn.disabled = sharedSound.unlocked;
+  if (activeLoop) sharedSound.startMusic();
 });

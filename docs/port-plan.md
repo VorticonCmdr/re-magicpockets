@@ -326,15 +326,40 @@ and catches transliteration mistakes early rather than at the end.
   way before finally reaching the exit — the chase mechanic from Phase 4 makes this a genuine,
   non-trivial gameplay loop, not just a scripted camera pan).
 
-### Phase 7 — Audio (explicitly last, per the existing project priority)
-- MIDI-cue playback for sound effects/music using the already-recoverable `roland.pin`/
-  `adlib.pin`/`roland2.pin` cues (`docs/formats/pin.md`), triggered from the ported
-  `Snd_TriggerEffect` call sites already present in the ported entity/behavior code from earlier
-  phases (they just no-op until this phase lands). Reuse/extend `tools/midi-player.html`'s Web
-  Audio oscillator synth, or swap in a proper soundfont-based player for better timbre.
-- Stretch goal, not required for "playable": real OPL2 register-stream synthesis for
-  `adlib2/adlib3/sblaster.pin` and the non-MIDI `adlib.pin`/`roland.pin` table entries — would
-  need decoding the driver interpretation loop first (open item, see `docs/formats/pin.md`).
+### Phase 7 — Audio (DONE, with scope changes)
+- **`web/core/pin-sound.js`**: isomorphic port of `tools/extract-pin.js`'s resource-offset-table
+  decoder (`adlib.pin`/`roland.pin`'s 2-byte-count + 4-byte-offset-per-entry sound-effect-bank
+  shape, and `roland2.pin`/`soundbnk.pin`'s degenerate 1-entry song shape), verified byte-for-byte
+  against the Node tool on the real files (counts match exactly: 82/78 MIDI for `adlib.pin`,
+  82/81 for `roland.pin`, 1/1 for both song files; every extracted cue parses cleanly).
+- **`web/core/midi.js`** / **`web/audio/synth.js`**: the Standard MIDI File parser and Web Audio
+  oscillator-per-note synth, relocated/adapted from `tools/midi-player.html` (already isomorphic
+  code, just given real integration into the engine instead of a standalone demo page) — NOT a
+  real OPL2/MT-32 emulation, so playback timbre won't match the original AdLib/Roland sound
+  (`docs/formats/pin.md` already flagged this: the cues embed OPL2 SysEx timbre data a standard
+  MIDI player ignores).
+- **`web/audio/sound-manager.js`**: loads `adlib.pin`'s 78-cue bank for sound effects and loops
+  `roland2.pin`'s embedded song as level music, wired to real gameplay events in `web/main.js`
+  (block break, pickup, damage, death, bonus spawn, reaching the exit). **The event→sound-ID
+  mapping is NOT decoded** — docs/formats/pin.md confirms table entry N *is* sound_id N, but never
+  resolved which IDs correspond to which real gameplay event (the one ID whose meaning *is*
+  confirmed, `adlib.pin`'s 11, is the rare World-4 ending fanfare and isn't used here). The IDs
+  this port uses are arbitrary picks from the 78 real cues, labeled as such in code — each event
+  gets its own distinct real sound, not a verified one. `roland.pin` (the Roland-driver
+  equivalent bank) isn't wired up — this port always uses the AdLib bank regardless of any driver
+  concept, since there's no `pockets.ini`-equivalent driver selection in this port.
+- **Not ported**: the real `Snd_TriggerEffect` driver dispatch (far-calls into whichever hardware
+  driver was configured) — this port's `SoundManager.trigger()` is a simplified direct stand-in.
+  Browsers also block audio until a user gesture, so an "enable audio" button was added (not in
+  the original plan, but required for any of this to actually play).
+- **Stretch goal, not attempted**: real OPL2 register-stream synthesis for
+  `adlib2/adlib3/sblaster.pin` and the non-MIDI `adlib.pin`/`roland.pin` table entries — still
+  blocked on decoding the driver interpretation loop (open item, unchanged).
+- **Checkpoint (met)**: verified in a real (headless Chromium) browser run — enabling audio
+  successfully resumed a real `AudioContext` ("audio on"), loading a level started
+  `roland2.pin`'s music (2325 oscillators scheduled, confirming substantial real note playback,
+  not a silent no-op), and breaking a block triggered both its break-sound and bonus-spawn cues
+  (23 more oscillators scheduled) with zero JS errors throughout.
 
 ### Phase 8 — Polish / parity pass
 - Diff against DOSBox for the specific behaviors that were "confirmed structure, guessed

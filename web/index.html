@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="utf-8">
-<title>Magic Pockets port — Phase 6 checkpoint</title>
+<title>Magic Pockets port — Phase 7 checkpoint</title>
 <style>
   body { font-family: system-ui, sans-serif; background: #111; color: #eee; margin: 0; padding: 1.5rem; }
   h1 { font-size: 1.1rem; font-weight: 600; }
@@ -15,26 +15,30 @@
   #level-select { display: flex; gap: 0.4rem; flex-wrap: wrap; margin: 0.5rem 0 1rem; }
   #level-select button { padding: 0.25rem 0.6rem; font-size: 0.85rem; background: #223; color: #cde; border: 1px solid #446; border-radius: 3px; cursor: pointer; }
   #level-select button:hover { background: #335; }
+  #enable-audio { background: #2c5a3c; color: #cfc; border: 1px solid #3f8256; border-radius: 3px; }
+  #enable-audio:disabled { opacity: 0.6; cursor: default; }
 </style>
 </head>
 <body>
-<h1>Magic Pockets port — Phase 6 checkpoint</h1>
+<h1>Magic Pockets port — Phase 7 checkpoint</h1>
 <p>
-  World/level flow: pick your local, unmodified <code>data/</code> folder. All 8 real levels (2
-  sub-levels x 4 worlds) are now reachable — reach the green exit zone to fade out and advance to
-  the next level in sequence, or jump directly to any of them with the <b>level-select buttons
-  below</b> (this port's dev/debug replacement for the original's hidden F2 cheat-code console,
-  per <code>docs/port-plan.md</code> Phase 6). Score/health carry over between levels within a
-  session. AI wiring (<code>web/engine/entity-ai.js</code>) now covers all 4 worlds' CONFIRMED
-  EXACT <code>Entity_DispatchUpdateByKind</code> entries, not just world 1's. The fade transition
-  is a plain canvas alpha overlay, not a port of the original's real 24-bank VGA palette fade
-  (<code>web/engine/transition.js</code>) — and every level still plays on the same Phase 3/5
-  placeholder collision/pickup/exit geometry regardless of its real layout. See
-  <code>docs/port-plan.md</code> Phase 6.
+  Audio: pick your local, unmodified <code>data/</code> folder, then click <b>"enable audio"</b>
+  (browsers block sound until a user gesture). Sound effects (block breaks, pickups, damage,
+  death, bonus spawns, reaching the exit) and looping level music now play — real MIDI cues
+  extracted from <code>adlib.pin</code>'s 78-cue sound-effect bank and <code>roland2.pin</code>'s
+  embedded song (<code>docs/formats/pin.md</code>), played through a small Web Audio
+  oscillator-per-note synth (<code>web/audio/synth.js</code>, adapted from
+  <code>tools/midi-player.html</code>) — NOT a real OPL2/MT-32 hardware emulation, so timbre won't
+  match the original AdLib/Roland sound. The event→sound-ID mapping itself is
+  <b>unconfirmed/arbitrary</b> (<code>web/audio/sound-manager.js</code>) — which of the 78 real
+  cues corresponds to which real gameplay event isn't decoded anywhere upstream, so this port just
+  gives each event its own distinct real cue rather than claiming a verified mapping. See
+  <code>docs/port-plan.md</code> Phase 7.
 </p>
 <div class="controls">
   <label>Pick your local <code>data/</code> folder: <input type="file" id="picker" webkitdirectory></label>
   <button id="dev-server" type="button">or load from dev server (tools/serve.js, data/ on disk)</button>
+  <button id="enable-audio" type="button">enable audio</button>
 </div>
 <div id="level-select"></div>
 <div id="status">waiting for input…</div>
