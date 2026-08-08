@@ -1,8 +1,8 @@
 {
   "program": "GAMEU.EXE",
   "note": "Manually exported from Ghidra (GHIDRA_MCP_ALLOW_SCRIPTS is off in this environment, so the planned automated export script cannot run yet -- see docs/memory-map.md). Regenerate/extend this file at the end of each RE session by querying search_functions_by_tag for 'verified' and 'guess', plus get_function_documentation per address, and merging the results here.",
-  "totalFunctions": 441,
-  "namedFunctions": 441,
+  "totalFunctions": 518,
+  "namedFunctions": 506,
   "note2": "See docs/engine.md for the full main-loop architecture writeup (this file only indexes; engine.md has the narrative).",
   "functions": [
     {
@@ -97,11 +97,12 @@
       "name": "Entity_UpdateAll",
       "address": "1000:c91d",
       "tags": [
-        "guess",
+        "verified",
         "spine",
-        "engine"
+        "engine",
+        "entity"
       ],
-      "summary": "GUESS: main-loop call #8. Walks a linked entity list from 0x91be, dispatching per-entity update (FUN_1000_22da) or a lighter step (FUN_1000_ca6d); +0x40==0x19 is the confirmed 'dead/remove' marker."
+      "summary": "Main-loop call #8. Walks the entity linked list from 0x91be, skipping +0x40==0x19 dead entries. Per live entity: if(+1!=0) Entity_RunScript() first (opcode-256-jump-table VM), THEN Entity_UpdateBehavior() unconditionally every frame for every entity -- NOT a heavy/light split. See docs/enemies.md."
     },
     {
       "name": "Demo_RecordInput",
@@ -150,16 +151,17 @@
         "verified",
         "engine"
       ],
-      "summary": "Bytecode VM for entity behavior scripts. Reads opcode bytes from a per-entity script pointer (+0xc), dispatching through a 256-entry function-pointer jump table at 1000:2383. -1/-0x52 terminators, -4 special op (FUN_1000_2659). Decoding the jump table would reveal the actual entity scripting language."
+      "summary": "Bytecode VM for entity behavior scripts. Reads opcode bytes from a per-entity script pointer (+0xc, data-segment 6de3 offset), dispatching through a jump table at 1000:2383 -- CORRECTED: 78 entries (0x00-0x4D), not 256; byte offset 0x9C is real code (Entity_ResetExtendedFields), proving the table doesn't extend further. -1/-0xae terminators, -4 special op (EntityScriptOp_ResetScript-adjacent yield). All 78 opcodes characterized, two real scripts decoded byte-exact. Separate VM from Entity_RunMovementAiScript. Full writeup: docs/entity-script-vm.md."
     },
     {
       "name": "Entity_UpdateBehavior",
       "address": "1000:ca6d",
       "tags": [
-        "guess",
-        "engine"
+        "verified",
+        "engine",
+        "entity"
       ],
-      "summary": "GUESS (structure confirmed, NOT decoded branch-by-branch): the dense per-type/per-state gameplay rules dispatcher (~600 decompiled lines). Switches on entity 'kind' (+4) and nested sub-type/state fields; movement, collision, randomized behavior via Rng_NextValue's [8b6b] output. Highest-value remaining target -- this is the actual gameplay logic."
+      "summary": "Per-entity per-frame behavior dispatcher, decoded branch-by-branch for all classes 0-7 plus special pre-check types 8/0x5e/0xf/0x11/0x2f. Gated by [8ba1] mode byte and [8c0c] global-event trigger (8->Entity_SelectNextStateByWorldAndKind defeat table; 0xe/0x14->particle-burst self-kill). Classes 2/4 are AI enemies -> Entity_DispatchUpdateByKind; class3=player (camera/hitbox anchor); class5=parent-attached (types 0x1a/0x41 require parent.type==3, player-carried item); class6=parallax-locked decoration; class7=broadcast/homing; class1=collision/trigger-vs-player. Ext-state 0xf6 is a cross-class tracking sentinel. Full writeup: docs/enemies.md."
     },
     {
       "name": "Entity_FreeSlot",
@@ -928,19 +930,19 @@
       "name": "Entity_HandleCollisionOrStateDispatch",
       "address": "1000:3ce8",
       "tags": [
-        "guess",
+        "verified",
         "entity"
       ],
-      "summary": "Dispatches on global state byte [8b98] to distinct handlers; default path computes an entity-vs-entity collision-flag word [8c27] from both entities' +0x24 flags and reacts (spawn effect, mutual bounce-state setup, or hitbox-size set + FUN_1000_d596). Called from Entity_UpdateBehavior with the colliding pair."
+      "summary": "Dispatches on global state [0x8b98] to Entity_ProcessCollisionState15(0x15)/SeparateAndAnimate(0x01)/SnapXByOrientation(0x21)/HandleAnimatedBarrierCollision(0x43)/HandlePeriodicAmbientSpawn(0x41); default path computes a combined collision-flag word and calls Entity_HandleSpecialInteraction or sets up a mutual bounce-state pair. Called from Entity_UpdateBehavior's class-1 branch. See docs/enemies.md."
     },
     {
       "name": "Entity_SelectNextStateByWorldAndKind",
       "address": "1000:50ae",
       "tags": [
-        "guess",
+        "verified",
         "entity"
       ],
-      "summary": "Selects a new per-entity state ID from a per-world x per-kind table; special-cases kind 0x23 to free a linked entity (mark dead, clear link)."
+      "summary": "Third (world,type)-keyed AI dispatch table, sibling of Entity_DispatchUpdateByKind/DispatchHitReactionByKind. Triggered by Entity_UpdateBehavior when global [0x8c0c]==8; retires each enemy type into its own negative defeat/vanish state constant via Entity_SetStateAndScript (type 0x2b instead adds to score counter [0x8c6b]). Full table + cross-reference: docs/enemies.md."
     },
     {
       "name": "Entity_QueueRandomizedSpawn",
@@ -955,28 +957,30 @@
       "name": "Entity_DispatchUpdateByKind",
       "address": "1000:5e22",
       "tags": [
-        "guess",
+        "verified",
+        "engine",
         "entity"
       ],
-      "summary": "Per-world x per-kind per-frame update dispatcher -- one of Entity_UpdateBehavior's main sub-tables, fanning out to ~20 kind-specific handlers. Sibling: Entity_DispatchHitReactionByKind."
+      "summary": "Per-frame AI 'think' dispatch: switches on world ([0x8b89] falling back to [0x8b8b]) then entity type (+2). Full (world,type)->handler table confirmed exact via raw disassembly -- see docs/enemies.md for the complete table (gates, sleepers, charging hazard, vertical pathfinder, generic patrol variants A-H, custom-tile-table patrol variants). Called from Entity_UpdateBehavior's class 2 and class 4 branches only -- these are the two 'AI-driven enemy' classes."
     },
     {
       "name": "Entity_DispatchHitReactionByKind",
       "address": "1000:677c",
       "tags": [
-        "guess",
+        "verified",
+        "engine",
         "entity"
       ],
-      "summary": "Sets a hit-reaction timer pair then dispatches per-world x per-kind to a mostly-disjoint handler set -- the 'entity was just hit' reaction dispatch, paired with Entity_DispatchUpdateByKind."
+      "summary": "'Just got hit' dispatch, sibling of Entity_DispatchUpdateByKind: sets a hit-stun timer pair (+0x27/+0x26=7), special-cases type 0x2c (always -> Entity_HitReactToState15), then same world->type switch to a family of trivial Entity_HitReactToStateXX leaves (each just sets state+script-pointer constants -- the hex in the name is the state byte written). Type 0x14 (world1) is a genuine exception: dispatches straight back into Entity_RunMovementAiScript instead of a HitReactToStateXX leaf. Full table in docs/enemies.md. A near-identical third copy of this same table exists in Entity_HitReactDispatchByKind (called from inside the movement AI script's 'p'/'q' opcodes)."
     },
     {
       "name": "Entity_RollRandomBehaviorIndex",
       "address": "1000:71d5",
       "tags": [
-        "guess",
+        "verified",
         "entity"
       ],
-      "summary": "Rolls a pseudo-random index into an unnamed table at 0xeca4 from Rng_NextValue + entity field +0x38; forced to 1 during demo record/playback for determinism."
+      "summary": "Randomized-behavior gate: rolls Rng_NextValue combined with entity's +0x38 field, indexes a small lookup table at 0xeca4, writes a 0/1 result to [0x8be5]. CONFIRMED deterministic override: when demo record ([0x8ba4]) or playback ([0x8ba3]) flag is set, skips the RNG and forces the result to 1 -- ensures identical enemy behavior during demo/attract-mode playback. Called from nearly every AI think/opcode handler as the 'random chance' gate. See docs/enemies.md."
     },
     {
       "name": "Entity_PushSpawnEvent",
@@ -1010,29 +1014,29 @@
       "name": "Entity_UpdateCameraTargetFromEntity",
       "address": "1000:d3ce",
       "tags": [
-        "guess",
+        "verified",
         "entity",
         "camera"
       ],
-      "summary": "Recomputes the global camera-scroll delta ([8bb7]/[8bb9], the same fields Entity_RebuildVisibleList applies) from a given entity's world position vs. the previously stored camera position ([8bbb]/[8bbd]). Likely how the camera locks onto the player entity each frame."
+      "summary": "Recomputes the global camera-scroll delta ([8bb7]/[8bb9]) from the class-3 (player) entity's position vs. the previously stored camera position ([8bbb]/[8bbd]) -- confirms the camera is keyed off the player entity every frame. Called from Entity_UpdateBehavior's class-3 tail. See docs/enemies.md."
     },
     {
       "name": "Entity_SetHitboxByOrientation",
       "address": "1000:d40a",
       "tags": [
-        "guess",
+        "verified",
         "entity"
       ],
-      "summary": "Selects one of two hitbox-dimension pairs depending on whether an orientation/facing field equals 4."
+      "summary": "Sets the player entity's hitbox size fields ([BX+10]/[BX+6]) to one of two fixed (X,Y) pairs depending on facing orientation ([SI+0x14]==4). Called from Entity_UpdateBehavior's class-3 (player) tail."
     },
     {
       "name": "Entity_HandleWorld3SpecialTrigger",
       "address": "1000:d42c",
       "tags": [
-        "guess",
+        "verified",
         "entity"
       ],
-      "summary": "World-3-only scripted trigger: dispatches on [8b98] state and a counter [8bea], eventually pushing two spawn events (opcode 0x52/0x55) and a sound trigger. Likely a specific level-3 scripted sequence or boss trigger -- not fully decoded."
+      "summary": "Called unconditionally from Entity_UpdateBehavior's class-3(player) branch every frame world 3 is active. Confirmed as a native 4-phase world-3 boss-defeat reward-shower sequence: watches for kind 0x41 (confirmed as world 3's boss kind via entity-script opcode 0x3A's per-world boss-kind table 0x15/0x40/0x41/0x43) to reach state +0x40==0xf6, then locks player into a victory anim, spawns a 2-event reward shower from a map-buffer-scanned position, runs a ~33-frame follow-up window (setting/reading the [0x8b98] scratch register also used by entity-script opcodes 0x3C/0x3F), then awards a bonus item. CONFIRMED distinct from entity-script-VM opcode 0x44 (EntityScriptOp_RunSpecialInteractionSequence) -- no call-graph link, disjoint globals; earlier 'strengthened lead' guess linking them didn't hold up. See docs/enemies.md's dedicated section."
     },
     {
       "name": "EntityOp_SyncCameraTargetThenUnknown",
@@ -1083,10 +1087,10 @@
       "name": "Entity_BroadcastEventToVisibleByKindFlag",
       "address": "1000:df5a",
       "tags": [
-        "guess",
+        "verified",
         "entity"
       ],
-      "summary": "For each entry in the visible-entity list (0x91be), looks up a per-kind flag byte and, if nonzero, invokes FUN_1000_dfac -- a broadcast/notify mechanism, e.g. waking nearby entities of a matching kind."
+      "summary": "For each visible entity (0x91be list), looks up a per-class flag byte (table indexed by class*8-0xc91) and, if set, calls Entity_CheckAabbOverlapOrBroadcast against it -- an AABB-overlap broadcast to same-class entities. Shared by Entity_UpdateBehavior's class 1 and class 7 branches. See docs/enemies.md."
     },
     {
       "name": "Entity_ProcessCollisionState15",
@@ -1158,16 +1162,322 @@
         "verified",
         "entity"
       ],
-      "summary": "Entity_RunScript's special opcode -4 handler: sets the entity's script pointer (SI+0xc) directly from DI -- a 'jump to script address' bytecode instruction in the entity scripting VM."
+      "summary": "Entity_RunScript's special opcode -4 handler: sets the entity's script pointer (SI+0xc) directly from DI -- a 'jump to script address' bytecode instruction in the entity scripting VM. Actually a fallthrough/yield: saves current position without an operand-byte advance, aborting this frame's script processing (resumes same position next call). See docs/entity-script-vm.md."
+    },
+    {
+      "name": "EntityScriptOp_SetAnimFrame",
+      "address": "1000:3c44",
+      "tags": [
+        "verified",
+        "entity"
+      ],
+      "summary": "Entity_RunScript opcode 1 (0x01): sets current anim frame [+0xa] = 1 operand byte. See docs/entity-script-vm.md."
+    },
+    {
+      "name": "EntityScriptOp_WaitFrames",
+      "address": "1000:3c69",
+      "tags": [
+        "verified",
+        "entity"
+      ],
+      "summary": "Entity_RunScript opcode 2 (0x02): waits until per-entity counter [+0x3e] reaches operand N (retries without advancing until match), then resets counter and advances. See docs/entity-script-vm.md."
+    },
+    {
+      "name": "EntityScriptOp_RelativeJumpBack",
+      "address": "1000:3c7d",
+      "tags": [
+        "verified",
+        "entity"
+      ],
+      "summary": "Entity_RunScript opcode 3 (0x03): script pointer -= operand (relative backward jump, a loop-back construct). See docs/entity-script-vm.md."
+    },
+    {
+      "name": "EntityScriptOp_SetHitboxSizeOrRandomize",
+      "address": "1000:3c1c",
+      "tags": [
+        "verified",
+        "entity"
+      ],
+      "summary": "Entity_RunScript opcode 5 (0x05): operand 0x00-0x11 sets hitbox [+0x14] directly; 0x12 toggles bits (XOR 0xc); negative operand RNG-picks 4 or 8. See docs/entity-script-vm.md."
+    },
+    {
+      "name": "EntityScriptOp_Kill",
+      "address": "1000:265d",
+      "tags": [
+        "verified",
+        "entity"
+      ],
+      "summary": "Entity_RunScript opcode 6 (0x06): sets [+0x40]=0x19 (dead) and aborts. See docs/entity-script-vm.md."
+    },
+    {
+      "name": "EntityScriptOp_TriggerPaletteFade",
+      "address": "1000:3bbc",
+      "tags": [
+        "verified",
+        "entity"
+      ],
+      "summary": "Entity_RunScript opcode 7 (0x07): operand selects a 16-colour palette bank (world-gated) from the 24-bank table (docs/memory-map.md), loads it into the live palette buffer, calls the VGA palette-apply routine (1000:170b). Bridges the entity script VM into the video/palette-fade subsystem. See docs/entity-script-vm.md."
+    },
+    {
+      "name": "EntityScriptOp_PlayDirectionalAnimTable",
+      "address": "1000:3c9b",
+      "tags": [
+        "verified",
+        "entity"
+      ],
+      "summary": "Entity_RunScript opcode 9 (0x09): plays an inline (dx-delta, tile) byte-pair table embedded in the script stream, one pair per frame via entity+0x30 as a rolling byte offset, until a 0xAE terminator. Confirmed against real script data: a 7-step deceleration (-8,-8,-6,-4,-3,-2,-1) and an 8-step deceleration (+14..+0) -- real recoil/approach animations. See docs/entity-script-vm.md."
+    },
+    {
+      "name": "EntityScriptOp_CallStateScript",
+      "address": "1000:39ff",
+      "tags": [
+        "verified",
+        "entity"
+      ],
+      "summary": "Entity_RunScript opcode 11 (0x0B) 'Call': saves current script position in entity+0x2a (repurposed as a one-level subroutine return slot) then jumps to the default script for state=operand via the cd88/d996 tables. Type==0x42 special-cases a wait on global [0x8b96] instead. Paired with EntityScriptOp_Return. See docs/entity-script-vm.md."
+    },
+    {
+      "name": "EntityScriptOp_Return",
+      "address": "1000:3a21",
+      "tags": [
+        "verified",
+        "entity"
+      ],
+      "summary": "Entity_RunScript opcode 12 (0x0C) 'Return': resumes from entity+0x2a if set (clears it), else resets the whole script via EntityScriptOp_ResetScript. See docs/entity-script-vm.md."
+    },
+    {
+      "name": "EntityScriptOp_SpawnEffectByTypeCode",
+      "address": "1000:334e",
+      "tags": [
+        "verified",
+        "entity"
+      ],
+      "summary": "Entity_RunScript opcode 13 (0x0D): NOT a register-reset (initial name was wrong, corrected after decompile). Reads an operand type code and dispatches to ~19 branches spawning positioned effects/items via Entity_PushSpawnEvent/Entity_PushSimpleEvent/Entity_PushPositionEvent/Fx_PushQueuedPositionEvent4/5. Several type codes (0x11,0x1d,0x1f,0x25,0x2b,0x44,0x53) match the nine special opcode types docs/formats/pin-level-script.md flagged in Entity_SpawnFromQueuedEvent. Type code 0xa (fully resolved) dispatches by world/sub-level ([0x8b89]/[0x8b8b]) and a secondary type code from [0x8c69] to Entity_SpawnBreakFragmentOffset0-3 -- confirmed to be the break-fragment/debris spawn effect for the exact per-world breakable-block types docs/enemies.md's ground-collision section catalogs. See docs/entity-script-vm.md."
+    },
+    {
+      "name": "Entity_SpawnBreakFragmentOffset0",
+      "address": "1000:3943",
+      "tags": [
+        "verified",
+        "entity"
+      ],
+      "summary": "One of 4 generic 'spawn a break-fragment at position-offset N' functions (0=largest offset) called from EntityScriptOp_SpawnEffectByTypeCode's type-0xa branch. Nudges position by a fixed 2D delta (orientation-gated Y flip via entity+0x14==4) and pushes Fx_PushQueuedPositionEvent5 with the original secondary type code -- the fragment/debris spawn for the per-world breakable blocks docs/enemies.md's ground-collision section catalogs (world1 0xa-0xd, world2 0x30-0x33, world3 0x36-0x38). See docs/entity-script-vm.md."
+    },
+    {
+      "name": "Entity_SpawnBreakFragmentOffset1",
+      "address": "1000:3964",
+      "tags": [
+        "verified",
+        "entity"
+      ],
+      "summary": "Sibling of Entity_SpawnBreakFragmentOffset0 (offset index 1, smaller X-magnitude). See docs/entity-script-vm.md."
+    },
+    {
+      "name": "Entity_SpawnBreakFragmentOffset2",
+      "address": "1000:3985",
+      "tags": [
+        "verified",
+        "entity"
+      ],
+      "summary": "Sibling of Entity_SpawnBreakFragmentOffset0 (offset index 2, smaller X-magnitude). See docs/entity-script-vm.md."
+    },
+    {
+      "name": "Entity_SpawnBreakFragmentOffset3",
+      "address": "1000:39a6",
+      "tags": [
+        "verified",
+        "entity"
+      ],
+      "summary": "Sibling of Entity_SpawnBreakFragmentOffset0 (offset index 3, zero X-magnitude). See docs/entity-script-vm.md."
+    },
+    {
+      "name": "Entity_SpawnMirroredBreakFragmentWorld4",
+      "address": "1000:3926",
+      "tags": [
+        "verified",
+        "entity"
+      ],
+      "summary": "World4-only pre-pass duplicate of the offset0-3 dispatch, called once when [0x8c03] is nonzero: pushes an extra position event at the current (unmodified) position before the caller restores X/Y and bumps the effect-variant field [0x8c21] -- world4's breakable blocks spawn a second, mirrored fragment alongside the primary one when this flag is set. See docs/entity-script-vm.md."
+    },
+    {
+      "name": "EntityScriptOp_GotoStateScript",
+      "address": "1000:31d6",
+      "tags": [
+        "verified",
+        "entity"
+      ],
+      "summary": "Entity_RunScript opcode 14 (0x0E): jumps to the default script for state=operand via the cd88/d996 tables, no return saved (a 'goto', unlike opcode 11's 'call'). See docs/entity-script-vm.md."
+    },
+    {
+      "name": "EntityScriptOp_PlaySound",
+      "address": "1000:2670",
+      "tags": [
+        "guess",
+        "entity"
+      ],
+      "summary": "Entity_RunScript opcode 15 (0x0F): operand 0 -> CALL 1dae, nonzero -> CALL 1ccf (plausibly Snd_TriggerEffect/Raw variants; call targets not independently re-verified). See docs/entity-script-vm.md."
+    },
+    {
+      "name": "EntityScriptOp_WaitOrLoopBack",
+      "address": "1000:3c83",
+      "tags": [
+        "verified",
+        "entity"
+      ],
+      "summary": "Entity_RunScript opcode 17 (0x11): like opcode 2's wait, but on mismatch reads a 2nd operand byte and jumps back by it -- a bounded 'count to N, else loop by M'. See docs/entity-script-vm.md."
+    },
+    {
+      "name": "EntityScriptOp_WaitUntilSyncTriple",
+      "address": "1000:2fca",
+      "tags": [
+        "verified",
+        "entity"
+      ],
+      "summary": "Entity_RunScript opcode 21 (0x15): reads 3 operand bytes, waits (retries) until globals [0x8bb0]/[0x8baf]/[0x8bae] all match -- paired with EntityScriptOp_SetSyncTriple. See docs/entity-script-vm.md."
+    },
+    {
+      "name": "EntityScriptOp_PokeByteValueThenOffset",
+      "address": "1000:3341",
+      "tags": [
+        "verified",
+        "entity"
+      ],
+      "summary": "Entity_RunScript opcode 22 (0x16): generic field-write escape hatch -- reads (value, offset), writes value into entity+offset. Argument-order twin of EntityScriptOp_PokeByteOffsetThenValue. See docs/entity-script-vm.md."
+    },
+    {
+      "name": "EntityScriptOp_PokeByteOffsetThenValue",
+      "address": "1000:32af",
+      "tags": [
+        "verified",
+        "entity"
+      ],
+      "summary": "Entity_RunScript opcode 35 (0x23): generic field-write -- reads (offset, value), writes value into entity+offset. See docs/entity-script-vm.md."
+    },
+    {
+      "name": "EntityScriptOp_SetSyncTriple",
+      "address": "1000:32bb",
+      "tags": [
+        "verified",
+        "entity"
+      ],
+      "summary": "Entity_RunScript opcode 33 (0x21): writes 3 operand bytes into globals [0x8bb0]/[0x8baf]/[0x8bae] -- setter half of EntityScriptOp_WaitUntilSyncTriple's wait-gate. See docs/entity-script-vm.md."
+    },
+    {
+      "name": "EntityScriptOp_SetAnimSetAndChargeFields",
+      "address": "1000:2c4c",
+      "tags": [
+        "verified",
+        "entity"
+      ],
+      "summary": "Entity_RunScript opcode 34 (0x22): writes 4 operand bytes into [+0x39] (anim-set selector) and [+0x36]/[+0x37]/[+0x38] (charge-threshold fields, per docs/engine.md's struct layout). See docs/entity-script-vm.md."
+    },
+    {
+      "name": "EntityScriptOp_AddToPosition",
+      "address": "1000:32a0",
+      "tags": [
+        "verified",
+        "entity"
+      ],
+      "summary": "Entity_RunScript opcode 36 (0x24): adds two signed operand bytes to entity X (+6) and Y (+8) -- a direct relative-move opcode. See docs/entity-script-vm.md."
+    },
+    {
+      "name": "EntityScriptOp_ResetScript",
+      "address": "1000:2665",
+      "tags": [
+        "verified",
+        "entity"
+      ],
+      "summary": "Entity_RunScript opcode 54 (0x36): clears [+0xc]/[+1] and aborts, causing the script to re-seed from the default-script table next call. Also EntityScriptOp_Return's no-saved-return fallback target. See docs/entity-script-vm.md."
+    },
+    {
+      "name": "EntityScriptOp_WaitUnlessAiActive",
+      "address": "1000:3146",
+      "tags": [
+        "verified",
+        "entity"
+      ],
+      "summary": "Entity_RunScript opcode 30 (0x1E): waits (retries) while global [0x8ba1] (AI-freeze flag) is nonzero -- direct cross-reference to docs/enemies.md's Entity_UpdateBehavior AI-freeze finding. See docs/entity-script-vm.md."
+    },
+    {
+      "name": "EntityScriptOp_SetAiFreezeFlag",
+      "address": "1000:2a48",
+      "tags": [
+        "verified",
+        "entity"
+      ],
+      "summary": "Entity_RunScript opcode 61 (0x3D): writes operand into global [0x8ba1], the AI-freeze flag -- a script can freeze/unfreeze the entire non-player AI population. See docs/entity-script-vm.md."
+    },
+    {
+      "name": "EntityScriptOp_SetScrollWidthRegister",
+      "address": "1000:2a56",
+      "tags": [
+        "verified",
+        "entity"
+      ],
+      "summary": "Entity_RunScript opcode 59 (0x3B): writes operand into [0x8c34], the CRTC/scroll-width register documented in docs/memory-map.md's AltBuild_AdvanceScrollBankState section. See docs/entity-script-vm.md."
+    },
+    {
+      "name": "EntityScriptOp_WaitForBossDefeatThenKillSelf",
+      "address": "1000:2ae1",
+      "tags": [
+        "verified",
+        "entity"
+      ],
+      "summary": "Entity_RunScript opcode 58 (0x3A): per-world boss-kind lookup (0x15/0x40/0x41/0x43), kills self if not found or if found entity's +0x40 == 0xf6 (the cross-class tracking sentinel docs/enemies.md documents). See docs/entity-script-vm.md."
+    },
+    {
+      "name": "EntityScriptOp_CheckBonusMarkerAndMaybeSpawn",
+      "address": "1000:2ac5",
+      "tags": [
+        "verified",
+        "entity"
+      ],
+      "summary": "Entity_RunScript opcode 62 (0x3E): finds a kind-0x18 bonus-marker entity; if its anim frame == 0x7b, calls into the bonus-spawn subsystem adjacent to Entity_ChooseAndSpawnBonusItem (docs/engine.md) and aborts; else decrements the marker AND does ADD byte ptr [0x8bb4],1 (1000:2adb) -- the real setter for [0x8bb4], consumed by EntityScriptOp_RunSpecialInteractionSequence. See docs/entity-script-vm.md."
+    },
+    {
+      "name": "EntityScriptOp_SetGlobalEventTrigger",
+      "address": "1000:2726",
+      "tags": [
+        "verified",
+        "entity"
+      ],
+      "summary": "Entity_RunScript opcode 71 (0x47): writes operand into global [0x8c0c], the special-event trigger docs/enemies.md documents (8->defeat-table dispatch, 0xe/0x14->particle self-kill). See docs/entity-script-vm.md."
+    },
+    {
+      "name": "EntityScriptOp_SetDeadStateByte",
+      "address": "1000:2c65",
+      "tags": [
+        "verified",
+        "entity"
+      ],
+      "summary": "Entity_RunScript opcode 40 (0x28): sets [+0x40] (state/dead byte) = operand -- general form of EntityScriptOp_Kill's hardcoded kill. See docs/entity-script-vm.md."
+    },
+    {
+      "name": "EntityScriptOp_SpawnLinkedEntityFromTemplateTable",
+      "address": "1000:2da7",
+      "tags": [
+        "guess",
+        "entity"
+      ],
+      "summary": "Entity_RunScript opcode 49 (0x31): NOT a score-add (initial name was wrong, corrected after decompile). Looks up a template-type byte via [0x8bff]-0x1116, spawns a linked companion via Entity_InitFromTemplateRecord; several branches hardcode the companion's own script pointer to 6de3:c625/ccae -- a preconfigured trailing-effect/companion. Template table contents and companion identity not further traced. See docs/entity-script-vm.md."
+    },
+    {
+      "name": "EntityScriptOp_SetSpriteShapeOverride",
+      "address": "1000:2c45",
+      "tags": [
+        "guess",
+        "entity"
+      ],
+      "summary": "Entity_RunScript opcode 57 (0x39): sets entity+0x16 = operand -- a previously undocumented struct field, plausibly a runtime override of the shape descriptor's frameSourceMode (docs/formats/pin-level-script.md). See docs/entity-script-vm.md."
     },
     {
       "name": "Entity_ComputeDirectionAndDistanceToTarget",
       "address": "1000:721f",
       "tags": [
-        "guess",
+        "verified",
         "entity"
       ],
-      "summary": "Core 'sense the target' primitive: finds a target via Entity_FindEntityByKind, computes a 4-bit direction bitmask (above/below/left/right) into [8c29] and tile-distance metrics (|dx|/32->[8c1b], |dy|/16->[8c1d])."
+      "summary": "Core 'sense the target' primitive. Finds target via Entity_FindEntityByKind; computes a 4-bit direction bitmask into [0x8c29] (1=target below,2=above,4=left,8=right) and tile-quantized distances |dx|/32->[0x8c1b], |dy|/16->[0x8c1d]. Used throughout Entity_RunMovementAiScript's chase/attack range checks and the sleeper/gate/vertical-pathfinder handlers. See docs/enemies.md."
     },
     {
       "name": "Entity_CheckOrientationNoOp",
@@ -1200,199 +1510,199 @@
       "name": "Entity_ThinkPatrolAI",
       "address": "1000:5f14",
       "tags": [
-        "guess",
+        "verified",
         "entity"
       ],
-      "summary": "Shared generic per-frame AI think, called by many idle-state kind handlers. Reads 3 tile-lookahead flags via [0xef23] and branches to Entity_SelectAiScriptTableBlocked/Clear/Default."
+      "summary": "Shared patrol foundation: reads 3 tile-lookahead flags via the swappable [0xef23] table (offsets -1,-2,0 from scan pointer [0x8bd7]); both -1/-2 set -> Entity_SelectAiScriptTableBlocked, the 0 flag clear -> Entity_SelectAiScriptTableClear, else -> Entity_SelectAiScriptTableDefault. Each selector points [0x8c77] at one of three opcode-table bases (0xec7c/0xec68/0xec90) offset by animation-set (+0x39), then calls Entity_RunMovementAiScript. Full writeup: docs/enemies.md."
     },
     {
       "name": "Entity_SelectAiScriptTableBlocked",
       "address": "1000:62fe",
       "tags": [
-        "guess",
+        "verified",
         "entity"
       ],
-      "summary": "Sets [8c77] to table-at-0xec7c (offset by animation-set +0x39) then invokes Entity_RunMovementAiScript -- Entity_ThinkPatrolAI's 'blocked' case."
+      "summary": "Sets [0x8c77] = 0xec7c + animation-set(+0x39), calls Entity_RunMovementAiScript. 'Blocked' terrain case of Entity_ThinkPatrolAI. See docs/enemies.md."
     },
     {
       "name": "Entity_SelectAiScriptTableClear",
       "address": "1000:62ed",
       "tags": [
-        "guess",
+        "verified",
         "entity"
       ],
-      "summary": "Sets [8c77] to table-at-0xec68 then invokes Entity_RunMovementAiScript -- Entity_ThinkPatrolAI's 'clear path' case."
+      "summary": "Sets [0x8c77] = 0xec68 + animation-set(+0x39), calls Entity_RunMovementAiScript. 'Clear path' terrain case of Entity_ThinkPatrolAI. See docs/enemies.md."
     },
     {
       "name": "Entity_SelectAiScriptTableDefault",
       "address": "1000:630f",
       "tags": [
-        "guess",
+        "verified",
         "entity"
       ],
-      "summary": "Sets [8c77] to table-at-0xec90 then invokes Entity_RunMovementAiScript -- Entity_ThinkPatrolAI's default/mixed case."
+      "summary": "Sets [0x8c77] = 0xec90 + animation-set(+0x39), calls Entity_RunMovementAiScript. Mixed/edge terrain case of Entity_ThinkPatrolAI. See docs/enemies.md."
     },
     {
       "name": "Entity_RunMovementAiScript",
       "address": "1000:6320",
       "tags": [
-        "guess",
+        "verified",
         "entity"
       ],
-      "summary": "A second AI bytecode interpreter (distinct from Entity_RunScript): consumes opcode chars from [8c77] to drive chase/patrol/flee/attack decisions. ~150 decompiled lines, not decoded opcode-by-opcode -- future dedicated session target, ideally with dosbox-x verification."
+      "summary": "Movement-AI opcode interpreter reading chars from [0x8c77]. Every recognized opcode's role now characterized (docs/enemies.md): 'n'=turn-around/retreat (Entity_AiOpTurnOrRetreat), 'p'=scan tile column ahead then react (Entity_ScanTileColumnForFlag + Entity_DispatchHitReactionByKind), 'q'=scan tiles backward then react (Entity_HitReactDispatchByKind), 'r'=single-tile check then turn, 's'=acquire target + chase/flee/capture decision (Entity_ComputeDirectionAndDistanceToTarget, Entity_AiOpDespawnOrKill/TurnOrRetreat/SpecialByKind), 't'=approach within range then strike with knockback (Entity_HitReactDispatchByKindWithKnockback). Not decoded byte-exact per the ~30 per-animation-set scripts in the 3 tables, but the interpreter itself is fully characterized."
     },
     {
       "name": "Entity_ThinkGateSwitchAI",
       "address": "1000:7014",
       "tags": [
-        "guess",
+        "verified",
         "entity"
       ],
-      "summary": "Default per-frame think for gate/switch entities (kinds 0x12/0x54/0x5d): checks reaching target X ([8c25]), falls to a 'settled' state on arrival. Shared fallback for the gate think functions."
+      "summary": "Shared gate/switch logic for Entity_ThinkSwingingGate/SlidingGate/RotatingGate. While state==0: uses Entity_ComputeDirectionAndDistanceToTarget + Entity_RollRandomBehaviorIndex gating to decide whether to move toward the caller-set target X ([0x8c25]), with per-kind next-state/script constants. On reaching target X, rolls a chance to settle into a parked state family (0xb/0xc/0xd) with an animation-frame lookup from table 0xecfe keyed by charge-threshold field +0x36. See docs/enemies.md."
     },
     {
       "name": "Entity_ThinkSwingingGate",
       "address": "1000:6ec5",
       "tags": [
-        "guess",
+        "verified",
         "entity"
       ],
-      "summary": "Kind 0x12 (world1): sets target X=0x86, defers to Entity_ThinkGateSwitchAI, chance-transitions to state 0x36."
+      "summary": "Kind 0x12 (world1). Sets target X ([0x8c25]=0x86) then defers to Entity_ThinkGateSwitchAI. One of 3 gate variants (see docs/enemies.md's gate/switch family writeup) sharing this handler with per-world different target-X constants; Entity_UpdateBehavior's class-4 branch additionally inlines a vertical bob/swing state machine (states 0xd/0xb) specifically for this type."
     },
     {
       "name": "Entity_ThinkPeriodicIdleFidgetA",
       "address": "1000:5f66",
       "tags": [
-        "guess",
+        "verified",
         "entity"
       ],
-      "summary": "Frame counter (+0x2e) reaching 10 rolls a chance to switch to state 0x89 (idle fidget); else defers to Entity_ThinkPatrolAI."
+      "summary": "Kind 0x14 (world1). Frame counter (+0x2e) reaching 10, gated on anim-frame==0xc, rolls a chance to switch to one-shot idle-fidget state 0x89. Delegates to Entity_ThinkPatrolAI otherwise. See docs/enemies.md."
     },
     {
       "name": "Entity_ThinkPatrolDefaultA",
       "address": "1000:5f9f",
       "tags": [
-        "guess",
+        "verified",
         "entity"
       ],
-      "summary": "Pure delegate to Entity_ThinkPatrolAI when idle."
+      "summary": "Pure 1-line delegate to Entity_ThinkPatrolAI when idle (+1==0). Kind 0x23 (world1). Not a distinct behavior -- same shared patrol logic as B-H, just a separate dispatch-table entry. See docs/enemies.md."
     },
     {
       "name": "Entity_ThinkPatrolDefaultB",
       "address": "1000:5f56",
       "tags": [
-        "guess",
+        "verified",
         "entity"
       ],
-      "summary": "Pure delegate to Entity_ThinkPatrolAI when idle. Shared by kind 0x13 (world1) and 0x4a (world2)."
+      "summary": "Pure delegate to Entity_ThinkPatrolAI when idle (gated on [0x8bc7]==0 and +1==0). Shared by kind 0x13 (world1) and kind 0x4a (world2) via Entity_DispatchUpdateByKind. See docs/enemies.md."
     },
     {
       "name": "Entity_ThinkChargingHazard",
       "address": "1000:5fa9",
       "tags": [
-        "guess",
+        "verified",
         "entity"
       ],
-      "summary": "Kind 0x20 (world1): builds/decays a charge counter based on tile lookahead, moves via Entity_MoveXOrResetChargeCounter; self-destructs under specific world-6 terrain conditions."
+      "summary": "Kind 0x20 (world1). Charge counter +0x2a (0-0xc, +-2/frame via random roll), movement via Entity_MoveXOrResetChargeCounter. Kill condition checks [0x8b8b]==6, confirmed to be a sub-level index (not a 5th/6th world) -- the same world-1/sub-level-6 scripted trigger point Level_RunScriptedEventStream independently checks via a byte-identical instruction. See docs/enemies.md."
     },
     {
       "name": "Entity_ThinkPatrolDefaultC",
       "address": "1000:6065",
       "tags": [
-        "guess",
+        "verified",
         "entity"
       ],
-      "summary": "Pure delegate to Entity_ThinkPatrolAI when idle. Shared by kind 0x2c across all four worlds."
+      "summary": "Pure delegate to Entity_ThinkPatrolAI when idle. Kind 0x2c, shared verbatim across ALL FOUR worlds' Entity_DispatchUpdateByKind tables -- the one AI-enemy type whose sprite bank is 6 (extras/extraxN) rather than 7 (nastyN), per entity-shapes.json cross-reference in docs/enemies.md. Likely a common generic hazard/prop rather than a per-world enemy."
     },
     {
       "name": "Entity_ThinkSleeperWakeUp",
       "address": "1000:6f00",
       "tags": [
-        "guess",
+        "verified",
         "entity"
       ],
-      "summary": "Kind 0x48 (world2): wakes from sleep state to 0x46 (with sound) when target is in range, then to attack state 0x65."
+      "summary": "Kind 0x48 (world2). While asleep (animation-set +0x39==5): Entity_ComputeDirectionAndDistanceToTarget each frame; if target is below+blocked-direction and within tile-distance thresholds, rolls a chance to wake (resets position/hitbox, state=0x46, plays a sound, sets anim range 0x2f-0x30). A subsequent frame at state 'F' transitions to attack state 0x65. See docs/enemies.md."
     },
     {
       "name": "Entity_ThinkSleeperWakeUpQuiet",
       "address": "1000:6f92",
       "tags": [
-        "guess",
+        "verified",
         "entity"
       ],
-      "summary": "Kind 0x49 (world2): sibling of Entity_ThinkSleeperWakeUp without the sound effect."
+      "summary": "Kind 0x49 (world2). Sibling of Entity_ThinkSleeperWakeUp: identical proximity wake trigger to state 0x46, but no sound effect and no animation-range fields touched. Also transitions 'F'->0x65. See docs/enemies.md."
     },
     {
       "name": "Entity_ThinkEdgeDetectReset",
       "address": "1000:6080",
       "tags": [
-        "guess",
+        "verified",
         "entity"
       ],
-      "summary": "Kind 0x4b (world2): scans 3 nearby tile flags while in state 'g'; resets to state 0 on match, else toggles hitbox flags."
+      "summary": "Kind 0x4b (world2). Delegates to Entity_ThinkPatrolAI normally; while in triggered state (+0x40=='g'/0x67), re-checks 3 tile flags via the swappable [0xef23] table and on a clear/matching pattern + random roll, resets to a home position (state 0, fixed X/hitbox constants). See docs/enemies.md."
     },
     {
       "name": "Entity_ThinkPeriodicIdleFidgetB",
       "address": "1000:610d",
       "tags": [
-        "guess",
+        "verified",
         "entity"
       ],
-      "summary": "Kind 0x4c (world2): sibling of Entity_ThinkPeriodicIdleFidgetA, transitions to state 0x52 instead of 0x89."
+      "summary": "Kind 0x4c (world2). Sibling of Entity_ThinkPeriodicIdleFidgetA: frame counter reaching 10 (gated on anim-frame==10) rolls a chance to switch to idle-fidget state 0x52. See docs/enemies.md."
     },
     {
       "name": "Entity_ThinkPatrolDefaultD",
       "address": "1000:6076",
       "tags": [
-        "guess",
+        "verified",
         "entity"
       ],
-      "summary": "Pure delegate to Entity_ThinkPatrolAI when idle. Kind 0x42 (world2)."
+      "summary": "Pure delegate to Entity_ThinkPatrolAI when idle. Kind 0x42 (world2). See docs/enemies.md."
     },
     {
       "name": "Entity_ThinkVerticalPathfinder",
       "address": "1000:6190",
       "tags": [
-        "guess",
+        "verified",
         "entity"
       ],
-      "summary": "Kind 0x4f (world3): checks 4 tiles spaced 128 bytes apart (a vertical column scan) to gate randomized attack/movement state transitions -- plausibly a climbing enemy."
+      "summary": "Kind 0x4f (world3). While hunting (animation-set 5), computes direction/distance to target; if in range, checks 4 tiles spaced 0x80 (128) bytes apart (a full vertical column scan, up or down per orientation +0x14==4) all clear before committing to a climb state (0xdd up / 0xde down). Otherwise defaults to movement state 0xdc. See docs/enemies.md."
     },
     {
       "name": "Entity_ThinkSlidingGate",
       "address": "1000:6ffc",
       "tags": [
-        "guess",
+        "verified",
         "entity"
       ],
-      "summary": "Kind 0x54 (world3): target X=0x2b then Entity_ThinkGateSwitchAI."
+      "summary": "Kind 0x54 (world3). Sets target X ([0x8c25]=0x2b) then defers to Entity_ThinkGateSwitchAI -- sliding-gate variant of the shared gate/switch family. See docs/enemies.md."
     },
     {
       "name": "Entity_ThinkPatrolWithCustomTileTableA",
       "address": "1000:6147",
       "tags": [
-        "guess",
+        "verified",
         "entity"
       ],
-      "summary": "Kind 0x50 (world3): temporarily swaps the [0xef23] tile-flag table pointer to 0xf27b around a call to Entity_ThinkPatrolAI, then restores it. KEY FINDING: [0xef23] is a swappable pointer, not a fixed table address -- lets per-kind custom tile-flag tables reuse the shared patrol AI."
+      "summary": "Kind 0x50 (world3). CONFIRMS the swappable-[0xef23]-pointer mechanism with concrete addresses: temporarily overwrites [0xef23] from default 0xf189 to alternate table 0xf27b before calling Entity_ThinkPatrolAI when idle, restores default after. Lets this kind reuse the shared patrol AI against its own custom tile-flag table. See docs/enemies.md."
     },
     {
       "name": "Entity_ThinkPatrolWithCustomTileTableB",
       "address": "1000:6164",
       "tags": [
-        "guess",
+        "verified",
         "entity"
       ],
-      "summary": "Kind 0x51 (world3): sibling of Entity_ThinkPatrolWithCustomTileTableA with an extra state branch -- likely a flying/hovering variant."
+      "summary": "Kind 0x51 (world3). Sibling of Entity_ThinkPatrolWithCustomTileTableA: same [0xef23]-swap pattern, plus an extra state branch for animation-set 0xa (transitions to state 0xef) -- consistent with being a flying/hovering predator variant of the same patrol logic (0xa is the same 'prey capture' animation-set the AI script's 's' opcode treats specially). See docs/enemies.md."
     },
     {
       "name": "Entity_ThinkPatrolDefaultE",
       "address": "1000:62a9",
       "tags": [
-        "guess",
+        "verified",
         "entity"
       ],
-      "summary": "Pure delegate to Entity_ThinkPatrolAI when idle. Kind 0x57 (world4)."
+      "summary": "Pure delegate to Entity_ThinkPatrolAI when idle (gated on [0x8bc7]==0). Kind 0x57 (world4). See docs/enemies.md."
     },
     {
       "name": "Entity_ThinkPatrolDefaultF",
@@ -1425,10 +1735,10 @@
       "name": "Entity_ThinkRotatingGate",
       "address": "1000:7008",
       "tags": [
-        "guess",
+        "verified",
         "entity"
       ],
-      "summary": "Kind 0x5d (world4): target X=0x2a then Entity_ThinkGateSwitchAI."
+      "summary": "Kind 0x5d (world4). Sets target X ([0x8c25]=0x2a) then defers to Entity_ThinkGateSwitchAI -- third gate variant. See docs/enemies.md."
     },
     {
       "name": "Entity_HitReactToState15",
@@ -1452,19 +1762,19 @@
       "name": "Entity_HitReactToState99",
       "address": "1000:6c42",
       "tags": [
-        "guess",
+        "verified",
         "entity"
       ],
-      "summary": "Entity_DispatchHitReactionByKind leaf (kind 0x23, world1): unconditional state=0x99, script=0xd08d."
+      "summary": "Entity_DispatchHitReactionByKind leaf, kind 0x23 (world1). Trivial: state=0x99, script=0xd08d. See docs/enemies.md."
     },
     {
       "name": "Entity_HitReactToState97",
       "address": "1000:6c38",
       "tags": [
-        "guess",
+        "verified",
         "entity"
       ],
-      "summary": "Entity_DispatchHitReactionByKind leaf (kind 0x20, world1): unconditional state=0x97, script=0xd062."
+      "summary": "Entity_DispatchHitReactionByKind leaf, kind 0x20 (world1, charging hazard). Trivial: state=0x97, script=0xd062. Confirms the HitReactToStateXX naming pattern: the hex in the name is the literal state byte written. See docs/enemies.md."
     },
     {
       "name": "Entity_HitReactToStateCb",
@@ -2538,46 +2848,47 @@
       "name": "Entity_AiOpTurnOrRetreat",
       "address": "1000:6b13",
       "tags": [
-        "guess",
+        "verified",
         "entity"
       ],
-      "summary": "Entity_RunMovementAiScript opcode 'n' handler -- turn-around/retreat decision, dispatches per-world/kind."
+      "summary": "Entity_RunMovementAiScript opcode 'n' handler: if [0x8be9] flag set, clears orientation-masked collision flags (or for animation-sets 5/0xf, escalates to Entity_HitReactDispatchByKind); otherwise dispatches per-world/per-kind (mostly Entity_ToggleOrientationFlags, with special-cases for kind 0x42 and world1 kind 0x14 -> Entity_SetState85) -- the turn-around/retreat decision. See docs/enemies.md."
     },
     {
       "name": "Entity_AiOpSpecialByKind",
       "address": "1000:6a82",
       "tags": [
-        "guess",
+        "verified",
         "entity"
       ],
-      "summary": "Entity_RunMovementAiScript sub-dispatcher routing by kind to further per-kind AI handlers."
+      "summary": "Entity_RunMovementAiScript 's'-opcode sub-dispatcher: routes by kind (0x20/0x4b/0x51/0x57) to further per-kind capture-AI handlers (Entity_AiOpCaptureNearbyPreyA/C/D, Entity_AiOpCaptureNearbyPreyOrSpecialD). See docs/enemies.md."
     },
     {
       "name": "Entity_AiOpDespawnOrKill",
       "address": "1000:6aa7",
       "tags": [
-        "guess",
+        "verified",
         "entity"
       ],
-      "summary": "Despawn-or-attach decision: kills a referenced entity or links it, depending on distance/kind."
+      "summary": "Entity_RunMovementAiScript 's'-opcode sub-handler: if distance nonzero ([0x8c1b]!=0), re-enters Entity_RunMovementAiScript; else for kinds 0x4c/0x50, links the referenced entity ([in_BX]) and transitions state (attach); otherwise kills it (+0x40=0x19) and plays a sound -- a despawn-or-attach decision at the end of a successful chase. See docs/enemies.md."
     },
     {
       "name": "Entity_HitReactDispatchByKind",
       "address": "1000:682f",
       "tags": [
-        "guess",
+        "verified",
+        "engine",
         "entity"
       ],
-      "summary": "Hit-reaction dispatch hub feeding the Entity_HitReactToState* leaves, sets a knockback-direction byte from a lookup table."
+      "summary": "Near-duplicate of Entity_DispatchHitReactionByKind (same per-world/per-type table, reused rather than re-derived), called from Entity_RunMovementAiScript's 'p'/'q' opcodes. Additionally sets a knockback-direction byte from a lookup table at 0xed3a before dispatching. See docs/enemies.md."
     },
     {
       "name": "Entity_AiOpMoveOrKindDispatch",
       "address": "1000:69ca",
       "tags": [
-        "guess",
+        "verified",
         "entity"
       ],
-      "summary": "Entity_RunMovementAiScript sub-dispatcher routing by world/kind to further per-kind movement handlers."
+      "summary": "Entity_RunMovementAiScript 's'-opcode sub-dispatcher: kind 0x42 -> Entity_AiOpChooseAttackVariant; else routes by world/kind to further per-kind movement/attack-state handlers (Entity_AiOpCaptureNearbyPreyB/OrSpecialC, Entity_SetState8BIfAnimating/9AIfAnimating/8C/D1/ED/E1, Entity_DecrementCounter3D, Entity_SetStateE7WithTable). See docs/enemies.md."
     },
     {
       "name": "Entity_HitReactDispatchByKindWithKnockback",
@@ -2592,16 +2903,16 @@
       "name": "Entity_SetOrientationFlagsAndAnimRange",
       "address": "1000:6c80",
       "tags": [
-        "guess",
+        "verified",
         "entity"
       ],
-      "summary": "Merges orientation into collision flags, flips orientation bits, sets an animation frame range."
+      "summary": "Merges orientation into collision flags (+0x24|=+0x14), flips orientation bits (+0x14^=0xc), then sets an animation-frame range depending on the new orientation (facing-direction-dependent animation range swap)."
     },
     {
       "name": "Entity_SetState86",
       "address": "1000:6c6b",
       "tags": [
-        "guess",
+        "verified",
         "entity"
       ],
       "summary": "Trivial state+script setter: state=0x86, script=0xcf15."
@@ -2610,10 +2921,10 @@
       "name": "Entity_ComputeDirectionAndDistanceToEntity",
       "address": "1000:7227",
       "tags": [
-        "guess",
+        "verified",
         "entity"
       ],
-      "summary": "Sibling of Entity_ComputeDirectionAndDistanceToTarget taking an already-known reference entity directly."
+      "summary": "Sibling of Entity_ComputeDirectionAndDistanceToTarget: identical direction-bitmask + tile-distance computation, but takes an already-known reference entity (in_BX) instead of looking one up via Entity_FindEntityByKind."
     },
     {
       "name": "Entity_ScanTileColumnForFlag",
@@ -2673,10 +2984,10 @@
       "name": "Entity_ToggleOrientationFlags",
       "address": "1000:6c56",
       "tags": [
-        "guess",
+        "verified",
         "entity"
       ],
-      "summary": "Flips orientation bits and merges into collision flags -- subset of Entity_SetOrientationFlagsAndAnimRange."
+      "summary": "Flips orientation bits (+0x14^=0xc) and merges into collision flags (+0x24|=+0x14) -- the same first two operations as Entity_SetOrientationFlagsAndAnimRange, without the animation-range follow-up."
     },
     {
       "name": "Entity_SetState85",
@@ -2709,10 +3020,10 @@
       "name": "Entity_AiOpChooseAttackVariant",
       "address": "1000:6cd4",
       "tags": [
-        "guess",
+        "verified",
         "entity"
       ],
-      "summary": "Rolls a random attack variant when close; otherwise looks up a distance-indexed attack-variant pair."
+      "summary": "Kind 0x42 attack-variant chooser. Within melee range ([0x8c1b]<2), rolls a chance to jump to a close-range attack state (0xd7); otherwise looks up a (+0x26,+0x27) value pair from a distance-indexed table (-0x12e4 + distance*2) and transitions to a ranged-attack state (0xd6). See docs/enemies.md."
     },
     {
       "name": "Entity_AiOpCaptureNearbyPreyC",
@@ -2844,10 +3155,10 @@
       "name": "Entity_InitFromTemplateRecord",
       "address": "1000:c8c0",
       "tags": [
-        "guess",
+        "verified",
         "entity"
       ],
-      "summary": "Full entity initializer from a template record -- standalone counterpart to Entity_SpawnFromQueuedEvent's opcode 0x1f inline setup."
+      "summary": "Full entity initializer from a template record -- standalone counterpart to Entity_SpawnFromQueuedEvent's opcode 0x1f inline setup. Fully decompiled and confirmed: entity+4 (kind) = shape-descriptor+0x18 exactly (unifying the runtime AI/collision 'kind' with pak.md's descriptor kind field); entity+0x16 = descriptor+8 (render-dispatch/shape-type value, not frameSourceMode); entity+0x10/+0x12 = descriptor+2/+4 (animStart/animEnd); entity+0x18-0x22 (6-word hitbox-extent block, incl. +0x1c/+0x20) copied from a per-shape-class table addressed via descriptor+0x1a as a pointer -- resolves docs/formats/pak.md's long-open '+0x1a hitbox index untraced' item. See docs/entity-script-vm.md's 'Struct-field and global-register findings' section."
     },
     {
       "name": "Entity_ResolveGroundCollision",
@@ -2943,28 +3254,28 @@
       "name": "Entity_ApplyGroundStateTransition",
       "address": "1000:e696",
       "tags": [
-        "guess",
+        "verified",
         "entity"
       ],
-      "summary": "The densest function found this session (~250 lines): per-kind/per-shape ground-contact state-transition dispatcher. Not decoded branch-by-branch -- future dedicated-session target."
+      "summary": "Entry point for the ground-collision per-kind reaction pipeline (distinct from the per-frame AI think/hit-react tables). Gated on [0x8bca]/[0x8bc6] ground-scan bytes, routes by class(+4) to idle/state setters or, for class 7, into Entity_ProcessGroundStateByWorldAndKind (the breakable-block per-world/type logic) and onward to Entity_ApplyGroundStateTransitionByKind. Class3(player) branch is Entity_ApplyComplexGroundResponse (still undecoded). See docs/enemies.md."
     },
     {
       "name": "Entity_DispatchGroundStateByKindA",
       "address": "1000:e8d7",
       "tags": [
-        "guess",
+        "verified",
         "entity"
       ],
-      "summary": "Dispatches by kind to per-kind ground-state handlers depending on ground-scan flags."
+      "summary": "Ground-scan-flag-keyed ([8bcb]/[8bc7]) per-class(+4) dispatch to tile-break/orientation-merge/ground-contact-response helpers -- one of Entity_ResolveGroundCollision's two near-identical dispatch targets (sibling: Entity_DispatchGroundStateByKindB, keyed on [8bcc]/[8bc8])."
     },
     {
       "name": "Entity_DispatchGroundStateByKindB",
       "address": "1000:e961",
       "tags": [
-        "guess",
+        "verified",
         "entity"
       ],
-      "summary": "Near-identical sibling of Entity_DispatchGroundStateByKindA, keyed on different scan-flag globals."
+      "summary": "Near-identical sibling of Entity_DispatchGroundStateByKindA, keyed on [8bcc]/[8bc8] instead of [8bcb]/[8bc7]."
     },
     {
       "name": "Entity_BreakTileOrBounce",
@@ -3006,10 +3317,10 @@
       "name": "Entity_ProcessGroundStateByWorldAndKind",
       "address": "1000:eb20",
       "tags": [
-        "guess",
+        "verified",
         "entity"
       ],
-      "summary": "Large per-world x per-kind ground-state-transition dispatcher including tile-breaking checks. Sibling of Entity_ApplyGroundStateTransition."
+      "summary": "Per-world x per-type breakable-block ground-contact reactions: world1 types 0xa-0xd split-on-break; world2 0x3f/0x30-0x33; world3 0x35-0x38 multi-hit counter vs [0x8c03] then Entity_SetAttackStateWorld3, 0x39 fixed transition; world4 0x3a-0x3d fixed landed transition, 0x3e shared with world1/2's 0x10/0x34. Cross-world types 0x27/0x44/0x28/0x5f share a common decay-then-transition tail. See docs/enemies.md."
     },
     {
       "name": "Entity_BreakSpecificTileChar",
@@ -3042,46 +3353,46 @@
       "name": "Entity_ApplyGroundStateTransitionByKind",
       "address": "1000:ee60",
       "tags": [
-        "guess",
+        "verified",
         "entity"
       ],
-      "summary": "Large per-kind/per-world ground-state-transition dispatcher, sibling of Entity_ApplyGroundStateTransition/Entity_ProcessGroundStateByWorldAndKind."
+      "summary": "Final per-kind ground-state assignment: cross-world generic types (0x44/0x27/0x28/0x5f/0x16) get one hardcoded (state,script) pair each; everything else defers to Entity_SetAttackStateWorld1-4 (trivial per-type leaf setters). See docs/enemies.md."
     },
     {
       "name": "Entity_SetAttackStateWorld3",
       "address": "1000:ef00",
       "tags": [
-        "guess",
+        "verified",
         "entity"
       ],
-      "summary": "World-3-specific attack-state transitions for kinds 0x35-0x39."
+      "summary": "World-3 ground-collision leaf setter: kinds 0x35-0x39 each get one hardcoded (state,script) pair (0x39's target matches Entity_SelectNextStateByWorldAndKind's own 0x39/0x4e/0x4f defeat-state target). Called from Entity_ApplyGroundStateTransitionByKind and Entity_ProcessGroundStateByWorldAndKind. See docs/enemies.md."
     },
     {
       "name": "Entity_SetAttackStateWorld4",
       "address": "1000:efa7",
       "tags": [
-        "guess",
+        "verified",
         "entity"
       ],
-      "summary": "World-4-specific attack-state transitions for kinds 0x3a-0x3e, sibling of Entity_SetAttackStateWorld3."
+      "summary": "World-4 ground-collision leaf setter, same shape as Entity_SetAttackStateWorld1/2/3. Called from Entity_ApplyGroundStateTransitionByKind."
     },
     {
       "name": "Entity_SetAttackStateWorld2",
       "address": "1000:f02e",
       "tags": [
-        "guess",
+        "verified",
         "entity"
       ],
-      "summary": "World-2 attack-state transitions for kinds 0x30-0x33."
+      "summary": "World-2 ground-collision leaf setter, same shape as Entity_SetAttackStateWorld1/3/4. Called from Entity_ApplyGroundStateTransitionByKind."
     },
     {
       "name": "Entity_SetAttackStateWorld1",
       "address": "1000:f08f",
       "tags": [
-        "guess",
+        "verified",
         "entity"
       ],
-      "summary": "World-1 attack-state transitions for kinds 10/0xb/0xc/0xd."
+      "summary": "World-1 ground-collision leaf setter: for kinds 10/0xb/0xc/0xd, writes one hardcoded (state,script) pair each (gated on not already in that state), sibling of Entity_SetAttackStateWorld2/3/4. Called from Entity_ApplyGroundStateTransitionByKind. See docs/enemies.md."
     },
     {
       "name": "Entity_SpawnLinkedChildOnGroundContact",
@@ -3150,10 +3461,10 @@
       "name": "Entity_ApplyComplexGroundResponse",
       "address": "1000:f489",
       "tags": [
-        "guess",
+        "verified",
         "entity"
       ],
-      "summary": "Dense state-dependent ground response keyed on global transition state. Part of the ground-collision cluster; not decoded branch-by-branch."
+      "summary": "The class-3(player) leaf of Entity_ApplyGroundStateTransition's ground-collision dispatch. Keyed on [0x8b98] (\"last found/target type\" scratch register, shared with entity-script-VM opcodes 0x3C/0x3F -- docs/entity-script-vm.md), not a fixed landing enum: 0x21/0x41=snap to tile boundary+blocked-below flag; 3=defer to Entity_ClearStateIfGroundContact; 0xff=no-op; own state==0x35=ground-pound path (player can trigger Entity_BreakBlockChainWorld3, not just enemies); 0x15/0x43=checkpoint/world-4-boss-kind paths with per-world fall-recovery speed tuning; 1=common-case ground-scan-result sub-dispatch. Shared tail: decaying-halving speed recoil (same idiom as enemy knockback) then a one-tile X snap correction. See docs/enemies.md's player-physics section."
     },
     {
       "name": "Entity_ApplyGroundContactResponse",
@@ -3258,10 +3569,10 @@
       "name": "Entity_HandleSpecialInteraction",
       "address": "1000:3e15",
       "tags": [
-        "guess",
+        "verified",
         "entity"
       ],
-      "summary": "Large collision-effect dispatcher for checkpoint/pickup/hazard reactions. Dense, not decoded branch-by-branch."
+      "summary": "Large collision-effect dispatcher for checkpoint/pickup/hazard reactions. Fully decompiled this pass (still dense, ~180 lines, not narrated branch-by-branch in docs/engine.md). CONFIRMED direct link to the entity-scripting VM: writes [0x8c04] = 0x40 ('@'), the exact value/address EntityScriptOp_RunSpecialInteractionSequence (script opcode 68) polls as a one-shot trigger flag, plus 0x45/0x27/0x1d; also reads/writes [0x8b98]. See docs/entity-script-vm.md's 'Struct-field and global-register findings' section and docs/engine.md's interaction-phase writeup."
     },
     {
       "name": "Entity_ResetToIdleIfLowCharge",
@@ -3294,10 +3605,10 @@
       "name": "Entity_SetInteractionPhase1B",
       "address": "1000:44f2",
       "tags": [
-        "guess",
+        "verified",
         "entity"
       ],
-      "summary": "Sets interaction-phase globals, decrements a phase counter, clears phase at 0."
+      "summary": "Sets interaction-phase globals ([0x8c69],[0x8bf9],[0x8bf7]), decrements a phase counter ([0x8c0a]), clears [0x8c04] at 0. [0x8bf7]/[0x8bf9]/[0x8c69] are the same globals EntityScriptOp_SpawnEffectByTypeCode's type-0xe/0x1b branch reads -- confirms this native interaction-phase family and the entity-scripting VM share state directly. See docs/entity-script-vm.md."
     },
     {
       "name": "Entity_SetInteractionPhase0E",
@@ -3348,10 +3659,10 @@
       "name": "Entity_InteractionPhaseJumpTable",
       "address": "1000:45f8",
       "tags": [
-        "guess",
+        "verified",
         "entity"
       ],
-      "summary": "Indirect jump through a computed function-pointer table -- switch-statement dispatcher, not decoded (jump table unrecoverable)."
+      "summary": "Computed jump table, base 1000:4604, CX*2-indexed -- FULLY RECOVERED AND ACCOUNTED FOR (was flagged unrecoverable). Called from exactly one site, Entity_CheckAabbOverlapOrBroadcast (1000:dfac, the AABB hitbox-overlap test invoked by Entity_BroadcastEventToVisibleByKindFlag from Entity_UpdateBehavior) on full 4-axis overlap -- CX is the broadcast/event code the caller supplies, so this table is the generic 'two entities' hitboxes overlap, keyed by why the check ran' resolver. 20 confirmed word entries read via read_memory (4604,4639,5e18,5e1d,4f27,4c01,4610,57d6,4614,4616,57a2,57a3,462c,461e,57a2,5761,4624,4626,4628,462a; real code resumes immediately after entry 19). 9 of 20 are self-referential trap/unused slots (indices 0,6,8,9,13,16,17,18,19 -- each equals its own slot address, none disassemble as real code). Named handlers: 1000:57d6 (Entity_DispatchInteractionByOtherEntityType), 1000:57a2/57a3 (Entity_InteractionPhaseStateSetters, indices 10/14/11), 1000:5761 (Entity_SyncViewportOrGetKind), 1000:462c/4639 (Entity_InteractionPhaseResolveHitAndPairing, indices 12/1 -- same function, two entry offsets), 1000:5e18/5e1d (Entity_KillSelfInteractionPhase/Entity_KillOtherInteractionPhase, indices 2/3), 1000:4f27 (Entity_InteractionPhaseResolveBreakOrHazard, index 4), 1000:4c01 (Entity_InteractionPhaseResolveByWorldAndType, index 5). All 20 entries now accounted for. See docs/entity-script-vm.md."
     },
     {
       "name": "Entity_ChooseAndSpawnBonusItem",
@@ -4054,6 +4365,329 @@
         "engine"
       ],
       "summary": "Generic big-endian word read from *unaff_SI (byte-swaps a little-endian word) -- likely used by the RNC header parser (CRC16/size fields are stored big-endian per docs/formats)."
+    },
+    {
+      "name": "EntityScriptOp_SetPositionOrDequeueTarget",
+      "address": "1000:3a32",
+      "tags": [
+        "verified",
+        "entity",
+        "script-vm"
+      ],
+      "summary": "Entity-script opcode 8, fully resolved. operand==0 -> tail-calls sibling routine 3af0. operand>0 -> reads a 2nd byte N, sets position to fixed grid coord X=-32N,Y=-16N. operand<0 -> if busy-cache [0x8c5f]!=0, tail-jumps to EntityScriptOp_HandoffToPlayerAndController; else pops a (X,Y,state) record (not type,x,y) from a queue at [0x8c63], advancing it 6 bytes; if popped X==0 (terminator), tail-jumps to EntityScriptOp_RecenterOnAnchorAndHandoff; else teleports self to (X,Y), and either kills the kind==0x2b entity (charging hazard, if state==0) or arms the busy-cache and puts the kind==7 controller entity into the popped state (script resolved via the 0xd996 table). See docs/entity-script-vm.md."
+    },
+    {
+      "name": "EntityScriptOp_HandoffToPlayerAndController",
+      "address": "1000:3b55",
+      "tags": [
+        "verified",
+        "entity",
+        "script-vm"
+      ],
+      "summary": "Subroutine of EntityScriptOp_SetPositionOrDequeueTarget (opcode 8), taken when a dequeue is already in flight ([0x8c5f]!=0). Finds kind==3 (the player, per docs/enemies.md) via Entity_FindEntityByKind, sets its state/script to 0x47/0xc967; sets one-shot global [0x8bee]=0xff (also read by EntityScriptOp_RunSpecialInteractionSequence/opcode 68); finds kind==7 (a per-level singleton controller entity) and sets its state/script to 0xf9/0xd922. Newly created/named this pass (was FUN_1000_3b55). See docs/entity-script-vm.md."
+    },
+    {
+      "name": "EntityScriptOp_RecenterOnAnchorAndHandoff",
+      "address": "1000:3b7a",
+      "tags": [
+        "verified",
+        "entity",
+        "script-vm"
+      ],
+      "summary": "Subroutine of EntityScriptOp_SetPositionOrDequeueTarget (opcode 8), taken when the position/state queue is now empty. Finds kind==0x1c (an anchor/recenter entity, identity unestablished); if found, repositions self relative to it by a fixed (0x90,0x50) offset, zeroes the busy-cache [0x8c5f]/[0x8c61], finds kind==7 and sets its state/script to 0xf9/0xd922, and sets [0x8bee]=1 (vs 0xff in the sibling routine) -- a distinct 'queue drained' completion marker. Newly created/named this pass (was FUN_1000_3b7a). See docs/entity-script-vm.md."
+    },
+    {
+      "name": "EntityScriptOp_AttractModeTimeoutOrRestart",
+      "address": "1000:2cea",
+      "tags": [
+        "verified",
+        "entity",
+        "script-vm"
+      ],
+      "summary": "Entity-script opcode 52 (0x34). Gated on [0x8b8b]!=0. Increments a high-byte counter [0x8c57] by 0x80/call; on wraparound, fades to black and returns to Game_StartAttractDemoAndRunLoop (idle/attract-mode timeout). Else on a button press ([0x8b5d]&0x80): plays a sound, force-loads World1, clears state, and runs a 5th inlined copy of the 14-call main loop -- the title/demo screen's 'press any button to start' handler. See docs/entity-script-vm.md."
+    },
+    {
+      "name": "EntityScriptOp_ApplyGroundStateByKind",
+      "address": "1000:2685",
+      "tags": [
+        "verified",
+        "entity",
+        "script-vm"
+      ],
+      "summary": "Entity-script opcode 74 (0x4A). Calls Entity_ApplyGroundStateTransitionByKind (1000:ee60 -- corrects a prior pass's mistaken belief that this address was uninterpreted data) then a no-op passthrough. Ties the script VM directly into the ground-collision reaction system. See docs/entity-script-vm.md."
+    },
+    {
+      "name": "EntityScriptOp_AdvanceToNextWorld",
+      "address": "1000:31ef",
+      "tags": [
+        "verified",
+        "entity",
+        "script-vm"
+      ],
+      "summary": "Entity-script opcode 75 (0x4B). Calls Game_AdvanceWorldAndRunLoop (1000:07eb). Scripts can trigger a full world transition/restart directly. See docs/entity-script-vm.md."
+    },
+    {
+      "name": "EntityScriptOp_KillLinkedChildQuiet",
+      "address": "1000:2741",
+      "tags": [
+        "verified",
+        "entity",
+        "script-vm"
+      ],
+      "summary": "Entity-script opcode 26 (0x1A). Kills linked child (+0x2c), clears both sides' link field, calls Snd_TriggerEffectRaw. See docs/entity-script-vm.md."
+    },
+    {
+      "name": "EntityScriptOp_KillTrackedEntity",
+      "address": "1000:272d",
+      "tags": [
+        "verified",
+        "entity",
+        "script-vm"
+      ],
+      "summary": "Entity-script opcode 73 (0x49). Kills the entity pointed to by +0x2e (dual-use of the 'anim-set-progress counter' field as an entity pointer here), clears the link, calls Snd_TriggerEffect. See docs/entity-script-vm.md."
+    },
+    {
+      "name": "EntityScriptOp_AdoptEntityStateAndScript",
+      "address": "1000:3010",
+      "tags": [
+        "verified",
+        "entity",
+        "script-vm"
+      ],
+      "summary": "Entity-script opcode 66 (0x42, corrected numbering -- see docs/entity-script-vm.md's off-by-one note). Finds a target entity's array slot (Entity_FindArraySlotForEntity), copies its state byte (+1) and script pointer (+0xc) onto self -- self 'becomes' the found entity's current behavior state/script."
+    },
+    {
+      "name": "EntityScriptOp_AddSignedByteToScore",
+      "address": "1000:2d9e",
+      "tags": [
+        "verified",
+        "entity",
+        "script-vm"
+      ],
+      "summary": "Entity-script opcode 50 (0x32). [0x8b75] += (signed char)operand -- adds to the running distance/score global Hud_UpdateScoreDisplay reads. Corrects a prior pass's mismatched description of this address (which actually described the neighboring opcode 49's code)."
+    },
+    {
+      "name": "Game_AdvanceWorldAndRunLoop",
+      "address": "1000:07eb",
+      "tags": [
+        "verified",
+        "spine",
+        "engine"
+      ],
+      "summary": "A 4th physical copy of the 14-call main loop (alongside entry, Game_WarpToLevelStageAndRunLoop, Game_StartAttractDemoAndRunLoop). Increments [0x8c29]; 1-4 loads World1-4 banks respectively (World3 also remaps tiles), else sets fatal-exit flag [0x8ba3] and falls back to World1. Clears entities; if world index [0x8b89]==0 starts the attract demo, else runs the inlined main loop directly. Reached from EntityScriptOp_AdvanceToNextWorld -- entity scripts can trigger a full world transition/restart."
+    },
+    {
+      "name": "EntityScriptOp_SetPaletteFadeState",
+      "address": "1000:2a4f",
+      "tags": [
+        "verified",
+        "entity",
+        "script-vm"
+      ],
+      "summary": "Entity-script opcode 64 (0x40). [0x8ba2] = operand -- directly sets the palette-fade transition step counter Fx_UpdateTransition/Fx_TransitionStep drive once per frame. This opcode was entirely missing from the original 78-entry table transcription (an off-by-one counting slip skipped this word); see docs/entity-script-vm.md."
+    },
+    {
+      "name": "EntityScriptOp_AddSignedDeltaAtOffset",
+      "address": "1000:2a61",
+      "tags": [
+        "verified",
+        "entity",
+        "script-vm"
+      ],
+      "summary": "Entity-script opcode 65 (0x41, corrected numbering). Reads (offset, signed delta), adds delta into the word at entity+offset -- generic 'add' twin of the poke-byte primitives (ops 22/35)."
+    },
+    {
+      "name": "EntityScriptOp_SetAnimLockFlag",
+      "address": "1000:271f",
+      "tags": [
+        "verified",
+        "entity",
+        "script-vm"
+      ],
+      "summary": "Entity-script opcode 67 (0x43, corrected numbering). Sets +0x3d = operand -- the 'animation-lock' field Entity_InitFromTemplateRecord's decompile also names."
+    },
+    {
+      "name": "EntityScriptOp_SpawnRandomizedBonusNearFixedPoint",
+      "address": "1000:26b1",
+      "tags": [
+        "verified",
+        "entity",
+        "script-vm"
+      ],
+      "summary": "Entity-script opcode 77 (0x4D). Newly created/named this pass (was uninterpreted -- not a Ghidra function before, address-only in docs). CORRECTS a prior guess ('renders via 1000:c035'): 1000:c035 is Entity_PushSpawnEvent and 1000:11fc is Rng_NextValue (both already-named). Advances the RNG, reads 1 operand byte as the spawned entity's type ([0x8c1f]), uses fixed base position X=0x90,Y=0x48 with layout-selector [0x8c29]=0xf, branches on [0x8b6b] bit0 to choose a position-offset variant, looks up [0x8b6b]&0xf in a 16-byte table at 0xee36 to pick the spawn variant ([0x8c21]), then calls Entity_PushSpawnEvent. Used repeatedly in the opcode-68 reward-shower cutscene template. See docs/entity-script-vm.md."
+    },
+    {
+      "name": "EntityScriptOp_RunSpecialInteractionSequence",
+      "address": "1000:2755",
+      "tags": [
+        "verified",
+        "entity",
+        "script-vm"
+      ],
+      "summary": "Entity-script opcode 68 (0x44, corrected numbering). Dense ~700-byte dispatcher. If entity type(+2)==3: branches on world/sub-level to hardcoded per-(world,sublevel) cutscene sub-scripts (world1 sublevel6, world2 sublevel7, world3 sublevel>7). Otherwise: finds+kills a tracked entity then reacts to a chain of one-shot global flags, each jumping to a fixed sub-script address or playing a sound. All 11 destination scripts (cd03/cd1b/cd33/d2b0/d381/d280/d298/d306/d2cf/d2ee/d31f) walked byte-exact this pass -- confirmed to all be instances of one shared 'reward-shower' spawn/sound/score celebration template, not bespoke content; cd03/cd1b/cd33 additionally confirmed as overlapping tail entry points into one physical byte stream, not 3 independent scripts. Structurally parallel to Entity_InteractionPhaseJumpTable (not proven identical). See docs/entity-script-vm.md and docs/enemies.md."
+    },
+    {
+      "name": "EntityScriptOp_DispatchSpeedTickByKind",
+      "address": "1000:2c6c",
+      "tags": [
+        "verified",
+        "entity",
+        "script-vm"
+      ],
+      "summary": "Entity-script opcode 55 (0x37). Dispatches on kind(+4): 1->Entity_TickKind1SpeedDecay, 7->Entity_TickKind7SpeedByWorldOrSublevel, 2->Entity_TickKind2VerticalBounce, 4->Entity_TickKind4BounceWithRandomTurn; generic fallback adjusts speed via coordinate helpers. A generic bouncing/patrol physics-tick family keyed by kind, distinct from Entity_RunMovementAiScript and the docs/enemies.md AI-think dispatch. All 4 kind handlers now decoded."
+    },
+    {
+      "name": "Entity_TickKind7SpeedByWorldOrSublevel",
+      "address": "1000:ddba",
+      "tags": [
+        "verified",
+        "entity"
+      ],
+      "summary": "Kind-7 physics tick (called from EntityScriptOp_DispatchSpeedTickByKind; was FUN_1000_ddba, decoded and named this pass). Reads [0x8b89] (world) or, if 0, [0x8b8b] (sub-level) as a 1-4 selector. Values 1/3/4 share the generic vertical-bounce-then-horizontal-move shape of the kind 1/2/4 siblings. Value 2 has an extra special case: when own type(+2)==0x33, gated on global [0x8c03], fully reinitializes self as a different entity (hitbox/speed/state cleared, +1 set to 0xa8/0x67, +0xc script pointer force-set to 0xd150/0xcbea) -- plausibly a boss phase-transform/respawn trigger."
+    },
+    {
+      "name": "Entity_TickKind1SpeedDecay",
+      "address": "1000:dd1a",
+      "tags": [
+        "verified",
+        "entity"
+      ],
+      "summary": "Kind-1 physics tick (called from EntityScriptOp_DispatchSpeedTickByKind). Moves Y by a decaying speed value (+0x26), an occasional kind-0x11 special reset after 10-16 ticks, then moves X by +0x27 gated on hitbox/collision flags (+0x14/+0x24)."
+    },
+    {
+      "name": "Entity_TickKind2VerticalBounce",
+      "address": "1000:dbc2",
+      "tags": [
+        "verified",
+        "entity"
+      ],
+      "summary": "Kind-2 physics tick (called from EntityScriptOp_DispatchSpeedTickByKind). Vertical bounce via Entity_MoveVerticalUpByFlags/DownByFlags with a sign-toggle at the zero-crossing, then a horizontal move via Entity_MoveHorizontalByFlags."
+    },
+    {
+      "name": "Entity_TickKind4BounceWithRandomTurn",
+      "address": "1000:dc1e",
+      "tags": [
+        "verified",
+        "entity"
+      ],
+      "summary": "Kind-4 physics tick (called from EntityScriptOp_DispatchSpeedTickByKind). Vertical bounce plus horizontal move; on reaching a symmetric endpoint, rerolls direction via Entity_RollRandomBehaviorIndex and XORs collision flags (+0x14) to reverse."
+    },
+    {
+      "name": "Entity_PairWithType1cPropAndArmCutscene",
+      "address": "1000:5851",
+      "tags": [
+        "verified",
+        "entity"
+      ],
+      "summary": "Reached from Entity_DispatchInteractionByOtherEntityType's CMP AX,0x1c case (paired entity BX has type/shape-class 0x1c -- entity-shapes.json descriptor 28, bank 6/extras, a small 2-frame prop). Requires caller idle + same Y as BX; scans 5 candidate X offsets (0/+4/+8 unconditional, -4/-8 gated on [0x8b98]==0x15, the world-1 boss-kind sentinel). On match: reassigns caller's script pointer to 6de3:c967, sets [0x8c2f]=[0x8c2d] (the world1/sublevel6 cutscene-step-counter source, resolving that docs/entity-script-vm.md open question), plays two sounds, kills BX. One of 3 recovered entries in Entity_InteractionPhaseJumpTable's previously-unrecoverable table. See docs/entity-script-vm.md."
+    },
+    {
+      "name": "Entity_DispatchInteractionByOtherEntityType",
+      "address": "1000:57d6",
+      "tags": [
+        "verified",
+        "entity"
+      ],
+      "summary": "Entity_InteractionPhaseJumpTable phase handler (table index 7). Dispatches on AX=[BX+2] (paired entity's type/shape-class): 0xe->1000:58d5, 0x1c->Entity_PairWithType1cPropAndArmCutscene, 6->1000:59a9, 0x1b->Entity_InteractionPhaseType1bHandler, 0x26->1000:5b26, 0x56->1000:5b70, 0x2e->1000:5b8b, and a per-world boss/special-kind set ({0x15,0x40,0x41,0x43,0x1a,0x24,0x2a,0x45,0x22,0x29}) that stores BX into global [0x8c01] (a new 'last-matched-entity' register). Internal jump targets 58d5/59a9/5b26/5b70/5b8b not traced further. See docs/entity-script-vm.md."
+    },
+    {
+      "name": "Entity_InteractionPhaseStateSetters",
+      "address": "1000:57a3",
+      "tags": [
+        "guess",
+        "entity"
+      ],
+      "summary": "Entity_InteractionPhaseJumpTable phase handler (table indices 10 and 14, both resolving to the adjacent 1-byte RET stub at 1000:57a2 -- effective no-op phases). Checks own shape-class(+2)==6 or anim-set byte(+0x39)==0x49 combined with +2 in {0x12,0x14} to pick: toggle a hitbox/orientation bit ([BX+0x14]^=0xc), mark dead (+0x40=0x19), or set state 0xf6 ('tracks another entity', see docs/enemies.md) with +0x2c=BX. Narrative purpose not pinned down. See docs/entity-script-vm.md."
+    },
+    {
+      "name": "Entity_InteractionPhaseType1bHandler",
+      "address": "1000:5bad",
+      "tags": [
+        "verified",
+        "entity"
+      ],
+      "summary": "Reached from Entity_DispatchInteractionByOtherEntityType's CMP AX,0x1b case. Dispatches further on its own AX (0x1e/0x67/0x1f/0x20, targets 5d73/5d84/5d9c/5c96/5d5e not traced). Contains a checkpoint-style wait loop (1000:5c23) that spins while [0x8c04]!=0, then kills BX and writes [0x8c04]=0xe. At 1000:5c36-5c40: ADD word ptr [0x8bff],1 once per call until it reaches 6 -- the real setter for [0x8bff], resolving that docs/entity-script-vm.md open question."
+    },
+    {
+      "name": "Entity_InteractionPhaseResolveHitAndPairing",
+      "address": "1000:462c",
+      "tags": [
+        "verified",
+        "entity"
+      ],
+      "summary": "Entity_InteractionPhaseJumpTable phase handler, table indices 12 (entry here) and 1 (entry at 1000:4639, 13 bytes in, skipping the opening 'BX type!=0x25 -> kill BX' guard -- same function, two entry offsets). Dispatches on BX's type (0x2c, 0x2b->Entity_ArmChargingHazardInteraction), on [0x8c04]=='@' (a boss-hit sub-branch, one path calling Entity_SpawnLinkedTemplateEntity), then a [0x8b98]-keyed dispatch (0x15=world1 boss sentinel, 'C'=ground-transition-or-burst-reward, -1=no-op, '!'/'A'->Entity_ChooseAndSpawnBonusItem, 1/3->Entity_ResolveInteractionRewardAndBonusMarker, 0x1a->entity-list scan for a transform-state match). Default fallback (self+BX both idle): generic two-entity pairing -- BX state 0x44/script 0xc92c, self state 0x45/script 0xc94d, [0x8b96]=0x3c, [0x8b98]=3 -- the exact constants Entity_PairWithType1cPropAndArmCutscene also uses, confirming that function specializes this general mechanism. See docs/entity-script-vm.md."
+    },
+    {
+      "name": "Entity_KillSelfInteractionPhase",
+      "address": "1000:5e18",
+      "tags": [
+        "verified",
+        "entity"
+      ],
+      "summary": "Entity_InteractionPhaseJumpTable phase handler (table index 2). One-liner: self.state(+0x40)=0x19 (dead). See docs/entity-script-vm.md."
+    },
+    {
+      "name": "Entity_KillOtherInteractionPhase",
+      "address": "1000:5e1d",
+      "tags": [
+        "verified",
+        "entity"
+      ],
+      "summary": "Entity_InteractionPhaseJumpTable phase handler (table index 3). One-liner: BX.state(+0x40)=0x19 (dead) -- the 'kill the other party' counterpart to index 2. See docs/entity-script-vm.md."
+    },
+    {
+      "name": "Entity_InteractionPhaseResolveBreakOrHazard",
+      "address": "1000:4f27",
+      "tags": [
+        "guess",
+        "entity"
+      ],
+      "summary": "Entity_InteractionPhaseJumpTable phase handler (table index 4). Dense (~650 bytes) per-world hit/break dispatcher over BX's type against per-world breakable/hazard type ranges (mirrors docs/enemies.md's ground-collision type catalog), assigning settle states via Entity_SetStateAndScript/Entity_SelectNextStateByWorldAndKind/Entity_ResolveInteractionRewardAndBonusMarker. Special-cases BX type==0x2b (charging hazard): world4/sublevel9 exempted from being killed, otherwise reset to state 0x29/script 0xc6ea, +0x32 score, Entity_SpawnBreakBurstEffect. Structure/key constants confirmed, not every per-world branch narratively pinned down. See docs/entity-script-vm.md."
+    },
+    {
+      "name": "Entity_InteractionPhaseResolveByWorldAndType",
+      "address": "1000:4c01",
+      "tags": [
+        "guess",
+        "entity"
+      ],
+      "summary": "Entity_InteractionPhaseJumpTable phase handler (table index 5). Per-world dispatch over the same breakable-block type ranges docs/enemies.md's ground-collision section catalogs (world1 0xd/0x10, world2 0x33/0x34, world3 0x38/0x39, world4 0x3a-0x3e) into a shared break-and-reward epilogue. World2 type 0x33 is distinct: gated on [0x8b98] (0/1/0x1a, the player-carried-item type docs/enemies.md documents for class 5), a distance check either sets a new one-shot flag [0x8beb]=0xff (its own downstream reader not traced) or repositions/reinitializes the found entity. World4 types 0x3a-0x3d run a ground-contact chain via Entity_MoveHorizontalByFlags/Entity_ApplyGroundStateTransitionByKind. Dense (~840 bytes), structure/key constants confirmed. See docs/entity-script-vm.md."
+    },
+    {
+      "name": "Entity_ArmChargingHazardInteraction",
+      "address": "1000:49a8",
+      "tags": [
+        "guess",
+        "entity"
+      ],
+      "summary": "Called from Entity_InteractionPhaseResolveHitAndPairing's BX-type==0x2b branch. Finds the charging-hazard entity (Entity_FindEntityByKind), sets its collision flags to 0x8f. World4/sublevel9 defers to Entity_SpawnLinkedTemplateEntity; otherwise resets its position/anim-range, arms [0x8b96]=0x28 (wait-countdown), sets self to state 0x2f/script 0xc79f, clears a cluster of difficulty/session counters ([0x8c03],[0x8bf1],[0x8bff],[0x8bb2],[0x8b93]=1,[0x8b90]=6) -- plausibly a 'charging hazard defeated, reset run-difficulty state' sequence. See docs/entity-script-vm.md."
+    },
+    {
+      "name": "Entity_SpawnLinkedTemplateEntity",
+      "address": "1000:4a40",
+      "tags": [
+        "guess",
+        "entity"
+      ],
+      "summary": "Trivial 2-call wrapper: Entity_InitFromTemplateRecord() then FUN_1000_596b() (not traced). Reached from Entity_InteractionPhaseResolveHitAndPairing when BX type==0x53 and BX anim-frame(+0xa)==0x104. See docs/entity-script-vm.md."
+    },
+    {
+      "name": "Entity_ResolveInteractionRewardAndBonusMarker",
+      "address": "1000:549c",
+      "tags": [
+        "verified",
+        "entity"
+      ],
+      "summary": "Shared 'resolve a destroyed hazard/breakable-block interaction' primitive, called from Entity_InteractionPhaseResolveHitAndPairing/ResolveBreakOrHazard. Increments HUD counters [0x8c05]/[0x8c06]; resets self (and linked child +0x2c) to state 1/script 0xc45b (the already-decoded 'state 1 = EntityScriptOp_Kill' script); plays two raw sounds; pushes a position event whose type tag is chosen by which special-tag field is set (anim-set 0x15, state '@'/0x40, anim-set 'A'/0x41, state 'C'/0x43); marks self processed (state=0x65); calls Entity_SpawnBreakBurstEffect + a sound; calls the already-named Entity_ChooseAndPlaceBonusMarker (with a guaranteed extra bonus spawn when [0x8b98]=='A'). See docs/entity-script-vm.md."
+    },
+    {
+      "name": "Entity_SpawnBreakBurstEffect",
+      "address": "1000:572a",
+      "tags": [
+        "verified",
+        "entity"
+      ],
+      "summary": "Shared 4-particle burst-spawn helper: 4x Fx_PushQueuedPositionEvent5 (a 2x2 grid of offset variants 4/8 x 4/8, effect type 0xf/variant 9) at the staged [0x8c25]/[0x8c27] position. Called from Entity_ResolveInteractionRewardAndBonusMarker and the interaction-phase break/hazard handlers. See docs/entity-script-vm.md."
     }
   ],
   "openQuestions": [
@@ -4063,8 +4697,8 @@
     "Name the remaining Gfx_DrawObject CGA/Tandy fallback callees (FUN_1000_95c5/976f/9f02/a0fc/9929/9a4c) -- low priority, EGA/VGA is the extraction reference mode.",
     "Understand Gfx_DrawObject's case 0x0a (probable font/text-string renderer, FUN_1000_b42e per glyph) and case 0x0b's secondary [0x8c34] dispatch.",
     "Find the raw IVT-write install site for Input_KeyboardIsr (MOV word ptr [0:0x24],...) -- low priority, the ISR itself is now fully understood via find_code_gaps.",
-    "Decode Entity_UpdateBehavior's ~600 lines of per-type/per-state gameplay logic -- the single highest-value remaining target, ideally with dosbox-x behavioral verification rather than reading magic numbers cold.",
-    "Decode Entity_RunScript's 256-entry opcode jump table at 1000:2383 -- reveals the entity scripting language.",
+    "RESOLVED: Entity_UpdateBehavior decoded branch-by-branch for all classes -- see docs/enemies.md.",
+    "RESOLVED: Entity_RunScript's opcode jump table at 1000:2383 decoded (78 entries, not 256) -- see docs/entity-script-vm.md. Three follow-up passes have now resolved: opcode 55's kind-7 handler (Entity_TickKind7SpeedByWorldOrSublevel), all 11 of opcode 68's cutscene destination scripts (all one shared reward-shower template -- see docs/entity-script-vm.md), opcode 8's two queue-continuation subroutines (EntityScriptOp_HandoffToPlayerAndController/RecenterOnAnchorAndHandoff), opcode 77's wrong 'renderer' guess (corrected to EntityScriptOp_SpawnRandomizedBonusNearFixedPoint), the exact VM-loop yield/wait/reset semantics, and a miscount correction (0xcd9c/0xcdfe are aliases into 0xcd88, not independent 3rd/4th state-script tables -- only 2 physical tables exist: 0xcd88/0xd996). Opcode 13's type-code 0xa branch is now also resolved (Entity_SpawnBreakFragmentOffset0-3 + Entity_SpawnMirroredBreakFragmentWorld4), and both default-script tables were walked structurally in full (119/119 positive, 100/100 negative). A follow-up pass additionally resolved the setters for [0x8bff]/[0x8bb4] (incrementing step-counters: EntityScriptOp_CheckBonusMarkerAndMaybeSpawn's ADD byte[0x8bb4],1 and the newly-named Entity_InteractionPhaseType1bHandler's ADD word[0x8bff],1) and bounded/named the function containing the [0x8c2f] cutscene-counter driver (Entity_PairWithType1cPropAndArmCutscene, 1000:5851), which turned out to be one of three recovered entries in Entity_InteractionPhaseJumpTable -- see docs/entity-script-vm.md. A further follow-up pass fully accounted for all 20 of Entity_InteractionPhaseJumpTable's entries (9 are self-referential trap slots, the rest resolve to 4 already-named handlers plus 5 newly-named ones: Entity_InteractionPhaseResolveHitAndPairing, Entity_KillSelfInteractionPhase, Entity_KillOtherInteractionPhase, Entity_InteractionPhaseResolveBreakOrHazard, Entity_InteractionPhaseResolveByWorldAndType, plus helpers Entity_ArmChargingHazardInteraction/Entity_SpawnLinkedTemplateEntity/Entity_ResolveInteractionRewardAndBonusMarker/Entity_SpawnBreakBurstEffect), and traced the table's real caller chain (Entity_UpdateBehavior -> Entity_BroadcastEventToVisibleByKindFlag -> Entity_CheckAabbOverlapOrBroadcast, an AABB hitbox-overlap test) -- see docs/entity-script-vm.md's 'interaction-phase table, fully accounted for' section.",
     "Name FUN_1000_02e2 (animated-tile callback) and FUN_1000_c2f3 (level-event-queue callback).",
     "Confirm the guessed main-loop functions (Camera_UpdateScroll, Level_UpdateAnimatedTiles, Fx_UpdateTransition, Level_UpdateEventQueue, Entity_UpdateAll) -- structure is solid, semantic role inferred; see docs/engine.md.",
     "Exact disambiguation of Gfx_BlitSpriteMaskedWide vs WideB's distinct roles (both cover the same row width).",

@@ -93,7 +93,22 @@ function main() {
   // so it's checked into symbols/ like the other Ghidra exports and just copied into build/.
   fs.copyFileSync(path.join('symbols', 'entity-shapes.json'), path.join(PNG_DIR, 'entity-shapes.json'));
 
-  console.log('\n=== Writing build/manifest.json (for tools/viewer.html) ===');
+  console.log('\n=== Extracting .pin embedded MIDI (best-effort; most files have none) ===');
+  // Wipe first: a bank whose cue count shrinks between runs would otherwise leave stale
+  // higher-numbered .mid files behind (the exact class of staleness bug this file exists to
+  // prevent -- see the top-of-file comment).
+  fs.rmSync(MIDI_DIR, { recursive: true, force: true });
+  fs.mkdirSync(MIDI_DIR, { recursive: true });
+  for (const f of dataFiles.filter((f) => f.endsWith('.pin'))) {
+    const rawPath = path.join(RAW_DIR, `${f}.raw`);
+    try {
+      run('node', ['tools/extract-pin.js', rawPath, MIDI_DIR]);
+    } catch (e) {
+      // extract-pin.js exits non-zero (and already logged NO-MIDI) for driver-code-only files.
+    }
+  }
+
+  console.log('\n=== Writing build/manifest.json (for tools/viewer.html and tools/midi-player.html) ===');
   const levelFiles = dataFiles.filter((f) => f.endsWith('.pap')).map((f) => f.replace(/\.pap$/, ''));
   const tilesetFiles = dataFiles
     .filter((f) => /^blocks[1-4]\.pak$/.test(f))
@@ -103,23 +118,37 @@ function main() {
     const m = name.match(/([1-4])/);
     return m ? Number(m[1]) : null;
   };
+
+  // Group build/midi/ output back into per-source-file banks: a single embedded song extracts
+  // as "<bank>.mid", a cue bank as "<bank>.NNN.mid" (see tools/extract-pin.js).
+  const midiFiles = fs.readdirSync(MIDI_DIR).filter((f) => f.endsWith('.mid')).sort();
+  const banks = new Map();
+  for (const f of midiFiles) {
+    const m = f.match(/^(.*?)(?:\.(\d+))?\.mid$/);
+    const bank = m[1];
+    const index = m[2] === undefined ? null : Number(m[2]);
+    const size = fs.statSync(path.join(MIDI_DIR, f)).size;
+    if (!banks.has(bank)) banks.set(bank, []);
+    banks.get(bank).push({ file: f, index, bytes: size });
+  }
+  const sounds = [...banks.entries()]
+    .sort(([a], [b]) => a.localeCompare(b))
+    .map(([bank, cues]) => ({
+      bank,
+      cues: cues.sort((a, b) => (a.index ?? 0) - (b.index ?? 0)),
+    }));
+
   const manifest = {
     levels: levelFiles.map((name) => ({ name, world: worldOf(name) })),
     tilesets: tilesetFiles.map((name) => ({ name, world: worldOf(name) })),
     entityScripts: entityScriptFiles.map((name) => ({ name, world: worldOf(name) })),
+    sounds,
   };
   fs.writeFileSync(path.join('build', 'manifest.json'), JSON.stringify(manifest, null, 2));
-  console.log(`${levelFiles.length} levels, ${tilesetFiles.length} tilesets, ${entityScriptFiles.length} entity scripts`);
-
-  console.log('\n=== Extracting .pin embedded MIDI (best-effort; most files have none) ===');
-  for (const f of dataFiles.filter((f) => f.endsWith('.pin'))) {
-    const rawPath = path.join(RAW_DIR, `${f}.raw`);
-    try {
-      run('node', ['tools/extract-pin.js', rawPath, MIDI_DIR]);
-    } catch (e) {
-      // extract-pin.js exits non-zero (and already logged NO-MIDI) for driver-code-only files.
-    }
-  }
+  console.log(
+    `${levelFiles.length} levels, ${tilesetFiles.length} tilesets, ${entityScriptFiles.length} entity scripts, ` +
+      `${sounds.length} sound banks (${midiFiles.length} MIDI files)`
+  );
 
   console.log('\nDone.');
 }

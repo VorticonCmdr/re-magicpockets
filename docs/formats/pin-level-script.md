@@ -198,9 +198,14 @@ a row of collectibles or a patrol line of enemies would produce.
   subsequent entity coordinates from the code read so far, but hasn't been fully ruled out).
 - **The nine special-opcode types' extra fields** (beyond X/Y) are not decoded — direction
   vectors, linked-parent/child relationships, hitbox extents, animation-set selectors.
-- **Per-type semantic meaning** (which numeric type = which enemy/item) is not mapped — cross-
-  referencing against `Entity_UpdateBehavior`'s per-world × per-kind dispatch tables (see
-  `docs/engine.md`'s entity-system section) would be the next step.
+- **RESOLVED for AI-driven enemy types**: `docs/enemies.md` cross-references every type value
+  reachable through `Entity_UpdateBehavior`'s two per-world × per-type AI dispatch tables
+  (`Entity_DispatchUpdateByKind`/`Entity_DispatchHitReactionByKind`) against a movement-pattern
+  catalog (patrol, chase/flee, gates, sleepers, charging hazard, vertical pathfinder) and against
+  `entity-shapes.json`'s sprite-bank data — every one of those types resolves to bank 7 (`nastyN.pak`)
+  except the cross-world-shared type `0x2c` (bank 6, `extras`). Non-AI type classes (items,
+  pickups, background decoration, the player itself) are not covered by that doc and remain
+  unmapped here.
 - **Why 13 sub-level entries exist per world file** when each world only has 1-2 `.pap` maps —
   overlapping entry points suggest these may be authored "difficulty stage" or "checkpoint restart"
   variants (`Game_WarpToLevelStageAndRunLoop`, already documented) rather than distinct rooms.

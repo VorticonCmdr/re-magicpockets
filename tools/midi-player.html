@@ -1,0 +1,401 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Magic Pockets -- MIDI player</title>
+<style>
+  :root { color-scheme: dark; }
+  body {
+    margin: 0;
+    font: 13px/1.4 -apple-system, system-ui, sans-serif;
+    background: #1b1b1f;
+    color: #ddd;
+  }
+  header {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    padding: 10px 14px;
+    background: #26262c;
+    border-bottom: 1px solid #3a3a42;
+    position: sticky;
+    top: 0;
+    flex-wrap: wrap;
+  }
+  header h1 { font-size: 14px; margin: 0 12px 0 0; color: #8bd0ff; font-weight: 600; }
+  label { display: flex; align-items: center; gap: 6px; }
+  input[type=range] { background: #1b1b1f; accent-color: #8bd0ff; }
+  button {
+    background: #33333b;
+    color: #ddd;
+    border: 1px solid #4a4a54;
+    border-radius: 4px;
+    padding: 4px 10px;
+    cursor: pointer;
+    font: inherit;
+  }
+  button:hover { background: #3d3d47; }
+  button:disabled { opacity: 0.4; cursor: default; }
+  button.playing { background: #2c5a3c; border-color: #3f8256; }
+  #status { margin-left: auto; color: #999; }
+  main { padding: 14px; max-width: 900px; margin: 0 auto; }
+  section { margin-bottom: 22px; }
+  section h2 {
+    font-size: 13px;
+    color: #8bd0ff;
+    margin: 0 0 4px;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    cursor: pointer;
+    user-select: none;
+  }
+  section h2 .count { color: #999; font-weight: normal; }
+  section .bank-actions { margin-left: auto; display: flex; gap: 6px; }
+  section p.note { color: #999; margin: 2px 0 8px; }
+  ul.cues {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+    gap: 4px;
+  }
+  section.collapsed ul.cues { display: none; }
+  section.collapsed p.note { display: none; }
+  li.cue {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 4px 8px;
+    background: #232329;
+    border: 1px solid #34343c;
+    border-radius: 4px;
+  }
+  li.cue.playing { border-color: #3f8256; background: #1e2e23; }
+  li.cue button { padding: 2px 8px; }
+  li.cue .name { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  li.cue .bytes { color: #777; font-size: 11px; }
+  #tip { padding: 10px 14px; background: #26262c; border-top: 1px solid #3a3a42; color: #999; }
+  code { color: #ccc; }
+</style>
+</head>
+<body>
+<header>
+  <h1>Magic Pockets MIDI player</h1>
+  <label>Volume
+    <input type="range" id="volume" min="0" max="1" step="0.01" value="0.5">
+  </label>
+  <button id="stopAll">Stop</button>
+  <span id="status">loading manifest...</span>
+</header>
+<main id="banks"></main>
+<div id="tip">
+  Extracted from <code>data/*.pin</code> via <code>tools/extract-pin.js</code> -- see
+  <code>docs/formats/pin.md</code>. <code>adlib.pin</code>/<code>roland.pin</code> are
+  sound-effect banks (one tiny cue per file); <code>roland2.pin</code>/<code>soundbnk.pin</code>
+  are single embedded songs. Played back with a small built-in Web Audio synth (oscillator per
+  channel, not a real OPL2/MT-32 emulation) -- so this is for confirming the extracted note data
+  is sane, not a faithful recreation of the original AdLib/Roland sound.
+</div>
+<script>
+'use strict';
+
+// ---------- Standard MIDI File parsing ----------
+
+function readVLQ(bytes, pos) {
+  let value = 0;
+  let count = 0;
+  while (true) {
+    const b = bytes[pos++];
+    value = (value << 7) | (b & 0x7f);
+    count++;
+    if (!(b & 0x80) || count > 4) break;
+  }
+  return { value, pos };
+}
+
+function parseMidi(buf) {
+  const bytes = new Uint8Array(buf);
+  const view = new DataView(buf);
+  if (String.fromCharCode(...bytes.slice(0, 4)) !== 'MThd') throw new Error('not a MIDI file (no MThd)');
+  const division = view.getUint16(12);
+  if (division & 0x8000) throw new Error('SMPTE-division MIDI files are not supported here');
+
+  let pos = 8 + view.getUint32(4);
+  const tracks = [];
+  const tempoEvents = [];
+
+  while (pos < bytes.length) {
+    if (String.fromCharCode(...bytes.slice(pos, pos + 4)) !== 'MTrk') break;
+    const trackLen = view.getUint32(pos + 4);
+    let p = pos + 8;
+    const trackEnd = p + trackLen;
+    let tick = 0;
+    let runningStatus = null;
+    const events = [];
+
+    while (p < trackEnd) {
+      const delta = readVLQ(bytes, p);
+      p = delta.pos;
+      tick += delta.value;
+      let status = bytes[p];
+      if (status < 0x80) {
+        status = runningStatus;
+      } else {
+        p++;
+        if (status !== 0xff && status !== 0xf0 && status !== 0xf7) runningStatus = status;
+      }
+      if (status === 0xff) {
+        const type = bytes[p++];
+        const len = readVLQ(bytes, p);
+        p = len.pos;
+        if (type === 0x51) {
+          const usPerQuarter = (bytes[p] << 16) | (bytes[p + 1] << 8) | bytes[p + 2];
+          tempoEvents.push({ tick, usPerQuarter });
+        }
+        p += len.value;
+        if (type === 0x2f) break; // end of track
+      } else if (status === 0xf0 || status === 0xf7) {
+        const len = readVLQ(bytes, p);
+        p = len.pos + len.value;
+      } else {
+        const hi = status & 0xf0;
+        const channel = status & 0x0f;
+        const nbytes = hi === 0xc0 || hi === 0xd0 ? 1 : 2;
+        const data1 = bytes[p];
+        const data2 = nbytes === 2 ? bytes[p + 1] : undefined;
+        p += nbytes;
+        events.push({ tick, type: hi, channel, data1, data2 });
+      }
+    }
+    tracks.push(events);
+    pos = trackEnd;
+  }
+
+  return { division, tracks, tempoEvents };
+}
+
+// Builds a tick -> seconds converter from a (possibly empty) list of tempo-change events.
+function makeTickToSeconds(tempoEvents, division) {
+  const sorted = [...tempoEvents].sort((a, b) => a.tick - b.tick);
+  const anchors = [{ tick: 0, time: 0, usPerQuarter: 500000 }];
+  for (const ev of sorted) {
+    if (ev.tick === 0) {
+      anchors[0].usPerQuarter = ev.usPerQuarter;
+      continue;
+    }
+    const prev = anchors[anchors.length - 1];
+    const time = prev.time + ((ev.tick - prev.tick) * (prev.usPerQuarter / 1e6)) / division;
+    anchors.push({ tick: ev.tick, time, usPerQuarter: ev.usPerQuarter });
+  }
+  return (tick) => {
+    let anchor = anchors[0];
+    for (const a of anchors) {
+      if (a.tick > tick) break;
+      anchor = a;
+    }
+    return anchor.time + ((tick - anchor.tick) * (anchor.usPerQuarter / 1e6)) / division;
+  };
+}
+
+// ---------- Playback (simple oscillator-per-note synth, not a real OPL2/MT-32 emulation) ----------
+
+const WAVEFORMS = ['square', 'sawtooth', 'triangle', 'sine'];
+let audioCtx = null;
+let activeStopFns = [];
+
+function stopAll() {
+  for (const stop of activeStopFns) stop();
+  activeStopFns = [];
+  document.querySelectorAll('.playing').forEach((el) => el.classList.remove('playing'));
+}
+
+function noteToFreq(note) {
+  return 440 * Math.pow(2, (note - 69) / 12);
+}
+
+async function playMidiBuffer(buf, uiEl, onDone) {
+  if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+  if (audioCtx.state === 'suspended') await audioCtx.resume();
+
+  const { division, tracks, tempoEvents } = parseMidi(buf);
+  const tickToSeconds = makeTickToSeconds(tempoEvents, division);
+
+  const allEvents = tracks.flat().sort((a, b) => a.tick - b.tick);
+  const channelProgram = new Array(16).fill(0);
+  const channelGain = new Array(16).fill(1);
+
+  const master = audioCtx.createGain();
+  master.gain.value = Number(document.getElementById('volume').value);
+  master.connect(audioCtx.destination);
+
+  const startAt = audioCtx.currentTime + 0.05;
+  const active = new Map(); // "channel:note" -> {osc, gain}
+  const scheduledNodes = [];
+  let maxTime = 0;
+
+  for (const ev of allEvents) {
+    const t = startAt + tickToSeconds(ev.tick);
+    maxTime = Math.max(maxTime, t);
+    if (ev.type === 0xc0) {
+      channelProgram[ev.channel] = ev.data1;
+    } else if (ev.type === 0xb0 && ev.data1 === 7) {
+      channelGain[ev.channel] = ev.data2 / 127;
+    } else if (ev.type === 0x90 && ev.data2 > 0) {
+      const key = ev.channel + ':' + ev.data1;
+      const existing = active.get(key);
+      if (existing) {
+        existing.gain.gain.setValueAtTime(0, t);
+        existing.osc.stop(t);
+      }
+      const osc = audioCtx.createOscillator();
+      osc.type = WAVEFORMS[channelProgram[ev.channel] % WAVEFORMS.length];
+      osc.frequency.value = noteToFreq(ev.data1);
+      const gain = audioCtx.createGain();
+      const peak = (ev.data2 / 127) * channelGain[ev.channel] * 0.2;
+      gain.gain.setValueAtTime(0, t);
+      gain.gain.linearRampToValueAtTime(peak, t + 0.01);
+      osc.connect(gain);
+      gain.connect(master);
+      osc.start(t);
+      active.set(key, { osc, gain });
+      scheduledNodes.push(osc);
+    } else if (ev.type === 0x80 || (ev.type === 0x90 && ev.data2 === 0)) {
+      const key = ev.channel + ':' + ev.data1;
+      const existing = active.get(key);
+      if (existing) {
+        existing.gain.gain.setValueAtTime(existing.gain.gain.value, t);
+        existing.gain.gain.linearRampToValueAtTime(0, t + 0.03);
+        existing.osc.stop(t + 0.04);
+        active.delete(key);
+      }
+    }
+  }
+  // Anything still active at end-of-track (unpaired note-on) gets a hard cutoff shortly after.
+  for (const { osc, gain } of active.values()) {
+    gain.gain.setValueAtTime(gain.gain.value, maxTime);
+    gain.gain.linearRampToValueAtTime(0, maxTime + 0.05);
+    osc.stop(maxTime + 0.06);
+    scheduledNodes.push(osc);
+  }
+
+  if (uiEl) uiEl.classList.add('playing');
+  const durationMs = (maxTime - audioCtx.currentTime + 0.2) * 1000;
+  const timer = setTimeout(() => {
+    if (uiEl) uiEl.classList.remove('playing');
+    activeStopFns = activeStopFns.filter((fn) => fn !== stop);
+    if (onDone) onDone();
+  }, Math.max(50, durationMs));
+
+  function stop() {
+    clearTimeout(timer);
+    for (const osc of scheduledNodes) {
+      try { osc.stop(audioCtx.currentTime); } catch (e) {}
+    }
+    master.disconnect();
+    if (uiEl) uiEl.classList.remove('playing');
+  }
+  activeStopFns.push(stop);
+  return stop;
+}
+
+// ---------- UI ----------
+
+async function playFile(url, uiEl, onDone) {
+  stopAll();
+  const status = document.getElementById('status');
+  try {
+    const res = await fetch(url);
+    const buf = await res.arrayBuffer();
+    await playMidiBuffer(buf, uiEl, onDone);
+    status.textContent = 'playing ' + url.split('/').pop();
+    status.classList.remove('error');
+  } catch (e) {
+    status.textContent = 'error: ' + e.message;
+    status.classList.add('error');
+  }
+}
+
+async function playBankSequentially(cues, bankName) {
+  stopAll();
+  for (const { el, file } of cues) {
+    let done;
+    const p = new Promise((resolve) => { done = resolve; });
+    await playFile('/build/midi/' + file, el, done);
+    await p;
+  }
+  document.getElementById('status').textContent = 'finished ' + bankName;
+}
+
+function buildUI(manifest) {
+  const container = document.getElementById('banks');
+  document.getElementById('status').textContent =
+    manifest.sounds.length + ' sound bank(s), ' +
+    manifest.sounds.reduce((n, b) => n + b.cues.length, 0) + ' file(s)';
+
+  for (const bank of manifest.sounds) {
+    const section = document.createElement('section');
+    const isBig = bank.cues.length > 1;
+
+    const h2 = document.createElement('h2');
+    const title = document.createElement('span');
+    title.textContent = bank.bank;
+    const count = document.createElement('span');
+    count.className = 'count';
+    count.textContent = '(' + bank.cues.length + (bank.cues.length === 1 ? ' cue)' : ' cues)');
+    h2.append(title, count);
+    h2.addEventListener('click', () => section.classList.toggle('collapsed'));
+
+    const actions = document.createElement('span');
+    actions.className = 'bank-actions';
+    if (isBig) {
+      const playAllBtn = document.createElement('button');
+      playAllBtn.textContent = 'Play all';
+      playAllBtn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        const cueRefs = bank.cues.map((c) => ({ file: c.file, el: cueEls.get(c.file) }));
+        playBankSequentially(cueRefs, bank.bank);
+      });
+      actions.append(playAllBtn);
+    }
+    h2.append(actions);
+    section.append(h2);
+
+    const ul = document.createElement('ul');
+    ul.className = 'cues';
+    const cueEls = new Map();
+    for (const cue of bank.cues) {
+      const li = document.createElement('li');
+      li.className = 'cue';
+      const btn = document.createElement('button');
+      btn.textContent = '▶';
+      btn.title = 'play ' + cue.file;
+      btn.addEventListener('click', () => playFile('/build/midi/' + cue.file, li));
+      const name = document.createElement('span');
+      name.className = 'name';
+      name.textContent = cue.index === null ? bank.bank : String(cue.index).padStart(2, '0');
+      const bytes = document.createElement('span');
+      bytes.className = 'bytes';
+      bytes.textContent = cue.bytes + 'B';
+      li.append(btn, name, bytes);
+      ul.append(li);
+      cueEls.set(cue.file, li);
+    }
+    section.append(ul);
+    container.append(section);
+  }
+}
+
+document.getElementById('stopAll').addEventListener('click', stopAll);
+
+fetch('/build/manifest.json')
+  .then((r) => r.json())
+  .then(buildUI)
+  .catch((e) => {
+    document.getElementById('status').textContent = 'failed to load manifest.json: ' + e.message;
+    document.getElementById('status').classList.add('error');
+  });
+</script>
+</body>
+</html>

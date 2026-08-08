@@ -20,6 +20,7 @@ const MIME = {
   '.json': 'application/json',
   '.png': 'image/png',
   '.css': 'text/css',
+  '.mid': 'audio/midi',
 };
 
 const server = http.createServer((req, res) => {

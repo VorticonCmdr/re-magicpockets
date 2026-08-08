@@ -311,8 +311,18 @@ respectively), so the fix is scoped exactly to `extras.pak`/`extrax1-4.pak` and 
   `Entity_LookupShapeDescriptor`'s table lookup, `6de3:c39a`). See the `extras.pak` resolution
   below for `+0xa`/`+0xc`/`+0xe`/`+0x14`, and `docs/formats/pin-level-script.md`'s "Entity sprite
   rendering" section for `+0x16`/`+0x18` and the still-open indirect-mode tables (`+0x2`=animStart,
-  `+0x4`=animEnd, `+0x8`=shape-type dispatch value are already named). `+0x0`, `+0x1a` (hitbox
-  index) remain untraced/unused by rendering. (2) Per-level entity *placement* (which specific X/Y positions in a
+  `+0x4`=animEnd, `+0x8`=shape-type dispatch value are already named). `+0x0` remains
+  untraced/unused. **`+0x1a` (hitbox index) RESOLVED (not by rendering, as originally framed, but
+  by spawn-time initialization)**: `Entity_InitFromTemplateRecord` (`1000:c8c0`, see
+  `docs/entity-script-vm.md`'s "Struct-field and global-register findings" section) uses it as a
+  pointer into a per-shape-class table of 6 consecutive words, copied into the runtime entity's
+  `+0x18`-`+0x22` hitbox-extent fields at spawn — i.e. it's a hitbox-geometry lookup key, not a
+  rendering field, which is why the earlier rendering-focused search never found a consumer for it.
+  Also confirmed there: `entity+4` ("kind", used throughout `docs/enemies.md`'s AI/collision
+  dispatch tables) is a direct spawn-time copy of this same descriptor's `+0x18` field, and
+  `entity+0x16` is a copy of descriptor `+8` (the shape-type dispatch value), not of descriptor
+  `+0x16` (`frameSourceMode`) as a same-hex-digit-coincidence guess elsewhere had assumed.
+  (2) Per-level entity *placement* (which specific X/Y positions in a
   given level spawn which shape-class) — found in the per-world `new1/level2/level3a-c/level4.pin`
   files (previously miscategorized as unclassified/music `.pin` files), NOT the `.pap` files. Full
   writeup: `docs/formats/pin-level-script.md`.

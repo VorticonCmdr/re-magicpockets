@@ -40,7 +40,7 @@ bootstrap-path writeup.
 | 5 | `Fx_UpdateTransition` | **confirmed** | Dispatches on `[8ba2]`; the default case (`Fx_TransitionStep`) increments it once per frame and feeds it straight into `Video_SelectAndLoadPalette`'s 24-bank fade table — this is a **palette-fade transition** system between levels/screens, not a screen wipe. See `docs/memory-map.md`. |
 | 6 | `Level_UpdateEventQueue` | guess | Walks an opcode/length-tagged script structure at `[8bb5]`; plausible scripted-event or timed-trigger queue. |
 | 7 | `Demo_PlaybackInput` | **confirmed** | If a demo recording is active, overrides this frame's input with replayed input from an RLE `(repeatCount, state)` buffer at `[8ba6]`. |
-| 8 | `Entity_UpdateAll` | guess | Walks a linked list of entity records from `0x91be`; dispatches per-entity update (`FUN_1000_22da`) or a lighter inactive-entity step (`FUN_1000_ca6d`), checking a `+0x40 == 0x19` "dead" marker throughout. |
+| 8 | `Entity_UpdateAll` | **confirmed** | Walks a linked list of entity records from `0x91be`, skipping any with the `+0x40 == 0x19` "dead" marker. **CORRECTION**: not a heavy/light split as previously described here — every live entity unconditionally gets `Entity_UpdateBehavior` (`1000:ca6d`) every frame; entities that also have an active script flag (`+1 != 0`) additionally get `Entity_RunScript` (`1000:22da`, the opcode-256-jump-table bytecode VM) *first*, as an extra step, not an alternative. See `docs/enemies.md` for the full entity-behavior writeup this correction comes from. |
 | 9 | `Demo_RecordInput` | **confirmed** | Write-side counterpart to #7 — RLE-encodes the current input state into the same `[8ba6]` buffer when not in playback mode. |
 | 10 | `Debug_HandleCheatInput` | **confirmed** | The debug console: single-step (`p`), vsync-skip (`q`), a hardcoded debug bonus setup (`b`), and — the big one — **a 4-digit level-select cheat code system** (digits `0`–`9` build a code, matched against a table, warping directly into any `World1..4_LoadBanks` with a given sub-level). |
 | 11 | `Input_ReadState` | confirmed | Unified joystick-or-keyboard per-frame input read (see `docs/memory-map.md`). |
@@ -206,13 +206,35 @@ damage/interaction dispatcher:
   consistent with a checkpoint-reached or score-milestone trigger, but not fully decoded.
   `Entity_HandleSpecialInteraction` (`1000:3e15`) is the broader collision-effect dispatcher this
   and other checkpoint/pickup/hazard reactions hang off of; also dense, also not decoded
-  branch-by-branch.
+  branch-by-branch, **though its own decompile was read in full by a later pass (see below) to
+  chase its cross-references, even though its ~180-line body isn't narrated branch-by-branch here.**
 - A small state-machine of helpers around this — `Entity_SetInteractionPhase1B`/`0E`/
   `1DFindTarget`/`27WithSound`, `Entity_SetInteractionState5DOr5B`, `Entity_ClampCameraOffset`, and
-  the dispatcher `Entity_InteractionPhaseJumpTable` (an unrecoverable computed jump table) — track
-  a multi-phase interaction sequence (sound cues, camera-offset clamping, finding a target entity)
-  that plausibly backs a scripted cutscene-like reaction (e.g. end-of-level or checkpoint
-  celebration), but the phase numbering's exact meaning was not fully traced.
+  the dispatcher `Entity_InteractionPhaseJumpTable` — track a multi-phase interaction sequence
+  (sound cues, camera-offset clamping, finding a target entity) that plausibly backs a scripted
+  cutscene-like reaction (e.g. end-of-level or checkpoint celebration).
+  **RESOLVED (two later passes, see `docs/entity-script-vm.md`'s "The interaction-phase table,
+  fully accounted for"): the table is NOT unrecoverable — a direct `read_memory` dump of its 20
+  words worked cleanly, and its real caller chain is `Entity_UpdateBehavior` →
+  `Entity_BroadcastEventToVisibleByKindFlag` → `Entity_CheckAabbOverlapOrBroadcast` (an AABB
+  hitbox-overlap test) → this table on full overlap — i.e. it's the generic "two entities' hitboxes
+  now overlap, keyed by why the check was run" resolver, not a fixed cutscene-phase enum.** 9 of its
+  20 slots are self-referential dead/trap entries; the rest resolve to already-documented machinery
+  (`Entity_ChooseAndSpawnBonusItem`, the breakable-block reward path) plus one newly-found generic
+  "pair two entities into an interaction" sequence (`Entity_InteractionPhaseResolveHitAndPairing`)
+  that turns out to share its exact state/script/countdown constants with
+  `Entity_PairWithType1cPropAndArmCutscene` — confirming that function is a specialized front-end
+  for this same general mechanism, not a one-off.
+  **CONFIRMED (later pass, see `docs/entity-script-vm.md`'s "Struct-field and global-register
+  findings" section): this native-code interaction-phase family and the entity-scripting VM's
+  `EntityScriptOp_RunSpecialInteractionSequence`/`EntityScriptOp_SpawnEffectByTypeCode` opcodes are
+  two ends of one shared pipeline, not independent systems.** `Entity_HandleSpecialInteraction`
+  itself writes `[0x8c04] = 0x40` (`'@'`) — the exact value the script-VM opcode polls as a
+  one-shot trigger — among several other tag values, and `Entity_SetInteractionPhase1B` writes the
+  same `[0x8bf7]`/`[0x8bf9]`/`[0x8c69]` globals the script VM's type-`0xe`/`0x1b` spawn branch
+  reads. This was checked properly (xrefs/shared-globals), not assumed from structural similarity —
+  contrast `docs/enemies.md`'s `Entity_HandleWorld3SpecialTrigger`, which looked similarly related
+  to the same script opcode but, when actually checked, turned out **not** to be linked.
 
 ## RLE tile-bank decompression (alt-build only; found this pass)
 
@@ -303,29 +325,66 @@ decoding at all. The other 14 `.pin` files (Adlib/SoundBlaster OPL-format siblin
   placed entity records at load time rather than raster-blitted from the `.pap` grid — see
   `docs/formats/pak.md` for the full search trail. Needs a dosbox-x trace of entity-list
   population at level load to confirm or refute.
-- **`Entity_UpdateBehavior`**'s ~600 lines of per-type/per-state gameplay logic — the single
-  highest-value remaining target; this is literally "how the game plays." (Its full immediate
-  callee graph, 72 functions, is now named — see the entity-system writeup above — but the
-  dense body of `Entity_UpdateBehavior` itself is not yet decoded branch-by-branch.)
-- **`Entity_RunMovementAiScript`** (`1000:6320`) — the newly-found second AI bytecode
-  interpreter (opcode chars `'n','p','q','r','s','t'` from per-kind tables at
-  `0xec7c`/`0xec68`/`0xec90`). ~150 dense decompiled lines, not decoded opcode-by-opcode.
-- **`Entity_RunScript`'s opcode jump table** (`1000:2383`, 256 entries) — decoding this reveals
-  the entity scripting language.
+- **RESOLVED: `Entity_UpdateBehavior` is now decoded branch-by-branch for every class (0-7) and
+  both special-cased pre-check types**, not just dispatch shape, and both of its per-(world, type)
+  AI tables (`Entity_DispatchUpdateByKind`, `Entity_DispatchHitReactionByKind`) plus a **third**
+  one found this pass (`Entity_SelectNextStateByWorldAndKind`, the "clear all enemies"/defeat-state
+  table) are fully mapped — see `docs/enemies.md`. That doc also corrects this file's earlier claim
+  that `Entity_UpdateAll` dispatches to *either* a heavy or a light per-entity step (see the
+  corrected main-loop table entry above). What's left inside `Entity_UpdateBehavior` is only the
+  *contents* of the `+0xc` script pointers each branch writes (that's `Entity_RunScript`'s own
+  opcode VM, a separate concern — see below), not the dispatch logic itself.
+- **RESOLVED (opcode-level *and* byte-exact): `Entity_RunMovementAiScript`** (`1000:6320`) — the
+  second AI bytecode interpreter (opcode chars `'n','p','q','r','s','t'` from per-animation-set
+  tables at `0xec7c`/`0xec68`/`0xec90`) now has every opcode's role characterized *and* the three
+  20-byte tables dumped/tabulated byte-for-byte via `read_memory` — see `docs/enemies.md`.
+- **RESOLVED: the ground-collision per-kind pipeline** (`Entity_ApplyGroundStateTransition`,
+  `Entity_ProcessGroundStateByWorldAndKind`, `Entity_ApplyGroundStateTransitionByKind`,
+  `Entity_DispatchGroundStateByKindA`/`B`) is now decoded to concrete per-world/per-type detail —
+  a distinct breakable-tile/hazard-block system (bank 3/6 sprites) separate from the patrol/chase
+  "nasty" enemy tables above. **RESOLVED: `Entity_ApplyComplexGroundResponse`** (the class-3/player
+  branch of this same pipeline) is now decoded — see `docs/enemies.md`'s player-physics section.
+- **RESOLVED: `Entity_RunScript`'s opcode jump table.** The table is 78 entries (`0x00`-`0x4D`),
+  not 256 as originally guessed — the byte range beyond that is real code
+  (`Entity_ResetExtendedFields`), not table data. All 78 opcodes are characterized — movement,
+  spawn, sound, palette-fade, a CALL/RETURN subroutine mechanism, and direct opcode-level control
+  over the `[0x8ba1]` AI-freeze flag and the hardware scroll-width register — with two real
+  example scripts decoded byte-exact from the default-script tables. A separate VM from
+  `Entity_RunMovementAiScript` above. See `docs/entity-script-vm.md`; some opcodes' call targets
+  remain untraced, listed honestly in that doc's closing section.
 - **All 441/441 functions are now named** (`symbols/gameu.json`) — the naming sweep itself is
-  complete. What remains is *depth*, not *coverage*: several structurally-named-but-dense
-  functions (`Entity_UpdateBehavior`, `Entity_ApplyGroundStateTransition`,
-  `Entity_ApplyComplexGroundResponse`, `Entity_HandleSpecialInteraction`,
-  `Entity_ProcessDamageAccumulation`, `Entity_ChooseAndSpawnBonusItem`,
-  `Entity_RunMovementAiScript`, `Entity_RunScript`'s opcode jump table) are flagged `guess` and
-  were deliberately not decoded branch-by-branch — each is a self-contained target for a future
-  session, ideally paired with dosbox-x behavioral verification rather than reading magic numbers
-  cold.
-- The world/sub-level struct passed around as `[8b89]`/`[8b8b]` — worth formalizing as a Ghidra
-  struct once its full field layout is known.
+  complete. **RESOLVED: `Entity_HandleWorld3SpecialTrigger`** is now confirmed as a world-3
+  boss-defeat reward-sequence trigger (searches for kind `0x41`, independently cross-validated as
+  world 3's boss kind by `EntityScriptOp_WaitForBossDefeatThenKillSelf`'s per-world boss-kind
+  table `0x15/0x40/0x41/0x43` — see `docs/enemies.md`). Remaining depth gaps, narrowed by this
+  session: `Entity_HandleSpecialInteraction` and `Entity_ProcessDamageAccumulation` — each a
+  self-contained target for a future session, ideally paired with dosbox-x behavioral verification
+  rather than reading magic numbers cold.
+  `Entity_ChooseAndSpawnBonusItem` and `Entity_RunScript`'s opcode jump table are now resolved —
+  see `docs/entity-script-vm.md` for the latter (the former is cross-referenced from it, still
+  not decoded branch-by-branch itself but confirmed as the target of `EntityScriptOp_CheckBonusMarkerAndMaybeSpawn`).
+- **RESOLVED: `[0x8b8b]` is a sub-level index, not a second copy of the world number.** Confirmed via
+  `search_instructions` across every reference to it: several level/sub-level-start call sites write
+  the literal constant `1` into it regardless of which world is selected, and other readers compare
+  it against `6`/`8` (values that make no sense as a 4-world selector). The `if([8b89]==0) x=[8b8b]`
+  fallback idiom used in several dispatch functions is a narrow special case, not evidence the two
+  fields are interchangeable in general — see `docs/enemies.md`'s charging-hazard section for the
+  byte-identical-instruction evidence (shared with `Level_RunScriptedEventStream`'s already-documented
+  world-1/sub-level-6 cutscene check) that nails this down. The world/sub-level struct passed around
+  as `[8b89]`/`[8b8b]` is still worth formalizing as a real Ghidra struct now that both fields'
+  actual roles are known.
 - Resolving the entity record layout fully — confirmed so far: `+0`=type/facing (sign bit used
   as an off-screen marker by `Entity_RebuildVisibleList`), `+1`=state byte, `+2`=type/shape-class,
-  `+4`=kind, `+6`/`+8`=X/Y, `+0xc`=script pointer, `+0x14`=orientation/hitbox-size,
+  `+4`=kind (confirmed, per a later pass, to be a direct spawn-time copy of the shape descriptor's
+  own `+0x18` field — see `docs/entity-script-vm.md`), `+6`/`+8`=X/Y, `+0xc`=script pointer,
+  `+0x10`/`+0x12`=animation range start/end (also descriptor-copied at spawn), `+0x14`=orientation/
+  hitbox-size, `+0x16`=a spawn-time copy of the shape descriptor's `+8` render-dispatch/shape-type
+  value, script-overridable at runtime (`docs/entity-script-vm.md`'s op 57) — likely a live
+  blit-variant/shape-class swap, e.g. for a boss phase-transform, `+0x18`-`+0x22`=a 6-word
+  hitbox-extent block copied at spawn from a per-shape-class table (resolves
+  `docs/formats/pak.md`'s long-open `+0x1a` hitbox-index question — see `docs/entity-script-vm.md`),
+  with `+0x1c`/`+0x20` (two words inside this same block) also script-adjustable at runtime for
+  animation-frame-keyed hitbox resizing,
   `+0x24`=collision/blocked-direction flags, `+0x26`/`+0x28`=speed pair (set by
   `Entity_SetupDirectionVector`), `+0x2a`=charge/wind-up counter, `+0x2c`=linked-child entity
   pointer, `+0x2e`=animation-set-progress counter, `+0x30`/`+0x32`/`+0x34`=direction-vector
@@ -349,8 +408,15 @@ Found while naming `Entity_UpdateBehavior`'s callee graph, this resolves the ope
   `Entity_PushPositionEvent`), it allocates a free slot (`Entity_FindFreeSlot`, scanning the
   `0x9356`-`0xb918` struct block for a zero type field) and initializes it per-opcode: `0x11`/
   `0x25` create a linked child attached to a parent entity; `0x1f`/`0x44`/`0x53` do raw setup
-  pulling script pointers from tables `0xcd9c`/`0xcd88`/`0xcdfe` (a **third and fourth**
-  state→script table, alongside `Entity_SetStateAndScript`'s `0xcd88`/`0xd996`); `0x2b` sets up a
+  pulling script pointers from tables `0xcd9c`/`0xcd88`/`0xcdfe`. **Correction (see
+  `docs/entity-script-vm.md`): these are not a third/fourth independent table.** Byte-exact
+  `read_memory` comparison proves `0xcd9c` and `0xcdfe` are literal aliases *into* `0xcd88` —
+  `0xcd9c = 0xcd88 + 10*2` (16 consecutive words verified identical) and
+  `0xcdfe = 0xcd88 + 59*2` (16 consecutive words verified identical). There are only **two**
+  physical state→script tables in the whole engine: `0xcd88` (positive states) and `0xd996`
+  (negative states) — `Entity_SetStateAndScript`'s pair, also reused everywhere else (the VM's
+  own seed-on-first-run logic, `Entity_SpawnFromQueuedEvent`'s `0xcd9c`/`0xcdfe` "aliases" above,
+  and opcode 8's controller-entity state assignment in `docs/entity-script-vm.md`); `0x2b` sets up a
   fixed charge-type entity; `0x2f` re-splices an entity's list position; and **`0x5e` is
   confirmed as the firework/particle-spawn opcode** used by `Game_WarpToLevelStageAndRunLoop`'s
   ending sequence, picking one of 4 random animation-frame ranges via `Rng_NextValue`. After
