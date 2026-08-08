@@ -104,7 +104,8 @@ below) — which also explains why its payload looks so unlike the other 77 ordi
 sound-effect cues in the bank: it's special-purpose content, not routine gameplay audio.
 
 **Confirmed via live DOSBox tracing** (`dosbox-mcp`, a debugger bridge configured for this
-project) that this call site is real and reachable — not dead code: with a breakpoint on
+project — see `docs/dosbox-debugging.md` for the workflow/gotchas) that this call site is real
+and reachable — not dead code: with a breakpoint on
 `Snd_TriggerEffect`'s entry and the game warped to World 2 via the level-select cheat (confirmed
 live by reading `[0x8b89]`/`[0x8b8b]` directly — world flipped from `0` to `2`), the sequence of
 sound IDs triggered during the warp (`9`, `1`, `71`, `9`, `0x108`, `0x14e`, ...) never included
