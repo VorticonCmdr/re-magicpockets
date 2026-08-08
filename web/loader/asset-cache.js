@@ -8,6 +8,7 @@
 import { rncUnpack, crc16arc } from '../core/rnc.js';
 import { decodePak } from '../core/pak.js';
 import { decodePap } from '../core/pap.js';
+import { decodeLevelScript } from '../core/pin-level-script.js';
 
 export class AssetCache {
   /** @param {Map<string, () => Promise<Uint8Array>>} source from asset-source.js */
@@ -63,6 +64,16 @@ export class AssetCache {
     if (this.decodedCache.has(key)) return this.decodedCache.get(key);
     const raw = await this.getRaw(filename);
     const decoded = decodePap(raw);
+    this.decodedCache.set(key, decoded);
+    return decoded;
+  }
+
+  /** Decoded sub-levels + entity-placement records for a level-script .pin file. */
+  async getLevelScript(filename) {
+    const key = `levelscript:${filename.toLowerCase()}`;
+    if (this.decodedCache.has(key)) return this.decodedCache.get(key);
+    const raw = await this.getRaw(filename);
+    const decoded = decodeLevelScript(raw);
     this.decodedCache.set(key, decoded);
     return decoded;
   }

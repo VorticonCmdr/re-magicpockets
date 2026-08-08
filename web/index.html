@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="utf-8">
-<title>Magic Pockets port — Phase 0 checkpoint</title>
+<title>Magic Pockets port — Phase 1 checkpoint</title>
 <style>
   body { font-family: system-ui, sans-serif; background: #111; color: #eee; margin: 0; padding: 1.5rem; }
   h1 { font-size: 1.1rem; font-weight: 600; }
@@ -15,12 +15,13 @@
 </style>
 </head>
 <body>
-<h1>Magic Pockets port — Phase 0 checkpoint</h1>
+<h1>Magic Pockets port — Phase 1 checkpoint</h1>
 <p>
-  Proves the runtime-loading constraint end to end: pick your local, unmodified <code>data/</code>
-  folder (still RNC-ProPack-compressed, exactly as shipped) and this page RNC-depacks and decodes
-  a level's tile bank entirely in the browser — no <code>node tools/build-all.js</code>
-  pre-extraction step, no committed PNG/JSON artifacts. See <code>docs/port-plan.md</code>.
+  Static world rendering: pick your local, unmodified <code>data/</code> folder (still
+  RNC-ProPack-compressed, exactly as shipped) and this page RNC-depacks and decodes a full level
+  — background tiles plus every placed entity's real sprite where the addressing mode is resolved
+  (colored dots otherwise, same as <code>tools/viewer.html</code>) — entirely in the browser, no
+  <code>node tools/build-all.js</code> pre-extraction step. See <code>docs/port-plan.md</code>.
 </p>
 <div class="controls">
   <label>Pick your local <code>data/</code> folder: <input type="file" id="picker" webkitdirectory></label>
