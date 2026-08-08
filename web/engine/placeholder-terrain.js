@@ -42,8 +42,10 @@ export function buildPlaceholderCollisionGrid() {
   // Breakable blocks sitting directly in the walking lane, reachable on foot from spawn without
   // jumping -- walk right and fire to clear a path through them.
   rect(15, 9, 3, 1);
-  // A wall further along, past the blocks, to demonstrate horizontal blocking on its own.
-  rect(35, 3, 1, 7);
+  // A wall further along, past the blocks, to demonstrate horizontal blocking -- tall enough to
+  // block a jump (max jump clearance is ~56px, this wall is 80px), but leaves rows 8-9 (floor/
+  // head height) open so the exit zone past it stays reachable on foot, not sealed off entirely.
+  rect(35, 3, 1, 5);
 
   // Placeholder pickups (Phase 5) -- NOT derived from real level-script pickup entities (this
   // port doesn't have the runtime "+0x10" pairing field docs/engine.md's

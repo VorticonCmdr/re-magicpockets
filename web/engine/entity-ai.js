@@ -1,31 +1,37 @@
 // Wires spawned level-script entities up to real behavior, using docs/enemies.md's CONFIRMED
-// EXACT world-1 entries of Entity_DispatchUpdateByKind (the per-frame "think" dispatch table) --
-// not a guess at which types are AI-driven, the literal table from the doc:
+// EXACT per-world entries of Entity_DispatchUpdateByKind (the per-frame "think" dispatch table) --
+// not a guess at which types are AI-driven, the literal table from the doc, all 4 worlds (Phase 6
+// extends Phase 4's world-1-only wiring now that other worlds' levels are reachable):
 //
-//   0x12 Entity_ThinkSwingingGate        (gate/switch family)
-//   0x13 Entity_ThinkPatrolDefaultB      (generic patrol)
-//   0x14 Entity_ThinkPeriodicIdleFidgetA (idle fidget, delegates to patrol)
-//   0x20 Entity_ThinkChargingHazard      (charging hazard, delegates to patrol when idle)
-//   0x23 Entity_ThinkPatrolDefaultA      (generic patrol)
-//   0x2c Entity_ThinkPatrolDefaultC      (generic patrol, shared across all 4 worlds)
+//   World 1: 0x12 gate, 0x13/0x14/0x20/0x23/0x2c patrol/idle-fidget/charging-hazard
+//   World 2: 0x42/0x4a/0x4c/0x2c patrol/idle-fidget, 0x48/0x49 sleeper pair, 0x4b edge-reset
+//            (no gate type exists in world 2 -- confirmed, not an omission)
+//   World 3: 0x4f vertical pathfinder, 0x50/0x51 patrol w/ custom tile table, 0x54 gate, 0x2c patrol
+//   World 4: 0x57/0x58/0x59/0x5a patrol, 0x5d gate, 0x2c patrol
 //
 // Any (world, type) combination not in that table is a documented silent no-op in the original --
-// entities whose type isn't one of the six above stay exactly as Phase 3 left them: spawned,
-// visible, idle. What IS a labeled simplification, not a port: the exact per-type animation-set
-// (+0x39, which table row an entity reads), the gate's real target-X coordinate semantics, the
-// charging-hazard's exact charge-counter tuning, and the patrol-window bound substituting for real
-// ground-extent detection -- see inline notes. All movement-AI-VM entities use animation-set 0 (a
-// real, documented row -- "a baseline patroller: turn around when blocked/clear, re-sense when
-// mixed" -- not a fabricated value), since the real per-type animSet assignment isn't dumped.
+// entities whose type isn't wired stay idle (Phase 3 behavior). What IS a labeled simplification,
+// not a port: every wired type (sleeper, vertical-pathfinder, edge-reset, patrol-with-custom-table,
+// gate, generic patrol, charging hazard) collapses onto just two behaviors here -- 'gate' or the
+// generic movement-AI-VM patrol/chase 'kind' -- rather than each getting its own distinct think
+// function's exact logic (sleeper wake-conditions, pathfinder's vertical-climb gating, etc. are
+// documented in docs/enemies.md but not individually ported). The exact per-type animation-set
+// (+0x39, which table row an entity reads), gate target-X semantics, and ground-extent detection
+// are also placeholders -- see inline notes. All movement-AI-VM entities use animation-set 0 (a
+// real, documented row), since the real per-type animSet assignment isn't dumped.
 
 'use strict';
 
 import { tickMovementAi } from './movement-ai-vm.js';
 
-// World-1 Entity_DispatchUpdateByKind entries this port wires up (docs/enemies.md, exact).
-export const GATE_TYPES = new Set([0x12]);
-export const MOVEMENT_AI_TYPES = new Set([0x13, 0x14, 0x20, 0x23, 0x2c]);
-const CHARGING_HAZARD_TYPE = 0x20;
+// Per-world Entity_DispatchUpdateByKind entries this port wires up (docs/enemies.md, exact).
+const WORLD_DISPATCH = {
+  1: { gate: [0x12], ai: [0x13, 0x14, 0x20, 0x23, 0x2c] },
+  2: { gate: [], ai: [0x42, 0x48, 0x49, 0x4a, 0x4b, 0x4c, 0x2c] },
+  3: { gate: [0x54], ai: [0x4f, 0x50, 0x51, 0x2c] },
+  4: { gate: [0x5d], ai: [0x57, 0x58, 0x59, 0x5a, 0x2c] },
+};
+const CHARGING_HAZARD_TYPE = 0x20; // world 1 only
 
 const PATROL_RANGE_PX = 96; // placeholder stand-in for real ground-extent/lookahead detection
 const PATROL_SPEED = 0.5; // px/frame, placeholder
@@ -36,9 +42,16 @@ const GATE_SPEED = 0.6; // px/frame, placeholder
 const GATE_TRAVEL_PX = 96; // placeholder stand-in for the real target-X (0x8c25) semantics
 const GATE_PARK_FRAMES = 90;
 
-/** Attaches an `.ai` behavior record to `entity` if its type matches a wired-up world-1 dispatch entry. Returns true if attached. */
-export function attachAiIfKnown(entity) {
-  if (GATE_TYPES.has(entity.type)) {
+/** True if `type` is a wired-up gate type for `world` (docs/enemies.md's exact table). */
+export function isGateType(world, type) {
+  return (WORLD_DISPATCH[world]?.gate || []).includes(type);
+}
+
+/** Attaches an `.ai` behavior record to `entity` if its (world, type) matches a wired-up dispatch entry. Returns true if attached. */
+export function attachAiIfKnown(world, entity) {
+  const dispatch = WORLD_DISPATCH[world];
+  if (!dispatch) return false;
+  if (dispatch.gate.includes(entity.type)) {
     entity.ai = {
       kind: 'gate',
       homeX: entity.x,
@@ -47,9 +60,9 @@ export function attachAiIfKnown(entity) {
     };
     return true;
   }
-  if (MOVEMENT_AI_TYPES.has(entity.type)) {
+  if (dispatch.ai.includes(entity.type)) {
     entity.ai = {
-      kind: entity.type === CHARGING_HAZARD_TYPE ? 'chargingHazard' : 'patrol',
+      kind: world === 1 && entity.type === CHARGING_HAZARD_TYPE ? 'chargingHazard' : 'patrol',
       animSet: 0, // see module header
       homeX: entity.x,
       y: entity.y,

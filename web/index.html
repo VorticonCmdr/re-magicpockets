@@ -2,37 +2,41 @@
 <html lang="en">
 <head>
 <meta charset="utf-8">
-<title>Magic Pockets port — Phase 5 checkpoint</title>
+<title>Magic Pockets port — Phase 6 checkpoint</title>
 <style>
   body { font-family: system-ui, sans-serif; background: #111; color: #eee; margin: 0; padding: 1.5rem; }
   h1 { font-size: 1.1rem; font-weight: 600; }
   p { color: #aaa; max-width: 60rem; line-height: 1.4; }
-  .controls { margin: 1rem 0; display: flex; gap: 0.75rem; align-items: center; }
+  .controls { margin: 1rem 0; display: flex; gap: 0.75rem; align-items: center; flex-wrap: wrap; }
   #status { margin: 0.5rem 0 1rem; font-family: ui-monospace, monospace; font-size: 0.85rem; color: #8f8; white-space: pre-wrap; }
   #status.error { color: #f88; }
   #view { image-rendering: pixelated; border: 1px solid #444; background: #000; width: 960px; height: 576px; }
   button { font: inherit; padding: 0.4rem 0.8rem; }
+  #level-select { display: flex; gap: 0.4rem; flex-wrap: wrap; margin: 0.5rem 0 1rem; }
+  #level-select button { padding: 0.25rem 0.6rem; font-size: 0.85rem; background: #223; color: #cde; border: 1px solid #446; border-radius: 3px; cursor: pointer; }
+  #level-select button:hover { background: #335; }
 </style>
 </head>
 <body>
-<h1>Magic Pockets port — Phase 5 checkpoint</h1>
+<h1>Magic Pockets port — Phase 6 checkpoint</h1>
 <p>
-  Player systems, HUD, bonus economy — the "first fully playable level" milestone: pick your
-  local, unmodified <code>data/</code> folder. <b>Walk/jump (arrows/WASD), break blocks ahead
-  (space/ctrl), collect the yellow pickups, avoid/survive the chasing enemies from Phase 4 (each
-  hit costs a heart, top-right — 0 hearts respawns you), and reach the green exit zone</b> to
-  finish. Breaking a block spawns a real bonus-item sprite chosen by
-  <code>Entity_ChooseAndSpawnBonusItem</code>'s REAL world-1 decision tree
-  (<code>web/engine/bonus-economy.js</code>), fed approximated inputs since this port doesn't
-  simulate the subsystems that produce the real difficulty-input globals. The score/hearts HUD is
-  a plain canvas-text placeholder — the original's custom glyph-tile rendering needs font data
-  this project hasn't resolved — but every number it shows is real tracked game state. See
-  <code>docs/port-plan.md</code> Phase 5.
+  World/level flow: pick your local, unmodified <code>data/</code> folder. All 8 real levels (2
+  sub-levels x 4 worlds) are now reachable — reach the green exit zone to fade out and advance to
+  the next level in sequence, or jump directly to any of them with the <b>level-select buttons
+  below</b> (this port's dev/debug replacement for the original's hidden F2 cheat-code console,
+  per <code>docs/port-plan.md</code> Phase 6). Score/health carry over between levels within a
+  session. AI wiring (<code>web/engine/entity-ai.js</code>) now covers all 4 worlds' CONFIRMED
+  EXACT <code>Entity_DispatchUpdateByKind</code> entries, not just world 1's. The fade transition
+  is a plain canvas alpha overlay, not a port of the original's real 24-bank VGA palette fade
+  (<code>web/engine/transition.js</code>) — and every level still plays on the same Phase 3/5
+  placeholder collision/pickup/exit geometry regardless of its real layout. See
+  <code>docs/port-plan.md</code> Phase 6.
 </p>
 <div class="controls">
   <label>Pick your local <code>data/</code> folder: <input type="file" id="picker" webkitdirectory></label>
   <button id="dev-server" type="button">or load from dev server (tools/serve.js, data/ on disk)</button>
 </div>
+<div id="level-select"></div>
 <div id="status">waiting for input…</div>
 <canvas id="view" tabindex="0"></canvas>
 <script type="module" src="main.js"></script>

@@ -288,13 +288,43 @@ and catches transliteration mistakes early rather than at the end.
   were verified in separate passes, not the same playthrough) but every mechanic independently
   confirmed working.
 
-### Phase 6 — World/level flow
-- Port world selection, `World1-4_LoadBanks`, level transitions (`Fx_UpdateTransition` palette
-  fade), and enough of `Level_RunScriptedEventStream`'s static event stream (the `0xAAAA/BBBB/
-  CCCC/DDDD` control markers) to get from one level to the next.
-- Level-select (skip the DOS cheat-code UI; expose it as a normal dev/debug menu instead — no
-  reason to make players enter a hidden 4-digit code once this is a real port).
-- **Checkpoint**: multiple levels/worlds are reachable and playable in sequence.
+### Phase 6 — World/level flow (DONE, with scope changes)
+- **`web/engine/level-registry.js`**: all 8 real levels (2 sub-levels x 4 worlds, straight from
+  the shipped filenames -- `docs/formats/pin-level-script.md`'s world-1-script-is-named-`new1.pin`
+  oddity and world 3's `a`/`b`-suffixed script-variant pairing, matching `tools/viewer.html`'s
+  existing heuristic). `World1-4_LoadBanks` itself isn't ported as a distinct function -- this
+  port's `AssetCache` already lazily loads+depacks whatever a level needs on demand, a strict
+  superset of that function's job, so there's nothing left for a dedicated port to do.
+- **`web/engine/transition.js`**: a fade-out/fade-in level transition, NOT a port of
+  `Fx_UpdateTransition`'s real 24-bank VGA palette walk (this port's tiles are already decoded
+  RGBA, there's no palette hardware to animate) -- a plain canvas black-alpha overlay instead,
+  same narrative effect via a completely different mechanism. `Level_RunScriptedEventStream`'s
+  static event stream (the `0xAAAA/BBBB/CCCC/DDDD` markers) is NOT ported -- this port's fixed
+  level sequence (`nextLevel()` in level-registry.js) does the same practical job (get from one
+  level to the next) without needing the original's scripted-event-stream indirection.
+- **Level-select** (`web/main.js`'s `#level-select` button row): the dev/debug replacement for the
+  hidden F2 cheat-code console, exactly as planned -- jumps directly to any of the 8 levels.
+- **Extended, not in the original phase description**: `web/engine/entity-ai.js`'s AI wiring now
+  covers all 4 worlds' CONFIRMED EXACT `Entity_DispatchUpdateByKind` entries (docs/enemies.md),
+  not just world 1's -- natural given the data was already fully documented and other worlds are
+  now actually reachable. Score/health persist across level loads within a session (the same
+  `Player` instance is reused, only repositioned).
+- **Found and fixed a real placeholder-terrain bug while testing this phase**: the Phase 3/5 test
+  wall was tall enough to seal off the Phase 5 exit zone entirely (needed 112px of jump clearance,
+  the player's max jump height is ~56px) -- verified by an automated run that couldn't reach the
+  exit no matter how long it tried. Fixed by shortening the wall to leave a floor-level gap; still
+  ported, unmodified, to every level per this phase's scope (see below).
+- **Still Phase 3/5 placeholders, unchanged**: every level plays on the SAME hand-authored
+  collision/pickup/exit-zone geometry regardless of its real layout -- this phase is about level
+  SEQUENCING working correctly, not deriving real per-level playable geometry (still blocked on
+  the `[0xef23]` tile-solidity table, per Phase 3's note).
+- **Checkpoint (met)**: verified in a real (headless Chromium) browser run — all 8 level-select
+  buttons load their real level correctly (background art, AI entity counts differing sensibly per
+  world, e.g. world 3a's 10 gates vs. world 1a's 1); reaching the exit zone triggered the fade
+  transition and advanced to the next level in sequence with score/health carried over (confirmed
+  by an automated playthrough that had to survive several enemy-caused deaths/respawns along the
+  way before finally reaching the exit — the chase mechanic from Phase 4 makes this a genuine,
+  non-trivial gameplay loop, not just a scripted camera pan).
 
 ### Phase 7 — Audio (explicitly last, per the existing project priority)
 - MIDI-cue playback for sound effects/music using the already-recoverable `roland.pin`/
