@@ -27,17 +27,22 @@ export function buildPlaceholderCollisionGrid() {
     for (let r = row0; r < row0 + h; r++) for (let c = col0; c < col0 + w; c++) set(c, r, solid);
   };
 
-  // Ground floor across a wide starting area, at row 20 (y=320px).
-  rect(0, 20, 40, 3);
+  // Positioned (cols 9-40, rows 0-10 => x288-1280, y0-160) to overlap where new1.pin's real
+  // type-0x12/0x13/0x14/0x20/0x23 entities actually spawn (x360-1084, y0-112, per Phase 4's
+  // wiring in engine/entity-ai.js) -- so the player demo happens near the real, moving AI
+  // entities instead of an empty corner of the map.
+  //
+  // Ground floor across a wide area, at row 10 (y=160px).
+  rect(9, 10, 31, 3);
   // A couple of stepped platforms to demonstrate landing/blocking.
-  rect(6, 16, 4, 1);
-  rect(12, 13, 4, 1);
-  rect(18, 17, 5, 1);
+  rect(13, 7, 4, 1);
+  rect(19, 5, 4, 1);
+  rect(25, 8, 5, 1);
   // Breakable blocks sitting directly in the walking lane, reachable on foot from spawn without
   // jumping -- walk right and fire to clear a path through them.
-  rect(10, 19, 3, 1);
+  rect(15, 9, 3, 1);
   // A wall further along, past the blocks, to demonstrate horizontal blocking on its own.
-  rect(24, 10, 1, 10);
+  rect(35, 3, 1, 7);
 
-  return { size: GRID_SIZE, grid, spawnCol: 2, spawnRow: 19 };
+  return { size: GRID_SIZE, grid, spawnCol: 10, spawnRow: 9 };
 }

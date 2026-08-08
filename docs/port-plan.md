@@ -214,16 +214,45 @@ and catches transliteration mistakes early rather than at the end.
   spawned into the 146-slot pool and rendered on the real level art, but doesn't act yet (idle
   sprites) -- verified in a real (headless Chromium) browser run.
 
-### Phase 4 — The two bytecode VMs
-- Port `Entity_RunScript` (78 opcodes: movement, spawn, sound, palette-fade, the CALL/RETURN
-  subroutine mechanism, the `[0x8ba1]` AI-freeze flag, scroll-width control) and
-  `Entity_RunMovementAiScript` (6 opcodes over the 3 dumped 20-byte tables) as straightforward
-  interpreter loops — both are already fully characterized, this is transliteration, not
-  discovery.
-- Wire `Entity_SetStateAndScript`'s two tables (`0xcd88` positive, `0xd996` negative) so entities
-  pick up their default scripts correctly.
-- **Checkpoint**: patrol/chase/gate/sleeper enemies behave correctly — the actual "the game plays
-  itself for NPCs" milestone.
+### Phase 4 — The two bytecode VMs (DONE, with one scope change)
+- **`Entity_RunMovementAiScript`** (`web/engine/movement-ai-vm.js` + `entity-ai.js`): the 6-opcode
+  interpreter, using the three per-animation-set tables transcribed byte-exact from
+  `docs/enemies.md`'s live-memory dump. Wired to REAL level-script entities via
+  `docs/enemies.md`'s CONFIRMED EXACT world-1 `Entity_DispatchUpdateByKind` table (types
+  `0x12`=gate, `0x13/0x14/0x20/0x23/0x2c`=patrol/charging-hazard/idle-fidget) — not a guess at
+  which entities get AI, the literal documented table. Opcode *semantics* (turn-around,
+  scan-then-react, chase/flee decision, approach-and-strike) are a faithful structural port, not a
+  byte-exact one — that doc itself only characterizes them (~150 dense decompiled lines left
+  undecoded by design). What's a labeled placeholder, not a port: the real per-type animation-set
+  assignment (not dumped, so every AI entity uses animSet 0 — a real table row, not fabricated),
+  the gate's exact target-X coordinate semantics, and ground-extent detection (the tile-lookahead
+  needed a `nearPatrolEdge` fallback since the Phase-3 placeholder collision grid is too sparse to
+  answer "is there floor ahead" for entities scattered across the real level — see
+  `movement-ai-vm.js`'s `sampleLookahead` header for the full story, including a real bug this
+  surfaced and fixed: animSet 0's table row is `'n'` for both Clear AND Blocked, which made
+  entities flip direction almost every frame in open (uncollision-mapped) space before the
+  patrol-window-edge fallback was added).
+- **`Entity_RunScript`** (`web/engine/entity-script-vm.js`): the VM LOOP itself (opcode dispatch,
+  CALL/RETURN via the repurposed `+0x2a` field, the precise yield-vs-wait semantics
+  `docs/entity-script-vm.md`'s "VM loop internals" section nails down byte-exact) is a faithful
+  structural port, with real handlers for ~11 of the 78 opcodes (anim frame, wait, jump, kill,
+  call/return, goto, add-to-position, AI-freeze wait, reset) plus the 15 documented no-op slots.
+  **NOT wired to real game content**: the default-script tables (`0xcd88`/`0xd996`) and the actual
+  per-entity script bytecode they point at live in the data segment and haven't been dumped, so
+  there's no real script to run yet — every other opcode is a documented, logged stub. Verified
+  correct against a synthetic test script (Node sanity check, not committed) exercising
+  yield-across-calls, multi-frame wait-then-resume, and a same-frame call/return/jump/stop chain.
+  Revisit once `0xcd88`/`0xd996` are dumped.
+- **Checkpoint (met)**: gate/patrol/charging-hazard entities from the real `new1.pin` level script
+  tile-scan, turn around at patrol-window edges, and chase the player when close — verified in a
+  real (headless Chromium) browser run (entities visibly relocated across screenshots taken
+  seconds apart; walking the player toward a cluster raised the "currently chasing" count from 0
+  to several, with a chasing entity's dot visibly overlapping the player's box). Only the world-1
+  subset of `Entity_DispatchUpdateByKind` is wired (this port's test level is world 1 only) --
+  sleepers, the vertical pathfinder, and the other worlds' gate/patrol types (`docs/enemies.md`
+  documents all of them) aren't attached to an `.ai` record yet, though `movement-ai-vm.js`'s
+  interpreter itself doesn't care which world a type came from and would run their scripts the
+  same way once entity-ai.js's dispatch table is extended.
 
 ### Phase 5 — Player-specific systems, HUD, bonus economy
 - Port `Entity_ApplyComplexGroundResponse` (the class-3/player-specific ground-response branch),

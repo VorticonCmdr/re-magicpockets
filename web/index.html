@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="utf-8">
-<title>Magic Pockets port — Phase 3 checkpoint</title>
+<title>Magic Pockets port — Phase 4 checkpoint</title>
 <style>
   body { font-family: system-ui, sans-serif; background: #111; color: #eee; margin: 0; padding: 1.5rem; }
   h1 { font-size: 1.1rem; font-weight: 600; }
@@ -15,20 +15,22 @@
 </style>
 </head>
 <body>
-<h1>Magic Pockets port — Phase 3 checkpoint</h1>
+<h1>Magic Pockets port — Phase 4 checkpoint</h1>
 <p>
-  Entity simulation: pick your local, unmodified <code>data/</code> folder (still
-  RNC-ProPack-compressed, exactly as shipped). A player entity (the orange box) walks, jumps, is
-  blocked by/lands on the <b>pink-outlined</b> collision geometry, and can break the block directly
-  ahead of it — <b>arrow keys/WASD to move + jump, space/ctrl to break a block</b>. Every other
-  level-script entity is spawned into a 146-slot pool (matching the original's real entity
-  capacity) and rendered, but doesn't act yet — no behavior/script VM wiring until Phase 4.
-  <b>The pink collision grid is a hand-authored placeholder, not derived from the real cave art
-  underneath</b> — while building this phase it turned out every real <code>.pap</code> cell is
-  non-zero (no usable "empty" marker), and the actual per-tile solidity table
-  (<code>[0xef23]</code>, confirmed to exist but not yet dumped) is a genuinely open item — see
-  <code>web/engine/placeholder-terrain.js</code>, the updated <code>docs/engine.md</code>, and
-  <code>docs/port-plan.md</code>.
+  The movement-AI bytecode VM: pick your local, unmodified <code>data/</code> folder (still
+  RNC-ProPack-compressed, exactly as shipped). The player (orange box) walks/jumps/breaks blocks as
+  in Phase 3, now sharing the world with <b>real level-script entities running real AI</b> —
+  gates patrol back and forth (type <code>0x12</code>), and patrol/charging-hazard enemies
+  (types <code>0x13/0x14/0x20/0x23/0x2c</code>) tile-scan, turn around, and chase the player when
+  close, all per docs/enemies.md's CONFIRMED EXACT world-1
+  <code>Entity_DispatchUpdateByKind</code> table. See <code>web/engine/movement-ai-vm.js</code> and
+  <code>entity-ai.js</code> for exactly which parts are a faithful structural port (the opcode
+  table, the dispatch shape) vs. a labeled placeholder (per-type animation-set/range/speed tuning,
+  which isn't dumped upstream). The general 78-opcode <code>Entity_RunScript</code> VM
+  (<code>entity-script-vm.js</code>) is implemented too but not wired to real content yet — its
+  default-script tables aren't dumped, so there's no real script to run; it's verified against a
+  synthetic test script instead. Collision is still the Phase 3 pink placeholder — see
+  <code>docs/port-plan.md</code> Phase 4.
 </p>
 <div class="controls">
   <label>Pick your local <code>data/</code> folder: <input type="file" id="picker" webkitdirectory></label>
