@@ -1861,11 +1861,11 @@
       "name": "Game_WarpToLevelStageAndRunLoop",
       "address": "1000:03ff",
       "tags": [
-        "guess",
+        "verified",
         "engine",
         "spine"
       ],
-      "summary": "MAJOR FINDING: not a sound-driver loader (stale plan-doc note). Called from Debug_HandleCheatInput and Demo_PlaybackInput. Dispatches on load-stage [8c29] (1-4) and sub-stage [8c27] to load world/bank/map data; stage4/substage10 is the game's apparent ending/victory sequence (poses player entity, pushes 4 spawn events, plays sound). Falls into a SECOND physical copy of the 14-call main loop that never returns -- a 'warp to world/stage N and resume gameplay' function."
+      "summary": "MAJOR FINDING: not a sound-driver loader (stale plan-doc note). Called from Debug_HandleCheatInput and Demo_PlaybackInput. Dispatches on load-stage [8c29] (1-4) and sub-stage [8c27] to load world/bank/map data; stage4/substage10 is CONFIRMED (docs/formats/pin.md) as the game's ending/victory sequence -- poses player entity, pushes 4 firework/trophy-piece spawn events, clears all entities, plays Snd_TriggerEffect(AL=0xb) = adlib.pin sound ID 11 (one of the 'non-MIDI' resource-table entries). Live DOSBox tracing confirmed a normal World-2 warp never triggers this sound, consistent with it being reachable only via the true World-4-stage-10 ending (the level-select cheat caps at stage 9, so this hasn't been observed executing live). Falls into a SECOND physical copy of the 14-call main loop that never returns -- a 'warp to world/stage N and resume gameplay' function."
     },
     {
       "name": "Game_StartAttractDemoAndRunLoop",

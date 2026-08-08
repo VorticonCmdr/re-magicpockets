@@ -90,45 +90,40 @@ consistent with an OPL2 register-reset sequence (write `0x00` to a run of OPL2 r
 silence all channels) rather than a sequence the MIDI-cue player would ever be asked to play back
 as a tune.
 
-**Follow-up pass — confirmed these entries are real, live content and found the general
-byte-stream interpreter, but that interpreter's own reading actually complicates the original
-"OPL2 register-reset sequence" guess rather than confirming it. Left genuinely open, with a
-concrete recommendation for how to finish it (dynamic tracing).**
+**RESOLVED (narrative): sound ID 11 is the game's ending/victory fanfare, not a generic
+level-start effect.** The full decompile of `Game_WarpToLevelStageAndRunLoop` (`1000:03ff`) —
+an earlier pass only saw one fragment of it — shows the `MOV AH,1; MOV AL,0xb; CALL
+Snd_TriggerEffect` call (`1000:07e1`-`07e5`) sits inside the `[0x8c29]==4` (World 4) branch's
+`[0x8c27]==10` sub-stage specifically, which the function's own existing plate comment already
+identified as the **game's ending sequence**: it clears every entity (`Entity_RemoveAllOfKind`
+×6), pushes four position events with opcode `0x5e` at distinct screen coordinates (plausibly
+firework/trophy-piece spawns), then plays this one sound. So `adlib.pin` sound 11 is a one-shot
+victory/ending cue, reachable only by completing World 4 (not via the 4-digit level-select cheat,
+whose table tops out at World 4 stage 9 — confirmed by reading the cheat-code table live, see
+below) — which also explains why its payload looks so unlike the other 77 ordinary
+sound-effect cues in the bank: it's special-purpose content, not routine gameplay audio.
 
-- **Confirmed live, not dead data**: `GAMEU.EXE`'s `Game_WarpToLevelStageAndRunLoop` (the
-  level-start routine, `1000:03ff`) calls `Snd_TriggerEffect(sound_id=11)` directly
-  (`MOV AH,1; MOV AL,0xb; CALL Snd_TriggerEffect`, `1000:07e1`-`07e5`) — `adlib.pin`'s first
-  non-MIDI table entry. So this isn't leftover/unused resource-file padding; it's genuinely
-  played at a specific game moment (level warp/start), through the *exact same* `AH=1`
-  trigger-effect path as any ordinary MIDI cue, including the same `Snd_SelectCueForPlayback`
-  setup other cues go through.
-- **Found the real per-tick byte-stream interpreter** (entry around `0x23ec`, reached once per
-  timer tick via `Snd_ServiceTick` → `FUN_0000_2384` → the per-running-status dispatch table,
-  whenever `[0x2992]` is nonzero — which `Snd_SelectCueForPlayback` sets for *every* selected cue,
-  MIDI or not). It reads one byte at the cursor (`LODSB` from `[0x297e]`) and splits on value:
-  bytes `< 0x20` dispatch through a 16-entry control-code jump table at `0x23c2` (read via
-  `read_memory`); bytes `>= 0x20` fall to a **note-on handler at `0x256b`** that computes
-  `note = byte - 0x20`, looks it up in a frequency table at `0x29b8`, and calls
-  `FUN_0000_268d` (the tempo/PIT function from the "Resource-offset table" section above) —
-  i.e. a completely ordinary "play this note" path, not a register-write path.
-  **Problem**: `adlib.pin` entry 11's own first byte is `0x63` (99, `>= 0x20`) — feeding it
-  through this exact interpreter reads as *note-on, note `0x43`(67)*, not as a pair count. That
-  doesn't fit a "zero every register" reading at all, which undercuts the original count-byte
-  hypothesis rather than confirming it — the earlier "byte pairs = (register, value)" read (this
-  doc, previous pass) was a plausible-looking coincidence in the raw bytes, not something that
-  survives tracing through the actual code that would run when this cue plays.
-- **`Opl2_WriteRegister`** (`0x22e3`, renamed from `FUN_0000_22e3`, see above) remains confirmed
-  as the real OPL2 write primitive on its own terms (write-timing exactly matches the documented
-  hardware spec) — that part of the previous pass's finding stands. What's now in doubt is only
-  whether *this specific* byte stream is what feeds it.
-- **Static disassembly has hit its limit here.** Reading the driver's control-flow by hand no
-  longer distinguishes between "there's a special-cased reset path this pass didn't find" and
-  "the count-byte reading was simply wrong." Settling it needs **dynamic tracing** — running the
-  game in DOSBox with a debugger, breaking on `Opl2_WriteRegister` (or on `Snd_TriggerEffect`
-  with `AL=11`), and watching what actually executes when `Game_WarpToLevelStageAndRunLoop` fires
-  this cue at a real level warp. A `dosbox-mcp` server is configured for this project
-  (`.mcp.json`) but wasn't available in this session — a natural next step for whoever picks this
-  back up.
+**Confirmed via live DOSBox tracing** (`dosbox-mcp`, a debugger bridge configured for this
+project) that this call site is real and reachable — not dead code: with a breakpoint on
+`Snd_TriggerEffect`'s entry and the game warped to World 2 via the level-select cheat (confirmed
+live by reading `[0x8b89]`/`[0x8b8b]` directly — world flipped from `0` to `2`), the sequence of
+sound IDs triggered during the warp (`9`, `1`, `71`, `9`, `0x108`, `0x14e`, ...) never included
+`11` — consistent with sound 11 only firing for the World-4-stage-10 ending path, not general
+warps. This directly disproved the standing "note-on, note 0x43" reading from the previous
+pass's static trace *for the general level-warp case* (there is no general level-warp case that
+plays sound 11 at all) and reframes the open question: it's not "what does the byte-stream
+interpreter do with a normal cue," it's "what happens when this *specific, otherwise-unreachable*
+byte stream plays as the ending fanfare" — which still hasn't been directly observed (triggering
+the true World-4-stage-10 ending live would need actually completing World 4, not just the
+cheat's stage-9 cap, and wasn't attempted this pass).
+
+- **`Opl2_WriteRegister`** (`0x22e3`, renamed from `FUN_0000_22e3`) remains confirmed as the real
+  OPL2 write primitive on its own terms (write-timing exactly matches the documented hardware
+  spec) — whether *this specific* cue's byte stream is what feeds it is still open, but is now a
+  much narrower, better-understood question (a one-off ending cue, not a mystery gameplay effect).
+- **Practical takeaway for the eventual JS port**: this cue can be treated as a low-priority,
+  hard-to-reach special case (the game's ending fanfare) rather than something that needs
+  resolving to get normal gameplay sound working correctly.
 
 ## RESOLVED — `level0/new1/level2/level3a-c/level4.pin` are level-scripting bytecode, not music
 
@@ -176,16 +171,15 @@ leading bytes only, **not decoded**:
   command streams) is undecoded — would need tracing the Adlib/SoundBlaster driver's own
   interpretation loop, not just the container header.
 - `soundbnk.pin`'s 17259 bytes of post-MIDI trailing data.
-- **Reopened, harder than it looked**: the non-MIDI table entries are confirmed *live* content
-  (`GAMEU.EXE`'s `Game_WarpToLevelStageAndRunLoop` triggers `adlib.pin` sound ID 11 directly at
-  level start, through the same `AH=1` path as any MIDI cue), and the real per-tick byte-stream
-  interpreter that would consume them is now found (`player.pin` `0x23ec` onward) — but tracing
-  entry 11's own first byte (`0x63`) through that interpreter reads as a "note-on" event, not a
-  pair-count, which undermines rather than confirms the original "OPL2 register-reset sequence"
-  guess. See "Resource-offset table" above for the full trail. Static disassembly alone couldn't
-  settle this in the end; it needs dynamic tracing (DOSBox debugger, breakpoint on
-  `Opl2_WriteRegister` or on `Snd_TriggerEffect(AL=11)` at a real level warp) to find out what
-  actually executes.
+- **Narrowed to a low-priority special case**: `adlib.pin` sound ID 11 (one of the non-MIDI table
+  entries) is confirmed — via the full decompile of `Game_WarpToLevelStageAndRunLoop`, and live
+  DOSBox tracing that ruled out normal level warps as a trigger — to be the game's one-shot
+  ending/victory fanfare (World 4, stage 10, alongside the firework/trophy-piece spawn sequence),
+  not a generic effect. What still isn't directly observed is the byte stream actually executing
+  as the ending fanfare (would need completing World 4 live, not just the level-select cheat,
+  which caps at stage 9). See "Resource-offset table" above for the full trail. Low priority for
+  the eventual port — it's a rarely-reached special case, not something blocking normal gameplay
+  audio.
 - `adlib.pin`'s MIDI cues embed OPL2 timbre parameters as `FF 7F` (SeqSpec) meta events; a
   standard SMF player (and this project's `tools/midi-player.html`, which just uses Web Audio
   oscillators) ignores them, so playback timbre doesn't match the original AdLib sound. Would
