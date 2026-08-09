@@ -4,19 +4,41 @@
 // geometry: the player collides with the actual cave walls/floors from the shipped level file,
 // not an unrelated authored test arena.
 //
-// Spawn point, pickups, and the exit zone are still NOT ported from real game data -- the player's
-// actual level-start position isn't derivable from `.pap`/level-script data (the player isn't a
-// level-script entity), and there's no decoded "pickup"/"exit" entity-type mapping (see
-// docs/engine.md's Entity_InteractionPhaseType1bHandler note). These are found generically by
-// scanning the REAL collision grid for open, standable spots -- so they're always inside real,
-// walkable geometry (unlike the old synthetic arena, which could disagree with the art entirely),
-// just not at the game's actual authored positions.
+// Spawn point: for level "1a" this is now the REAL authored position -- confirmed by connecting
+// live to a running DOSBox instance (dosbox-mcp), pausing at world 1/sublevel 1, and reading the
+// entity array directly out of guest memory (6de3 segment, entity struct block starting near
+// 0x9398, 66 bytes/entity, +2=type +4=class +6/+8=X/Y): exactly one entity has class 3 (the
+// player, per docs/enemies.md's confirmed sprite cross-reference), type 3, at X=144, Y=80 -- read
+// twice (byte-identical both times) while genuinely paused, not a mid-motion snapshot. See
+// AUTHORED_SPAWN_PX below. Not done for the other 7 levels -- would need the same live read
+// repeated per level, not attempted this pass.
+//
+// This game's real terrain turns out to be extremely dense (thin dug/carved passages through
+// mostly-solid rock, not open platforms -- see the ASCII-art dump in this investigation's session
+// notes), so the exact authored pixel can sit inside what this port's simplified single-tile AABB
+// collider calls "solid" even though the real game clearly doesn't treat it that way (the entity
+// was sitting there, running, not stuck). Rather than trust a collision model that's demonstrably
+// too strict for this terrain, the authored point is snapped to the nearest PASSABLE cell (a
+// plain BFS flood-fill, no floor/headroom requirement) and left for gravity to settle from there
+// -- empirically this converges within one fall to almost exactly the real Y (dropping onto the
+// solid floor immediately below the nearest gap lands the player's feet at y=80, matching the
+// authored value, since the real spawn sits right at that same floor line).
+//
+// Pickups and the exit zone are still NOT from real game data -- there's no decoded "pickup"/
+// "exit" entity-type mapping (see docs/engine.md's Entity_InteractionPhaseType1bHandler note) --
+// found generically by scanning for standable spots, same as before.
 
 'use strict';
 
 import { GRID_SIZE } from '../core/pap.js';
 import { GROUND_TABLE } from '../core/tile-collision.js';
 import { TILE_WIDTH, TILE_HEIGHT } from './camera.js';
+
+// Real, live-memory-confirmed player spawn positions, keyed by level-registry id. Level-space
+// pixel coordinates (same 32x16 tile-pixel convention as everything else in this port).
+export const AUTHORED_SPAWN_PX = {
+  '1a': { x: 144, y: 80 },
+};
 
 /** Builds a {size, grid} collision grid (0/1) from real .pap data, matching collision.js's expected shape. */
 export function buildRealCollisionGrid(pap) {
@@ -63,15 +85,49 @@ function findStandableSpots(grid, { colStart = 2, colEnd = GRID_SIZE - 2, rowSta
 }
 
 /**
+ * Plain BFS flood-fill to the nearest passable cell from (col, row) -- no floor/headroom
+ * requirement, just "not solid". Used to place the player as close as possible to a real authored
+ * spawn point without embedding it in rock, on terrain too dense for `isStandableSpot`'s stricter
+ * definition to ever match nearby (see module header).
+ */
+function nearestPassableCell(grid, col, row, maxSteps = 4000) {
+  const startKey = `${col},${row}`;
+  const seen = new Set([startKey]);
+  const queue = [[col, row]];
+  let steps = 0;
+  while (queue.length && steps++ < maxSteps) {
+    const [c, r] = queue.shift();
+    if (!isSolidCell(grid, c, r)) return { col: c, row: r };
+    for (const [dc, dr] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
+      const nc = c + dc;
+      const nr = r + dr;
+      const key = `${nc},${nr}`;
+      if (!seen.has(key)) {
+        seen.add(key);
+        queue.push([nc, nr]);
+      }
+    }
+  }
+  return null;
+}
+
+/**
  * Builds spawn point, a handful of pickups, and an exit zone for a level, all placed on real
  * standable geometry. See module header for what's real (the collision) vs. placeholder (which
- * exact spots get used for what).
+ * exact spots get used for what). `authoredSpawnPx` (optional, {x,y}) overrides the generic
+ * standable-spot spawn search with a real position, snapped to the nearest passable cell.
  */
-export function buildLevelPlayfield(pap) {
+export function buildLevelPlayfield(pap, authoredSpawnPx = null) {
   const grid = buildRealCollisionGrid(pap);
   const spots = findStandableSpots(grid);
 
-  const spawn = spots[0] || { col: 2, row: 2 };
+  let spawn = spots[0] || { col: 2, row: 2 };
+  if (authoredSpawnPx) {
+    const authoredCol = Math.floor(authoredSpawnPx.x / TILE_WIDTH);
+    const authoredRow = Math.floor(authoredSpawnPx.y / TILE_HEIGHT);
+    const nearest = nearestPassableCell(grid, authoredCol, authoredRow);
+    if (nearest) spawn = nearest;
+  }
   // Pickups: a handful of spots spread out from the spawn, not immediately adjacent to it.
   const pickupSpots = spots.filter((s) => Math.abs(s.col - spawn.col) > 3).slice(0, 12);
   const pickups = [];

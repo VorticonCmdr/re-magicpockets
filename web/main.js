@@ -23,7 +23,7 @@ import { Input } from './engine/input.js';
 import { MainLoop } from './engine/loop.js';
 import { EntityPool } from './engine/entity-pool.js';
 import { Player } from './engine/player.js';
-import { buildLevelPlayfield } from './engine/real-terrain.js';
+import { buildLevelPlayfield, AUTHORED_SPAWN_PX } from './engine/real-terrain.js';
 import { attachAiIfKnown, tickAllAi, isGateType } from './engine/entity-ai.js';
 import { chooseWorld1BonusType, spawnBonusItem } from './engine/bonus-economy.js';
 import { LEVELS, findLevel, nextLevel } from './engine/level-registry.js';
@@ -135,10 +135,11 @@ async function loadLevel(id) {
       }
     }
 
-    // Real ground collision + a generically-found spawn/pickups/exit, all on the level's own real
-    // geometry -- see engine/real-terrain.js for what's real (the collision) vs. placeholder
-    // (which exact standable spots get used for what).
-    const playfield = buildLevelPlayfield(scene.pap);
+    // Real ground collision + spawn/pickups/exit, all on the level's own real geometry -- see
+    // engine/real-terrain.js for what's real (the collision, and level 1a's spawn point -- read
+    // live out of a running DOSBox instance) vs. placeholder (which exact standable spots get
+    // used for pickups/exit, and the spawn search used for every other level).
+    const playfield = buildLevelPlayfield(scene.pap, AUTHORED_SPAWN_PX[levelEntry.id] || null);
     const collisionGrid = playfield;
     const spawnX = playfield.spawnCol * TILE_WIDTH;
     const spawnY = playfield.spawnRow * TILE_HEIGHT;

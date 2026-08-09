@@ -27,9 +27,11 @@
   dumped since Phase 3) was read directly out of the binary, and it's a clean, real
   solid/passable/special classification indexed by the exact on-disk tile value — see
   <code>web/core/tile-collision.js</code> and <code>docs/engine.md</code>. Spawn point, pickups,
-  and the exit are found by scanning this real collision for standable spots (still not the
-  game's actual authored positions — that data isn't recoverable from level files alone — but
-  always inside real, walkable geometry now). <b>The player also renders as a real sprite</b> from
+  and the exit are found by scanning this real collision for standable spots. <b>Level 1a's
+  spawn point is now the REAL authored position</b> (X=144, Y=80), read live out of a running
+  DOSBox instance's memory (confirmed via a byte-identical re-read while paused) — the other 7
+  levels still use the generic standable-spot search, since that live read wasn't repeated for
+  them. <b>The player also renders as a real sprite</b> from
   its confirmed character bank (cap + sunglasses), not an orange box -- a hand-verified
   representative pose (an earlier attempt landed on a genuinely empty tile and silently rendered
   nothing; see docs/port-plan.md's "Follow-up fix" entry for how that was found and fixed).

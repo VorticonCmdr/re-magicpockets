@@ -459,6 +459,43 @@ level — the state comparison was valid), then working the actual bug on the JS
   external scaling math — is the reliable way to inspect canvas output; prefer it over
   screenshot-and-crop for this kind of pixel-level verification going forward.
 
+### Follow-up — authored-accurate starting position (level 1a)
+
+User asked directly for an authored-accurate starting position, having already flagged (in the
+report that led to the previous two entries) that the spawn point looked wrong. Rather than guess
+harder with the same standable-spot heuristic, this connected live to the user's running DOSBox
+instance again and read the REAL spawn position out of guest memory.
+
+- **Method**: paused (`dosbox-mcp`'s `debug_pause`), confirmed world 1/sublevel 1 (matching this
+  port's default level) by reading `[0x8b89]`/`[0x8b8b]` directly, then located the entity pointer
+  array (`6de3:9090`-ish, confirmed via a clean 66-byte stride between consecutive live pointer
+  values) and read every entity it pointed to. Filtering for class 3 (the player, confirmed sprite
+  cross-reference) found exactly one match: type 3, **X=144, Y=80**. Re-read the same memory a
+  second time — byte-identical, confirming the game was genuinely paused (not a mid-fall snapshot
+  that would read differently a moment later).
+- **A real complication, not a bug this time**: this game's terrain is far denser than a typical
+  platformer's — mostly solid rock with thin carved/dug passages, not open floors (confirmed by
+  dumping an ASCII-art solid/passable map of the area around the authored spawn: almost entirely
+  `#`). The exact authored pixel can sit inside what this port's simplified single-tile AABB
+  collider calls "solid" purely because a full-tile model is too coarse for 1-cell-wide gaps —
+  not because the real game was wrong. Confirmed by checking `isStandableSpot`'s stricter
+  floor+headroom definition against the real position: no match within a 17x17-cell search
+  radius, because there simply isn't a flat platform there, just a narrow dug gap.
+- **Fix**: `web/engine/real-terrain.js` gets `AUTHORED_SPAWN_PX` (currently just `'1a': {x:144,
+  y:80}`) and a plain BFS flood-fill (`nearestPassableCell`, no floor/headroom requirement) that
+  snaps the authored point to the nearest non-solid cell, then lets gravity settle from there.
+  Empirically this converges almost exactly onto the real value: the player's feet land at y=80 on
+  the very next frame (matches the authored Y precisely, since the nearest gap's floor is the same
+  floor the real entity was standing on) at x=160 (16px from the authored 144, well within one
+  tile). The other 7 levels are unaffected — no live read was done for them, they still use the
+  Phase-3/5-era generic standable-spot search.
+- **Verified**: browser run confirmed the settled position (feet at y=80, matching the authored
+  value) and a full regression pass (movement, block-breaking, jumping, multi-world loads, the
+  earlier `[0xef23]`/sprite fixes) with zero JS errors. Visually, the player now starts in a real,
+  tight carved gap near the top of the level with several real enemies nearby — a materially
+  better match to what a level's actual opening should look like than the old arbitrary
+  first-standable-spot pick.
+
 ### Phase 8 — Polish / parity pass
 - Diff against DOSBox for the specific behaviors that were "confirmed structure, guessed
   semantics" during reverse-engineering (anything tagged `guess` rather than `verified` in
