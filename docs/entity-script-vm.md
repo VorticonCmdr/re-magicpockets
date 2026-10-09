@@ -58,6 +58,13 @@ original transcription of the raw table silently skipped one real word entry (in
 69-77 were already correct; the table below fixes 64-68. The genuinely-missing opcode 64 turned
 out to be a real, previously-untraced instruction (see below) — not a duplicate or padding.
 
+## Corrections from reading the raw code, 2026-10-09 (`[STATIC]`, disassembled from `GAMEU.EXE`)
+
+- **Opcode 9's pairs are `(horizontal delta, vertical delta)`, not `(dx, tile)`.** `1000:3C9B` reads the pair as the word `[bx+di]`: the SECOND byte, sign-extended, is applied vertically (positive through `1000:D5FD` = move down, negative through `1000:D609` = move up) and the FIRST byte horizontally (`D627` or `D615`, chosen by facing `[+0x14]` 0/8 vs other). So state 2's `00 F8, 00 F8, 00 FA, ...` is a 7-frame **vertical** deceleration, and state 8's `02 EC, 02 F0, ...` is +2 px horizontal per frame with a vertical arc of -20, -16, ... px: a jump arc. The tile-index reading above is wrong. The pair index lives in `[si+0x30]` (`add word [si+0x30],2` each frame), and the opcode parks (`jmp 2663`) until the `0xAE` terminator.
+- **The movement helpers are collision-flag gated.** `D5FD` (down) skips if `[+0x24]` bit 1 is set, `D609` (up) if bit 0, `D627` (right) if bit 3, `D615` (left) if bit 2. For kind 3 (`[+4]==3`) the horizontal helpers instead step 4 px at a time (`add word [si+6],4`, `ax/4` iterations) and advance the animation frame `[+0xA]` through `[+0x10]..[+0x12]` once per 4 px: that is the hero's walk cycle, 4 px per frame, matching the captured 4 px per iteration.
+- **`Entity_RunScript` seeding.** At `1000:2324` the seed path stores state 0 (`mov dx,0; mov [si+1],dl`) and looks up `0xCD88`, so an entity with `+0xC == 0` starts in state 0's script (`FF` = stop). States are installed by `Entity_SetStateAndScript`, not by this path. The routine is skipped for most types while `[0x8BA1]` is `0x32`/`0x45`/`0x66` or negative; types `0x2D, 8, 3, 1, 0x29, 7, 0x1F, 0xF` bypass part of those gates.
+- **Hero states seen in the demo** (`web/..`/capture, `[PROVEN]` consistency): state 18 (`c60a`) = `SetCollFlags(-113); SetAnimFrame(78); WaitFrames(2); SetCollFlags(0); SetAnimFrame(79); Reset`; state 22 (`c62d`) adds `Sound(9)`. The capture shows `e1flags = 0xFF8F` (= -113 sign-extended) during exactly those states, then `0`.
+
 ## Full opcode table
 
 `#` = opcode value (decimal / hex). `op` = named function where one was created this pass,
