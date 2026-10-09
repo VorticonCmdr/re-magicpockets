@@ -13,11 +13,12 @@ import { rncUnpack, crc16arc, RNC_HEADER_SIZE } from '../core/rnc.js';
 import { decodePap } from '../core/pap.js';
 import { decodePinSoundBank } from '../core/pin-sound.js';
 import { decodeLevelScript } from '../core/pin-level-script.js';
-import { GROUND_TABLE } from '../core/tile-collision.js';
+import { WORLD_GROUND_TABLES, WORLD_GROUND_TABLE_ADDR, TABLE_BYTES } from '../core/tile-collision.js';
 import { RAW_BANKS } from '../core/palette.js';
 import { decodeDemoTape, DemoPlayback, INPUT_BITS, DEMO_RNG_SEED } from '../core/demo-tape.js';
 import { FRAME_ORDER } from '../engine/frame.js';
 import { Rng } from '../engine/rng.js';
+import { prepare, runConformance } from './conformance-lib.js';
 
 export function makeChecker() {
   const results = [];
@@ -85,21 +86,29 @@ export async function checkPap(ctx) {
   return results;
 }
 
-/** The ground-collision table the port transcribed must appear byte-for-byte in GAMEU.EXE. */
+/** The per-world ground tables the port transcribed must appear byte-for-byte in GAMEU.EXE. */
 export async function checkCollisionTable(ctx) {
   const { results, check, note } = makeChecker();
   const exe = await ctx.fetchRaw('game/GAMEU.EXE');
   check('GAMEU.EXE is 450130 bytes (the unpacked game)', exe.length === 450130, `got ${exe.length}`);
-  check('port ground table is 256 entries', GROUND_TABLE.length === 256);
-  const at = indexOfBytes(exe, GROUND_TABLE);
-  check('port ground table appears in GAMEU.EXE exactly once', at !== -1 && countOfBytes(exe, GROUND_TABLE) === 1, `file offset ${at}`);
-  check('ground table sits at GAMEU.EXE file offset 447225', at === 447225, `got ${at}`);
+  check('port holds the tables for worlds 1-3', WORLD_GROUND_TABLES.length === 3);
+  check('each ground table is 242 bytes', TABLE_BYTES === 242 && WORLD_GROUND_TABLES.every((t) => t.length === 242));
+  // DS:0 sits at file offset 385392 (= 0x5E230): the world-3 table at DS:0xF189 is at file offset 447225.
+  const dsBase = 447225 - 0xf189;
+  WORLD_GROUND_TABLES.forEach((t, i) => {
+    const addr = WORLD_GROUND_TABLE_ADDR[i];
+    const here = exe.subarray(dsBase + addr, dsBase + addr + 242);
+    check(`world ${i + 1} ground table equals GAMEU.EXE at DS:0x${addr.toString(16)}`, here.every((b, j) => b === t[j]));
+  });
+  check('each table occurs in the EXE exactly once', WORLD_GROUND_TABLES.every((t) => countOfBytes(exe, t) === 1));
+  const w = (o) => exe[dsBase + o] | (exe[dsBase + o + 1] << 8);
+  const list = [0, 1, 2, 3].map((i) => w(0xef25 + 2 * i));
+  check('the per-world pointer list at DS:0xEF25 is EFA5, F097, F189, F2F5', list.join(',') === [0xefa5, 0xf097, 0xf189, 0xf2f5].join(','), list.map((x) => x.toString(16)).join(','));
+  check('the table pointers are spaced 0xF2 (242) bytes apart for worlds 1-3', list[1] - list[0] === 0xf2 && list[2] - list[1] === 0xf2);
   let badValues = 0;
-  for (let v = 1; v <= 120; v++) if (![0, 1, 16].includes(exe[447225 + v])) badValues++;
-  check('EXE table entries 1..120 are only 0 (passable), 1 (solid) or 16 (special)', badValues === 0, `${badValues} other values`);
-  note('UNKNOWN_alt_ground_table_extent',
-    'docs say a second table sits at 6de3:f27b, but 0xf27b is only 0xf2 bytes past the default table at 0xf189, '
-    + 'so a 256-byte read overlaps it; the "near-identical, 16 replaced by 0" claim does not hold at that offset');
+  for (const t of WORLD_GROUND_TABLES) for (let v = 1; v <= 120; v++) if (![0, 1, 16].includes(t[v])) badValues++;
+  check('table entries 1..120 are only 0 (passable), 1 (solid) or 16 (special)', badValues === 0, `${badValues} other values`);
+  note('UNKNOWN_world4_ground_table', 'the world-4 pointer 0xF2F5 leads to a block with values 4,5,7,12,20,24,26,28,32,99,255: a different structure, not transcribed (ledger item 8)');
   return results;
 }
 
@@ -254,8 +263,28 @@ export async function checkCaptureRng(ctx) {
   return results;
 }
 
+/**
+ * One-step conformance against the DOSBox capture of the first 700 demo iterations: load captured
+ * row k, run one ported iteration, compare entities 0-2 and non-scratch globals with row k+1.
+ * The two literals are a RATCHET: raise them when more of the engine is ported, never lower them.
+ */
+export async function checkConformance(ctx) {
+  const { results, check, note } = makeChecker();
+  let cap = null;
+  try { cap = JSON.parse(new TextDecoder().decode(await ctx.fetchRaw('tools/attract-capture/entities.capture.json'))); } catch { /* absent */ }
+  if (!cap) { note('entity capture not found', 'tools/attract-capture/entities.capture.json is missing; conformance skipped'); return results; }
+  const env = prepare(await ctx.fetchRaw('game/GAMEU.EXE'), await ctx.fetchRaw('data/autoplay.pin'), await ctx.fetchRaw('data/pcmap.pap'));
+  check('entity capture holds 700 consecutive iterations of up to 8 entities', cap.rows.length === 700 && cap.rows.every((r, i) => r.done === i));
+  const r = runConformance(env, cap.rows, { ents: 3, only: 3, ignoreScratch: true });
+  check('at least 396 of 699 transitions reproduce entities 0-2 byte for byte', r.entExact >= 396, `${r.entExact}/${r.total}`);
+  check('at least 187 of 699 transitions also reproduce every non-scratch global', r.exact >= 187, `${r.exact}/${r.total}`);
+  const top = [...r.unportedHist].sort((a, b) => b[1] - a[1]).slice(0, 6).map(([k, n]) => `${k} x${n}`).join(', ');
+  note('unported branches still hit', top || 'none');
+  return results;
+}
+
 export async function runAllChecks(ctx) {
-  const groups = [checkRncCorpus, checkPap, checkCollisionTable, checkPalettes, checkSoundBanks, checkLevelScripts, checkDemoTape, checkFrameOrder, checkCaptureRng];
+  const groups = [checkRncCorpus, checkPap, checkCollisionTable, checkPalettes, checkSoundBanks, checkLevelScripts, checkDemoTape, checkFrameOrder, checkCaptureRng, checkConformance];
   const results = [];
   for (const g of groups) results.push(...await g(ctx));
   return { results };

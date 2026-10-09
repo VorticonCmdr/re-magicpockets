@@ -1,45 +1,78 @@
-// The REAL per-tile ground-collision table -- `[0xef23]`'s default target, `6de3:f189` (256
-// bytes), read directly from GAMEU.EXE's data segment via Ghidra. This resolves the open item
-// tracked since Phase 3 (docs/engine.md's "[0xef23]" note, docs/port-plan.md Phase 3): the table
-// IS indexed directly by the raw `.pap` tile byte value (confirmed: entries 1-120 are exactly
-// the valid on-disk tile-value range, docs/formats/pap.md), and it's a clean, clearly
-// hand-authored 0/1/16 classification, not noise -- e.g. a solid rock-face run reads
-// `1,1,1,1,1,1,1,1,1,...` while background/decorative runs read `0,0,0,0`. `Entity_ScanGroundRow`
-// (docs/engine.md) accumulates this value into a ground-contact score rather than treating it as
-// a flat boolean, so the exact 1-vs-16 distinction (maybe "normal ground" vs. "strong/special
-// ground", possibly a ladder or hazard marker) isn't confirmed -- this port treats both as solid
-// for basic AABB collision, only 0 as passable, which is the safe, evidence-supported reading.
+// Per-world tile solidity tables used by the hero's ground scans -- the data `[0xef23]` points at.
 //
-// A second table exists at `6de3:f27b` (the "custom tile table" docs/enemies.md's
-// Entity_ThinkPatrolWithCustomTileTableA/B temporarily swap `[0xef23]` to) -- structurally
-// near-identical to this one but with every `16` entry replaced by `0`, i.e. a stricter variant
-// that treats the special tiles as non-solid. Not wired up yet (would need per-entity-kind
-// [0xef23] swapping, which movement-ai-vm.js doesn't do) -- every entity in this port uses the
-// default table.
+// `[PROVEN]` live in DOSBox (2026-10-09): `[0xef23]` read 0xEFA5 during world 1 gameplay, and the
+// 256 bytes there equal the EXE's. The new-game state initializer (`1000:0C69`..) sets it with
+//     di = 0xEF25; ax = ([8B89] != 0 ? [8B89] : [8B8B]) - 1; di = [di + ax*2]; [0xEF23] = di
+// where the word list at DS:0xEF25 holds 0xEFA5, 0xF097, 0xF189, 0xF2F5. So worlds 1-3 each have
+// their own 242-byte table (two 121-byte halves, indexed by the raw .pap tile byte 1..121); world 4's
+// pointer (0xF2F5) leads to a differently shaped block that is NOT transcribed here yet.
+// `Entity_ThinkPatrolWithCustomTileTable{A,B}` temporarily point [0xef23] at 0xF189 / 0xF27B.
+//
+// ⚠️ An earlier version of this file held only the 0xF189 table (world 3's) and used it for every
+// world, calling it "the default"; that made level 1a read 9.4% passable instead of 40.3% and the
+// hero's cave look solid. tools/verify checks every table below byte-for-byte against GAMEU.EXE.
+// The meaning of the value 16 and of the second 121-byte half is not decoded (ledger items 7-9).
 
 'use strict';
 
-// prettier-ignore
-export const GROUND_TABLE = new Uint8Array([
-  0,1,1,1,1,0,0,1,1,1,1,1,1,1,1,1,
-  1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,
-  1,1,1,1,0,1,1,16,16,1,1,1,1,1,1,1,
-  1,16,16,1,1,0,1,1,1,1,1,16,16,1,1,1,
-  1,1,1,1,1,16,16,1,1,0,0,1,1,1,1,16,
-  16,16,16,16,16,1,1,1,1,16,16,0,0,0,0,16,
-  16,1,16,16,16,0,0,0,0,16,16,1,16,16,16,0,
-  0,0,0,1,0,0,0,0,0,0,0,0,0,0,0,0,
-  0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,
-  0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,1,
-  1,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,
-  0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,
-  0,0,0,0,1,1,0,0,0,0,1,1,1,1,1,1,
-  1,1,1,1,0,0,0,0,0,0,0,0,0,0,0,0,
-  0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,
-  0,0,0,1,1,1,1,0,0,1,1,1,1,1,1,1,
-]);
+export const TABLE_BYTES = 242;
 
-/** True if raw tile byte value `v` (a real `.pap` cell value, 1-120) is solid for standing/walking. */
-export function isGroundTileValue(v) {
-  return v > 0 && v < GROUND_TABLE.length && GROUND_TABLE[v] !== 0;
+// prettier-ignore
+export const WORLD_GROUND_TABLES = [
+[
+  0,0,1,1,1,1,0,0,0,0,0,1,1,1,1,1,1,1,1,1,0,1,
+  1,1,1,1,1,1,1,1,0,1,1,1,0,0,0,1,1,0,0,1,1,1,
+  0,1,1,1,1,0,0,1,1,0,1,1,1,0,0,0,1,0,1,1,0,0,
+  0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,1,1,1,0,0,1,
+  1,0,0,1,1,1,1,0,0,1,1,0,0,1,1,1,1,1,1,1,1,0,
+  0,1,1,1,1,1,1,1,1,0,0,0,0,0,0,0,0,0,0,0,0,0,
+  1,1,1,1,1,1,1,1,1,0,1,1,1,0,0,1,1,1,1,1,0,1,
+  0,0,0,1,1,1,1,1,0,1,0,0,0,1,1,1,1,1,0,1,0,0,
+  1,1,0,1,1,1,0,1,0,0,1,1,1,1,1,1,0,1,0,0,1,1,
+  1,1,1,1,0,0,0,0,1,1,1,1,1,1,1,1,1,0,0,0,0,0,
+  1,0,0,0,0,0,0,0,0,0,0,0,1,1,1,1,1,1,1,1,1,1,
+],
+[
+  0,1,1,1,1,1,1,1,1,1,1,0,0,0,0,0,0,0,0,0,0,0,
+  1,0,0,0,0,0,1,1,1,1,1,1,1,1,1,1,0,0,0,1,1,1,
+  1,1,1,1,0,1,0,1,1,1,1,1,1,1,1,1,1,1,1,1,0,1,
+  1,0,0,1,0,0,0,0,0,1,1,1,0,1,1,0,0,1,1,0,0,0,
+  0,1,0,0,1,1,1,1,0,0,1,1,1,0,0,0,0,0,1,1,1,1,
+  1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,
+  0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,
+  0,0,0,0,16,16,16,16,0,0,0,0,0,0,0,0,0,0,0,0,0,0,
+  0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,1,1,
+  1,0,0,0,1,1,1,1,1,1,1,1,1,1,0,0,0,0,0,0,0,0,
+  0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,
+],
+[
+  0,1,1,1,1,0,0,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,
+  1,1,1,1,1,1,1,1,1,1,1,1,1,1,0,1,1,16,16,1,1,1,
+  1,1,1,1,1,16,16,1,1,0,1,1,1,1,1,16,16,1,1,1,1,1,
+  1,1,1,16,16,1,1,0,0,1,1,1,1,16,16,16,16,16,16,1,1,1,
+  1,16,16,0,0,0,0,16,16,1,16,16,16,0,0,0,0,16,16,1,16,16,
+  16,0,0,0,0,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,
+  0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,
+  0,0,0,0,1,1,1,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,
+  0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,1,
+  0,0,0,0,1,1,1,1,1,1,1,1,1,1,0,0,0,0,0,0,0,0,
+  0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,
+],
+].map((t) => Uint8Array.from(t));
+
+/** DS-relative address of each world's table, for provenance checks against the EXE. */
+export const WORLD_GROUND_TABLE_ADDR = [0xefa5, 0xf097, 0xf189];
+
+/** The table for world 1..3, or null for a world whose table has not been transcribed. */
+export function groundTableForWorld(world) {
+  return WORLD_GROUND_TABLES[world - 1] || null;
 }
+
+/** True if raw tile byte `v` (a real .pap cell value, 1..121) is solid in this world's table. */
+export function isGroundTileValue(world, v) {
+  const t = groundTableForWorld(world);
+  return !!t && v > 0 && v < TABLE_BYTES && t[v] !== 0;
+}
+
+/** World 3's table under its old name, kept so committed callers that predate per-world tables still load. */
+export const GROUND_TABLE = WORLD_GROUND_TABLES[2];

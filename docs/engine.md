@@ -148,7 +148,7 @@ A full follow-up pass named the entire immediate + one-level-deep callee graph o
   `web/engine/real-terrain.js` for the JS port's real (not placeholder) collision built from it --
   this closes the open item `docs/port-plan.md` Phase 3 left tracked, and the placeholder
   collision surface it introduced has been retired.
-  ⚠️ **Correction pending (`UNKNOWN_alt_ground_table_extent`, ledger item 9).** The default table's contents are `[PROVEN]` byte-for-byte against `GAMEU.EXE` (file offset 447225; `npm run verify`). The "alternate table at `6de3:f27b`, near-identical with every `16` replaced by `0`" claim above is contradicted by the addresses themselves: `0xf27b` is only 0xf2 bytes past `0xf189`, so a 256-byte table there overlaps the default one, and compared at that offset 67 entries differ other than 16→0. Treat that claim as unverified until re-read live.
+  ⚠️ **Corrected 2026-10-09 (ledger items 8-9, `[PROVEN]`).** The table above at `0xf189` is **world 3's**, not "the default": `[0xef23]` is set per world from the word list at `DS:0xEF25` (`0xEFA5`, `0xF097`, `0xF189`, `0xF2F5` for worlds 1-4), each 242 bytes; world 1 gameplay reads `0xEFA5`. The "alternate table at `0xf27b`" is a small separate table (values 0/1/99) that two patrol think functions swap in. The percentages and the "tile 16 = stricter variant" reading above were derived from the wrong table and should not be relied on.
 - **Two independent AI systems exist for entities**: `Entity_RunScript`'s bytecode VM (opcode
   jump table at `1000:2383`, entity-behavior-level) and a second, movement-focused interpreter,
   `Entity_RunMovementAiScript` (`1000:6320`), which consumes opcode *characters*
