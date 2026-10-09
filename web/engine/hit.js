@@ -423,6 +423,20 @@ function burst5DBA(m, bx, ctx) {
   return false;
 }
 
+/** 1000:4A50: the hero is hit while already in a reaction: a spark, and one heart-bar frame is used up. */
+function heroLosesHeart(m, si, ctx) {
+  m.w16(0x8c29, 0x11);
+  m.w16(0x8c27, m.u16(si + 6));
+  m.w16(0x8c25, (m.u16(si + 8) - 8) & 0xffff);
+  pushEntityEvent(m, si);
+  m.w8(0x8bb4, m.u8(0x8bb4) + 1);
+  m.w8(0x8b96, 0x32);
+  const bar = findByClass(m, 0x18);
+  if (m.u16(bar + 0xa) === 0x7b) { ctx.unported.add('4A8C game over (health bar empty)'); return false; }
+  m.w16(bar + 0xa, m.u16(bar + 0xa) - 1);
+  return true;
+}
+
 /** 1000:4639: an enemy (bx, kind 2) overlaps the player (si). @returns {boolean} handled */
 function enemyTouchesPlayer(m, si, bx, ctx) {
   if (m.u8(bx + 0x40) === 0x65) return true;
@@ -440,7 +454,7 @@ function enemyTouchesPlayer(m, si, bx, ctx) {
   }
   // 46B6: the player is hurt; the world entity and the player enter their knock-back states
   const world = findByClass(m, 1);
-  if ((m.u8(world + 1) !== 0 || m.u8(si + 1) !== 0) && m.u8(si + 1) !== 0x5d) return false; // 471B: 4A50 is not ported
+  if ((m.u8(world + 1) !== 0 || m.u8(si + 1) !== 0) && m.u8(si + 1) !== 0x5d) return heroLosesHeart(m, si, ctx); // 471B -> 4A50
   m.w16(si + 0x14, m.u16(bx + 0x14));
   if (m.u16(bx + 4) !== 6 && m.u16(bx + 2) !== 0x42) m.w16(si + 0x14, m.u16(si + 0x14) ^ 0xc);
   m.w8(world + 1, 0x44); m.w16(world + 0xc, 0xc92c);
