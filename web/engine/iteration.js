@@ -53,9 +53,15 @@ export function demoPlaybackInput(m) {
  * @param {{unported:Set<string>, events:any[]}} ctx
  * @param {Set<number>|null} only entity pointers allowed to run (staged porting)
  */
+/** Call #3 (1000:73A5): drawing the weapon overlay consumes [8C38]; nothing else it does is sampled. */
+export function renderConsumes(m) {
+  if (m.u16(0x8c38) !== 0) m.w16(0x8c38, 0);
+}
+
 export function stepIteration(m, ctx, only = null) {
   demoPlaybackInput(m); // call 7
   updateAll(m, ctx, only); // call 8
   rngNext(m); // call 13
-  cameraUpdateScroll(m); // call 1 of the next iteration: the capture sample is taken after it
+  cameraUpdateScroll(m); // call 1 of the next iteration
+  renderConsumes(m); // call 3: the capture sample is taken after it
 }

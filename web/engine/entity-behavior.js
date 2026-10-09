@@ -9,25 +9,16 @@
 
 'use strict';
 
-import { VISIBLE_LIST, ENTITY_ARRAY } from './ds-memory.js';
+import { VISIBLE_LIST, ENTITY_ARRAY, findByClass } from './ds-memory.js';
 import { runScript } from './script-runner.js';
 import { terrainCollision, overlapTest } from './ground-collision.js';
-
-const BLOCK_START = 0x9398;
-const BLOCK_END = 0xb918;
-const STRIDE = 0x42;
+import { fireAndCharge } from './fire.js';
 
 export const G = {
   INPUT: 0x8b67, EXTRA_FLAGS: 0x8b5e, NO_INPUT: 0x8b5f, WALK_SPEED: 0x8b97, TARGET: 0x8b98,
   SCROLL_DX: 0x8bb7, SCROLL_DY: 0x8bb9, CAM_X: 0x8bbb, CAM_Y: 0x8bbd, FREEZE: 0x8ba1,
   SUBLEVEL: 0x8b8b, WORLD: 0x8b89, CUR_LIST: 0x8b87, SCRATCH_C27: 0x8c27, RNG_OUT: 0x8b6b,
 };
-
-/** 1000:C18C. First entity in the record block whose class (+2) equals `cls`, or 0. */
-export function findByClass(m, cls) {
-  for (let bx = BLOCK_START; bx < BLOCK_END; bx += STRIDE) if (m.u16(bx + 2) === cls) return bx;
-  return 0;
-}
 
 /** 1000:3178. Advance an entity's animation frame once its delay counter [+0x3B] reaches `al`. */
 function advanceAnim(m, si, al) {
@@ -107,18 +98,6 @@ function walk(m, si, bx, ax) {
   advanceAnim(m, bx, m.s8(0x8b99)); // 1000:D5D6: the player's walk cycle
 }
 
-/** 1000:4269, only the paths that are inert when no fire/charge is active. */
-function fireAndCharge(m, si, bx, ctx) {
-  const bs = m.u8(bx + 1);
-  if (m.u8(si + 1) === 0x11 || bs === 0x43 || bs === 0x37 || bs === 0x35 || bs === 0xaa) return;
-  const free = ((m.u8(G.EXTRA_FLAGS) | m.u16(si + 0x24) | m.u16(bx + 0x24)) ^ 0xff) & 0x80;
-  if (!free) return;
-  if (m.u8(G.INPUT) & 0x80) { ctx.unported.add('4269 fire pressed'); return; }
-  if (m.u16(0x8bfb) !== 0) { m.w16(0x8bfb, m.u16(0x8bfb) - 1); return; }
-  m.w8(0x8b8f, 1);
-  if (m.u8(0x8b91) !== 0) ctx.unported.add('4269 charge release');
-}
-
 /** 1000:3CE8 Entity_HandleCollisionOrStateDispatch (SI = the world entity). */
 function handleCollisionOrStateDispatch(m, si, ctx) {
   if (m.u8(G.NO_INPUT) !== 0) return;
@@ -127,7 +106,7 @@ function handleCollisionOrStateDispatch(m, si, ctx) {
   if (t === 0x15 || t === 1 || t === 0x21 || t === 0x43 || t === 0x41) { ctx.unported.add(`3CE8 target ${t}`); return; }
   if (t === 3 || t === 0xff) return;
   if (m.u8(bx + 1) === 0x63) return;
-  fireAndCharge(m, si, bx, ctx);
+  if (fireAndCharge(m, si, bx, ctx)) return;
   const ax = ((m.u8(G.EXTRA_FLAGS) | m.u16(si + 0x24) | m.u16(bx + 0x24)) ^ 0xff) & 0xffff;
   const c27 = (ax & 0xff00) | (ax & m.u8(G.INPUT));
   m.w16(G.SCRATCH_C27, c27);

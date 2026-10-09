@@ -11,6 +11,8 @@
 
 'use strict';
 
+import { findByClass } from './ds-memory.js';
+
 const ABORT = Symbol('abort');
 
 // Table bases in DS (Ghidra: 6de3:xxxx).
@@ -148,6 +150,52 @@ function handler(m, si, di, op, ctx) {
     case 40: m.w8(si + 0x40, m.u8(di)); return di + 1; // SetState40
     case 50: m.w16(0x8b75, m.u16(0x8b75) + m.s8(di)); return di + 1; // AddSignedByteToScore
     case 54: m.w16(si + 0xc, 0); m.w8(si + 1, 0); return ABORT; // ResetScript
+    case 55: // DispatchSpeedTickByKind
+      if (m.u16(si + 4) === 1) { tickKind1(m, si, di); return ABORT; }
+      ctx.unported.add(`opcode 55 kind ${m.u16(si + 4)}`);
+      return ABORT;
+    case 21: { // WaitUntilSyncTriple
+      const a = m.u8(di), b = m.u8(di + 1), c = m.u8(di + 2); di += 3;
+      if (a !== m.u8(0x8bb0) || b !== m.u8(0x8baf) || c !== m.u8(0x8bae)) return ABORT;
+      return di;
+    }
+    case 30: return m.u8(0x8ba1) !== 0 ? ABORT : di; // WaitUnlessAiActive
+    case 33: m.w8(0x8bb0, m.u8(di)); m.w8(0x8baf, m.u8(di + 1)); m.w8(0x8bae, m.u8(di + 2)); return di + 3; // SetSyncTriple
+    case 34: // SetAnimSetAndChargeFields
+      m.w8(si + 0x39, m.u8(di)); m.w8(si + 0x36, m.u8(di + 1)); m.w8(si + 0x37, m.u8(di + 2)); m.w8(si + 0x38, m.u8(di + 3));
+      return di + 4;
+    case 57: m.w8(si + 0x16, m.u8(di)); return di + 1; // SetSpriteShapeOverride
+    case 59: m.w16(0x8c34, m.u8(di)); return di + 1; // SetScrollWidthRegister
+    case 60: m.w8(0x8b98, m.u8(di)); return di + 1; // set the tracked-target byte
+    case 61: m.w8(0x8ba1, m.u8(di)); return di + 1; // SetAiFreezeFlag
+    case 63: { // 1000:2A75 (sets the +0x1c extent from a sprite code)
+      const a = m.u8(di); di += 1;
+      if (a === 0) {
+        const v = (m.u16(si + 0xa) - 0x20) & 0xffff;
+        m.w16(si + 0xa, v);
+        if (v === 0x48) m.w16(si + 0xa, v - 7);
+        return di;
+      }
+      let ax = sx8(a);
+      if (ax === 0x6b) {
+        m.w16(0x8c38, ax & 0xffff);
+        m.w16(si + 0x1c, m.u16(si + 0x14) === 4 ? 0xfff6 : 0x12);
+        return di;
+      }
+      if (ax === 0x4b && m.u8(0x8b98) === 0x1a) ax = 0x4a;
+      m.w16(0x8c38, ax & 0xffff);
+      m.w16(si + 0x1c, 4);
+      return di;
+    }
+    case 64: m.w8(0x8ba2, m.u8(di)); return di + 1; // SetPaletteFadeState
+    case 65: { // AddSignedDeltaAtOffset: word at si+bl += (int8) cl
+      const off = m.u8(di), delta = sx8(m.u8(di + 1));
+      m.w16(si + off, m.u16(si + off) + delta);
+      return di + 2;
+    }
+    case 67: m.w8(si + 0x3d, m.u8(di)); return di + 1; // SetAnimLockFlag
+    case 71: m.w8(0x8c0c, m.u8(di)); return di + 1; // SetGlobalEventTrigger
+    case 76: m.w8(0x8c0e, 0); return di; // clears [8C0E]
     default:
       ctx.unported.add(`opcode ${op}`);
       return ABORT;
@@ -167,4 +215,37 @@ function animTable(m, si, di, ctx) {
   if (m.u8(di + idx) !== 0xae) return ABORT; // park on this opcode until the terminator
   m.w16(si + 0x30, 0);
   return di + idx + 1;
+}
+
+/** 1000:DD1A Entity_TickKind1SpeedDecay: the world entity's vertical speed tick (always parks). */
+function tickKind1(m, si, di) {
+  let al = m.u8(di); di += 1;
+  if (m.u8(si + 0x27) === 0) { // first tick: load vertical and horizontal speed
+    m.w8(si + 0x26, al);
+    al = m.u8(di); di += 1;
+    m.w8(si + 0x27, al);
+    m.w8(si + 0x28, 0);
+  }
+  let ax = sx8(m.u8(si + 0x26));
+  m.w16(si + 8, m.u16(si + 8) + ax);
+  m.w8(si + 0x28, m.u8(si + 0x28) + 1);
+  if (m.s8(si + 0x28) >= 10) {
+    if (m.u8(si + 1) === 0x11 || m.s8(si + 0x28) >= 0x10) {
+      if (m.u8(0x8b98) === 0) { // the player starts falling too
+        const bx = findByClass(m, 3);
+        m.w8(0x8b98, 1);
+        m.w16(bx + 0x10, 0x90); m.w16(bx + 0x12, 0x93); m.w16(bx + 0xa, 0x90);
+        m.w8(bx + 1, 0);
+        m.w16(0x8c38, 0);
+        m.w8(0x8b96, 0);
+      }
+    }
+  }
+  if (ax >= -13) { ax -= 2; m.w8(si + 0x26, ax & 0xff); }
+  const h = m.s8(si + 0x27);
+  if (h < 0) return;
+  const face = m.u16(si + 0x14);
+  if (face === 0) return;
+  if ((face & m.u16(si + 0x24)) !== 0) return;
+  if (face === 8) m.w16(si + 6, m.u16(si + 6) - h); else m.w16(si + 6, m.u16(si + 6) + h);
 }

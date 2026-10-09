@@ -1,7 +1,7 @@
 // Every playable level this port can load, straight from the real shipped file names
 // (docs/formats/pin-level-script.md: world 1's script is oddly named new1.pin; world 3 has three
 // script variants, level3a/b.pap each paired with the a/b-suffixed script per
-// tools/viewer.html's existing guessEntityScriptForLevel heuristic -- level3c.pin has no matching
+// level.html's existing guessEntityScriptForLevel heuristic -- level3c.pin has no matching
 // .pap and isn't used here). Palette selection matches docs/memory-map.md's per-world bank names.
 
 'use strict';

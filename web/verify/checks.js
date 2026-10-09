@@ -276,8 +276,8 @@ export async function checkConformance(ctx) {
   const env = prepare(await ctx.fetchRaw('game/GAMEU.EXE'), await ctx.fetchRaw('data/autoplay.pin'), await ctx.fetchRaw('data/pcmap.pap'));
   check('entity capture holds 700 consecutive iterations of up to 8 entities', cap.rows.length === 700 && cap.rows.every((r, i) => r.done === i));
   const r = runConformance(env, cap.rows, { ents: 3, only: 3, ignoreScratch: true });
-  check('at least 396 of 699 transitions reproduce entities 0-2 byte for byte', r.entExact >= 396, `${r.entExact}/${r.total}`);
-  check('at least 187 of 699 transitions also reproduce every non-scratch global', r.exact >= 187, `${r.exact}/${r.total}`);
+  check('at least 621 of 699 transitions reproduce entities 0-2 byte for byte', r.entExact >= 621, `${r.entExact}/${r.total}`);
+  check('at least 426 of 699 transitions also reproduce every non-scratch global', r.exact >= 426, `${r.exact}/${r.total}`);
   const top = [...r.unportedHist].sort((a, b) => b[1] - a[1]).slice(0, 6).map(([k, n]) => `${k} x${n}`).join(', ');
   note('unported branches still hit', top || 'none');
   return results;

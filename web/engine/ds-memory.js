@@ -40,3 +40,12 @@ export class DsMemory {
 
   get(o, n) { return this.b.subarray(o, o + n); }
 }
+
+const BLOCK_START = 0x9398;
+const BLOCK_END = 0xb918;
+
+/** 1000:C18C. First entity record in the block whose class (+2) equals `cls`, or 0. */
+export function findByClass(m, cls) {
+  for (let bx = BLOCK_START; bx < BLOCK_END; bx += ENTITY_SIZE) if (m.u16(bx + 2) === cls) return bx;
+  return 0;
+}
