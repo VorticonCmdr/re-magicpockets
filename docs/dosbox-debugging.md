@@ -118,9 +118,32 @@ what finally forced re-reading the *entire* function rather than the fragment fi
 live trace disagrees with a static read, re-check whether the static read covered the whole
 function, not just the interesting-looking part.
 
+## Capturing long traces with the Lua script API (`[PROVEN]` 2026-10-09)
+
+`script_load` works now (the old `post_text` bridge error is gone). What it can and cannot do, as
+used by `tools/attract-capture/capture.lua`:
+
+- API: `dosbox.mem_read_byte(segment, offset)`, `mem_read_word`, `wait_frames(n)`, `log`, `output`.
+  Memory calls take **(segment, offset)**, not a linear address. No registers, no debugger.
+- A script has a hard **1,000,000 Lua instruction budget for its whole run** (the run dies with
+  "instruction limit exceeded"), so poll sparsely (`wait_frames(2)`) and keep per-poll work small.
+- `dosbox.output` is capped at 64 KB in total. For long captures call `dosbox.log(...)` per row
+  with `debug:true`: the host-side log file (path in `script_status.log_path`, under
+  `/var/folders/.../dosbox-automation/logs/`) is not capped and can be copied out with `cp`.
+- `wait_for` accepts `for: script_done | frames (needs count) | memory | text | ...`; at most 4
+  concurrent waits. Do not poll with `sleep`; watch the log file from a background shell loop.
+- The memory **write breakpoint is a value poll**: it reports a stop some instructions after the
+  store, so its CS:IP is not the writer. Trace with execute breakpoints instead.
+- `dosbox_status.frame` keeps counting while the debugger is paused; time with the BIOS tick
+  dword at `0040:006C`.
+- After the demo's tape ends the original exits to DOS, and launching `GAMEU` again in the same
+  emulator crashes (CPU at `0000:0005`). Restart with `bridge_stop` + `bridge_start` + remount.
+- Reaching the attract demo: launch `GAMEU`, let the level start, press Esc, let "GAME OVER /
+  CONTINUE?" time out; the title cycle then starts the demo by itself (about 2 minutes).
+
 ## Tools that didn't work this session
 
-- `script_run` (Lua scripting) — hit an internal bridge error (`'Connection' object has no
+- `script_run` (Lua scripting), original session — hit an internal bridge error (`'Connection' object has no
   attribute 'post_text'`) on every attempt, including a trivial one-line script. Worth retrying in
   a fresh session/bridge version, since frame-accurate scripted input (rather than manually
   interleaving `input_key`/`debug_continue`/`debug_status` calls) would have avoided most of the
