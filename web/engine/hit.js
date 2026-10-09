@@ -8,11 +8,12 @@
 
 import { pushSpawnEvent, pushEvent3, pushEvent5, pushEntityEvent } from './fire.js';
 import { findByClass } from './ds-memory.js';
+import { changeClass } from './script-runner.js';
 
 /** @returns {boolean} true when the original `pop ax; ret` abandons the whole interaction scan */
 export function pairEvent(m, si, bx, cl, ctx) {
   const tag = `45F8 pair ${cl} class 0x${m.u16(si + 2).toString(16)}/0x${m.u16(bx + 2).toString(16)} kinds ${m.u16(si + 4)}/${m.u16(bx + 4)}`;
-  if (cl === 5) { if (!playerTouchesProjectile(m, si, bx)) ctx.unported.add(tag); return false; }
+  if (cl === 5) { if (!playerTouchesProjectile(m, si, bx, ctx)) ctx.unported.add(tag); return false; }
   if (cl === 7) { if (!playerTouchesProp(m, si, bx, ctx)) ctx.unported.add(tag); return false; }
   if (cl === 4) { if (!weaponHitsEnemy(m, si, bx, ctx)) ctx.unported.add(tag); return false; }
   ctx.unported.add(tag);
@@ -20,12 +21,13 @@ export function pairEvent(m, si, bx, cl, ctx) {
 }
 
 /** 1000:4C01. @returns {boolean} handled */
-function playerTouchesProjectile(m, si, bx) {
+function playerTouchesProjectile(m, si, bx, ctx) {
   const world = m.u16(0x8b89) || m.u16(0x8b8b);
   const cls = m.u16(bx + 2);
   if (world === 1) {
     if (cls === 0xd) return crateTouched(m, si, bx);
-    return cls !== 0x10; // 4DE2 (class 0x10) is not ported
+    if (cls === 0x10) return rewardTouched(m, si, bx, ctx);
+    return true;
   }
   if (world === 2) return cls !== 0x33 && cls !== 0x34;
   if (world === 3) return cls !== 0x38 && cls !== 0x39;
@@ -108,7 +110,8 @@ function findNextByClass(m, from, cls) {
 }
 
 /** 1000:4F27: a projectile (si, kind 7) hits an enemy (bx, kind 2). @returns {boolean} handled */
-function weaponHitsEnemy(m, si, bx, ctx) {
+export function weaponHitsEnemy(m, si, bx, ctx) {
+  if (globalThis.process?.env?.MP_TRACE) console.error('HIT weapon', si.toString(16), 'cls', m.u16(si + 2), 'enemy', bx.toString(16), 'cls', m.u16(bx + 2), 'kind', m.u16(bx + 4), '+39', m.u8(bx + 0x39).toString(16), '+3f', m.u8(bx + 0x3f), '+40', m.u8(bx + 0x40).toString(16), 'wst40', m.u8(si + 0x40).toString(16));
   if (m.u8(bx + 0x40) === 0x65 || m.u8(si + 0x40) === 0x65 || m.u8(bx + 0x40) === 0x19 || m.u8(si + 0x40) === 0x19) return true;
   const target = m.u16(bx + 2);
   if (target === 0x2c || target === 0x42) return true;
@@ -127,7 +130,7 @@ function weaponHitsEnemy(m, si, bx, ctx) {
   if (m.u8(bx + 0x39) === 0x41 || m.u8(bx + 0x40) === 0x40 || m.u8(bx + 0x39) === 0x15 || m.u8(bx + 0x40) === 0x43) return die(m, bx, ctx);
   if (target === 0x2b) return false; // 5033
   kill(m, si);
-  if (dmg === 4) return false; // 52A0
+  if (dmg === 4) return strongHit(m, si, bx, ctx); // 52A0
   kill(m, si); // 4FFF
   m.w16(0x8b75, m.u16(0x8b75) + m.u8(bx + 0x36) + 1); // 5003: score
   return die(m, bx, ctx);
@@ -224,5 +227,106 @@ export function bonus(m, ctx) {
   for (const [a, v] of [[0x8c21, 0x78], [0x8c23, 0], [0x8c25, 0xa8], [0x8c27, 8], [0x8c29, 4]]) m.w16(a, v);
   pushSpawnEvent(m);
   if (queueOk()) m.w16(0x8c6d, 0xffff);
+  return true;
+}
+
+/** 1000:52A0: a damage-4 shot kills the enemy and turns itself into the reward object (class 0x10 in world 1). */
+function strongHit(m, si, bx, ctx) {
+  kill(m, bx);
+  const link = m.u16(bx + 0x2c);
+  if (link !== 0) kill(m, link);
+  // sounds 1D4C(4), 1D4C(0x45) and 1CCF(0x25) are skipped
+  m.w16(0x8c27, 0x100 | m.u8(0x8c05)); // AH is left at 1 by the sound request
+  m.w16(0x8c23, m.u8(bx + 0x3c));
+  const world = m.u16(0x8b89) || m.u16(0x8b8b);
+  if (world !== 1) { ctx.unported.add(`52A0 world ${world}`); return false; }
+  m.w16(0x8c25, m.u16(si + 0x26));
+  changeClass(m, si, 0x10);
+  m.w16(si + 0x26, m.u16(0x8c25));
+  m.w8(si + 0x3f, m.u16(0x8c27) & 0xff);
+  m.w8(si + 0x3c, m.u16(0x8c23) & 0xff);
+  m.w16(si + 0xa, m.u16(si + 0x10));
+  return true;
+}
+
+const s16 = (v) => ((v & 0xffff) >= 0x8000 ? (v & 0xffff) - 0x10000 : v & 0xffff);
+
+/** 1000:53A5: pop a score-style burst of events for the reward whose value is in [8C1F]. */
+function scoreBurst(m, si, ctx) {
+  m.w16(0x8c29, 0xe);
+  if (m.u16(0x8c1f) !== 0x12) m.w16(0x8c1f, m.u16(0x8c1f) + (m.u16(0x8b8b) & 1));
+  ctx.rng(m, 0); // 11FC; CF is the compare/add carry, 0 here
+  m.w16(0x8c27, m.u16(0x8c27) - (m.u16(0x8b6b) & 7));
+  if (m.u8(0x8bb2) !== 0 && (m.u16(0x8c1f) === 0 || m.u16(0x8c1f) === 1)) { m.w16(0x8c29, 0x1b); m.w16(0x8c1f, 0x20); }
+  const push = (a, b) => { m.w16(0x8c21, a); m.w16(0x8c23, b); pushSpawnEvent(m); };
+  const tail = () => { push(0x15, 0); };
+  const pair14 = () => { push(0x14, 4); push(0x14, 8); };
+  if (m.u16(0x8c1d) === 0) { tail(); return; } // 5430
+  push(0x13, 4); push(0x13, 8);
+  const d = s16(m.u16(0x8c1d));
+  if (d <= 0xe) return; // 545E
+  if (d > 0x15) {
+    if (d <= 0x1a) { pair14(); return; } // 5440 then 545E
+    pair14();
+  }
+  if (m.u16(0x8c1f) === 0x10) { // 545F
+    m.w16(0x8c29, 0x2c); m.w16(0x8c21, 0x15); m.w16(0x8c23, m.u16(si + 0x14));
+    pushEvent5(m);
+    return;
+  }
+  tail();
+}
+
+/** 1000:4DE2: the player touches a reward object (class 0x10, world 1 and 2). */
+function rewardTouched(m, si, bx, ctx) {
+  if (m.u8(bx + 0x40) === 0x65) return true;
+  if (m.u16(0x8b89) === 3 || m.u16(0x8b89) === 4) return false;
+  if (m.u16(bx + 2) === 0x3e && m.u8(bx + 1) !== 0x5c) return true;
+  m.w8(bx + 1, 0xc9); m.w16(bx + 0xc, 0xd4c7);
+  m.w16(0x8c1f, m.s8(bx + 0x3f) & 0xffff);
+  m.w8(bx + 0x40, 0x65);
+  // 4E24: a random pickup sound (1CCF) is requested here
+  m.w8(0x8c05, 0);
+  m.w8(0x8c07, m.u8(0x8c07) + 1);
+  m.w8(0x8c08, m.u8(0x8c08) + (m.u16(0x8c1f) & 0xff));
+  m.w16(0x8c27, m.u16(bx + 6) + 8);
+  m.w16(0x8c25, m.u16(bx + 8));
+  if (m.u8(bx + 0x3c) !== 0) { // 4E95
+    const al = Math.min(m.u8(bx + 0x3c), 10);
+    m.w16(0x8c29, 0x1b); m.w16(0x8c1f, 0x13 + al);
+    m.w16(0x8c21, 0x15); m.w16(0x8c23, 0);
+    pushSpawnEvent(m);
+    return particles(m);
+  }
+  const world = findByClass(m, 1);
+  const sp = m.s8(world + 0x28);
+  m.w16(0x8c1d, sp < 0 ? -sp : sp);
+  if (s16(m.u16(0x8b75) - m.u16(0x8b83)) < 0x32) { // 4EC4
+    if (s16(m.u16(0x8c1f)) >= 0xa) m.w16(0x8c1f, 9);
+    m.w16(0x8c1f, (m.u16(0x8c1f) << 1) & 0x1e);
+    scoreBurst(m, si, ctx);
+    if (m.u8(0x8b98) === 0x41) {
+      m.w16(0x8c1f, 0xff); m.w16(0x8c21, 0x32); m.w16(0x8c23, 4); m.w16(0x8c29, 0x55);
+      pushSpawnEvent(m);
+    }
+    return true;
+  }
+  m.w16(0x8b83, m.u16(0x8b83) + 0x32); // 4F07
+  let dx = m.u16(0x8c1f);
+  if (s16(dx) >= 0xa) dx = m.u16(0x8c1f) % 10;
+  m.w16(0x8c1f, (dx * 2) & 0x1e);
+  // 5475: the value halved (DIV DL leaves the remainder in AH), then the particles
+  const ax = m.u16(0x8c1f);
+  m.w16(0x8c29, 0x1b);
+  m.w16(0x8c1f, (((ax % 2) << 8) | Math.floor(ax / 2)) + 0x14);
+  m.w16(0x8c21, 0x15); m.w16(0x8c23, 0);
+  pushSpawnEvent(m);
+  return particles(m);
+}
+
+/** 1000:572A: four debris particles at the position in 8C25/8C27. */
+function particles(m) {
+  m.w16(0x8c29, 0xf);
+  for (const [a, b] of [[9, 4], [9, 8], [8, 4], [8, 8]]) { m.w16(0x8c21, a); m.w16(0x8c23, b); pushEvent5(m); }
   return true;
 }

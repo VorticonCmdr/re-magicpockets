@@ -111,13 +111,85 @@ function aiOpcodes(m, si, ctx) {
     if (op === 0x73) { // 648E: scan-then-react
       m.w16(0x8c2b, 0);
       const cls = m.u16(si + 2), set = m.u8(si + 0x39);
-      if (cls === 0x2c || set === 5 || set === 0xa || (cls === 0x14 && set === 0)) { ctx.unported.add(`AI opcode 's' class 0x${cls.toString(16)} set ${set}`); return; }
+      if (set === 0xa && cls !== 0x2c && set !== 5) { // 6558: look for a crate (class 0xE) to pick up
+        const r = aiScanCrates(m, si, di, ctx);
+        if (r === 'end') return;
+        continue; // 6320
+      }
+      if (cls === 0x14 && set === 0 && cls !== 0x2c) { // 65A8: notice the hero
+        const bx = findByClass(m, 3);
+        if (bx === 0) continue;
+        const flags = targetDistance(m, si, bx);
+        m.w16(0x8c2b, flags);
+        const stance = () => { m.w8(si + 1, 0x86); m.w16(si + 0xc, 0xcf15); }; // 6C6B
+        if (flags === 0) { stance(); return; }
+        if ((flags & m.u16(si + 0x14)) === 0) continue;
+        let cl = m.u8(si + 0x37);
+        if (m.s16(0x8c1b) > cl) { m.w16(0x8c2b, m.u16(0x8c2b) & 3); continue; } // 6632
+        cl >>= 1;
+        if (m.s16(0x8c1d) > cl) { m.w16(0x8c2b, m.u16(0x8c2b) & 0xc); continue; } // 663A
+        rollRandom(m, si, ctx);
+        if (m.u16(0x8be5) === 0) { stance(); return; }
+        rollRandom(m, si, ctx); // 65E2
+        if (m.u16(0x8be5) === 0) continue;
+        aiTurn(m, si, di, ctx);
+        return;
+      }
+      if (cls === 0x2c || set === 5 || (cls === 0x14 && set === 0)) { ctx.unported.add(`AI opcode 's' class 0x${cls.toString(16)} set ${set}`); return; }
       continue; // 6555 -> 6320
     }
     const names = { 0x70: 'p', 0x71: 'q', 0x72: 'r', 0x74: 't' };
     if (names[op]) ctx.unported.add(`AI opcode '${names[op]}'`); // any other byte (0x6F, ...) ends the decision
     return;
   }
+}
+
+/** 1000:7227: direction flags (bit 1 down, 8 right, 1 up, 4 left) and distances in cells to `bx`. */
+export function targetDistance(m, si, bx) {
+  let flags = 0;
+  if (m.s16(si + 8) < m.s16(bx + 8)) flags |= 2;
+  if (m.s16(si + 6) < m.s16(bx + 6)) flags |= 8;
+  if (m.s16(bx + 8) < m.s16(si + 8)) flags |= 1;
+  if (m.s16(bx + 6) < m.s16(si + 6)) flags |= 4;
+  const ax = Math.abs(m.s16(si + 6) - m.s16(bx + 6)), bxd = Math.abs(m.s16(si + 8) - m.s16(bx + 8));
+  m.w16(0x8c29, flags);
+  m.w16(0x8c1b, Math.floor(ax / 0x20));
+  m.w16(0x8c1d, Math.floor(bxd / 0x10));
+  return flags; // CX = 0x10 and DX = |dy| % 16 also survive the call (opcode 58 reads them)
+}
+
+/** 1000:6558 (the 's' opcode, animation set 0xA): walk towards a crate and pick it up. @returns 'end' when the decision ends */
+function aiScanCrates(m, si, di, ctx) {
+  let bx = 0x9398;
+  for (;;) {
+    bx = nextByClass(m, bx, 0xe);
+    if (bx === 0) return 'next';
+    const flags = targetDistance(m, si, bx);
+    if (m.u8(bx + 0x3e) === 0 || (m.u8(bx) & 0x80) !== 0) continue;
+    if (m.s16(0x8c1b) > m.u8(si + 0x37)) continue;
+    if (m.u16(0x8c1d) !== 1) { m.w16(0x8c2b, m.u16(0x8c2b) & 0xc); return 'next'; } // 663A
+    if (flags === 0 || m.u16(si + 6) === m.u16(bx + 6) || (flags & m.u16(si + 0x14)) !== 0) return pickUp(m, si, bx, ctx); // 6AA7
+    aiTurn(m, si, di, ctx); // 6B13
+    return 'end';
+  }
+}
+
+/** 1000:6AA7: the AI entity picks up (destroys) the crate `bx`. */
+function pickUp(m, si, bx, ctx) {
+  if (m.u16(0x8c1b) !== 0) return 'next';
+  const cls = m.u16(si + 2);
+  if (cls === 0x4c || cls === 0x50) { ctx.unported.add(`AI 6AA7 class 0x${cls.toString(16)}`); return 'end'; }
+  if (cls === 0x14) m.w8(si + 0x3d, 0);
+  m.w8(bx + 0x40, 0x19);
+  m.w8(si + 0x3c, m.u8(si + 0x3c) + 1);
+  m.w8(0x8c09, m.u8(0x8c09) + 1); // + sound 1CCF
+  return 'end';
+}
+
+/** 1000:C192: the next record after `from` whose class is `cls`. */
+function nextByClass(m, from, cls) {
+  for (let bx = from + 0x42; bx < 0xb918; bx += 0x42) if (m.u16(bx + 2) === cls) return bx;
+  return 0;
 }
 
 /** 1000:5F56 world 1, class 0x13. */

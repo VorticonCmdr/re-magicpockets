@@ -250,7 +250,7 @@ export function updateBehavior(m, si, ctx) {
 }
 
 /** 1000:241F Entity_ResetExtendedFields. */
-function resetExtendedFields(m, si) {
+export function resetExtendedFields(m, si) {
   for (const o of [0x3e, 0x40, 0x3f, 0x39, 0x36, 0x37, 0x38, 0x3a, 0x3b, 0x3c]) m.w8(si + o, 0);
   for (const o of [0x24, 0x26, 0x28, 0x2a, 0x2c, 0x2e, 0x30, 0x32]) m.w16(si + o, 0);
 }

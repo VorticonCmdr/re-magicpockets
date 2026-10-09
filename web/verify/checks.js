@@ -286,11 +286,11 @@ export async function checkConformance(ctx) {
   const rows = expandRows(cap.rows);
   check('the capture lists up to 112 entities per row, each record 66 bytes', Math.max(...rows.map((r) => r.e.length)) === 112 && rows.every((r) => r.e.every((e) => e.hex.length === 132)));
   const hero = runConformance(env, rows, { ents: 3, only: 3, ignoreScratch: true });
-  check('at least 695 of 699 transitions reproduce entities 0-2 byte for byte', hero.entExact >= 695, `${hero.entExact}/${hero.total}`);
-  check('at least 637 of 699 transitions also reproduce every non-scratch global', hero.exact >= 637, `${hero.exact}/${hero.total}`);
+  check('at least 696 of 699 transitions reproduce entities 0-2 byte for byte', hero.entExact >= 696, `${hero.entExact}/${hero.total}`);
+  check('at least 639 of 699 transitions also reproduce every non-scratch global', hero.exact >= 639, `${hero.exact}/${hero.total}`);
   const all = runConformance(env, rows, { ignoreScratch: true });
-  check('at least 680 of 699 transitions reproduce every captured entity byte for byte', all.entExact >= 680, `${all.entExact}/${all.total}`);
-  check('at least 670 of 699 transitions reproduce every entity and every non-scratch global', all.exact >= 670, `${all.exact}/${all.total}`);
+  check('at least 694 of 699 transitions reproduce every captured entity byte for byte', all.entExact >= 694, `${all.entExact}/${all.total}`);
+  check('at least 688 of 699 transitions reproduce every entity and every non-scratch global', all.exact >= 688, `${all.exact}/${all.total}`);
   const top = [...all.unportedHist].sort((a, b) => b[1] - a[1]).slice(0, 6).map(([k, n]) => `${k} x${n}`).join(', ');
   note('unported branches still hit', top || 'none');
   return results;

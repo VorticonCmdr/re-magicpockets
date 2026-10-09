@@ -12,6 +12,7 @@
 'use strict';
 
 import { findByClass } from './ds-memory.js';
+import { resetExtendedFields } from './entity-behavior.js';
 import { pushEvent5 } from './fire.js';
 
 const ABORT = Symbol('abort');
@@ -211,6 +212,16 @@ function handler(m, si, di, op, ctx) {
       return di + 1;
     }
     case 58: aimGlow(m, si); return di; // 2AE1
+    case 68: { // 2755: a level-event trigger from [8BB2]; usually nothing is pending
+      if (m.u16(si + 2) === 3 || m.u8(0x8ba4) !== 0 || m.u8(0x8bb2) !== 0) { ctx.unported.add('opcode 68 trigger'); return ABORT; }
+      return di;
+    }
+    case 49: { // 2DA7: operand != 0 turns this entity into another class (C8C0)
+      const cls = m.u8(di); di += 1;
+      if (cls === 0) { ctx.unported.add('opcode 49 operand 0'); return ABORT; }
+      changeClass(m, si, cls);
+      return di;
+    }
     case 25: { // 39BD: the HUD kill-meter frame for this slot
       m.w16(0x8c6d, 0);
       if (m.u16(si + 6) === 0x128) m.w16(si + 0xa, (m.s8(0x8c05) & 0xffff) % 10 + 0x14);
@@ -438,4 +449,19 @@ function aimGlow(m, si) {
     10: far ? 0xa9 : (vertBigger ? 0xaa : 0xa8),
   }[flags];
   if (frame !== undefined) m.w16(si + 0xa, frame);
+}
+
+/** 1000:C8C0: re-initialise an entity from class `cls`'s template (the spawn code's copy, minus placement). */
+export function changeClass(m, si, cls) {
+  const tpl = m.u16(0xc39a + 2 * cls);
+  m.w8(si + 0x16, m.u8(tpl + 8));
+  m.w8(si + 0x3d, m.u8(tpl + 0x10));
+  m.w16(si + 4, m.u16(tpl + 0x18));
+  m.w16(si + 0x10, m.u16(tpl + 2));
+  m.w16(si + 0x12, m.u16(tpl + 4));
+  m.w16(si + 0xa, m.u16(si + 0x10));
+  resetExtendedFields(m, si);
+  const hb = 0xf3af + m.u16(tpl + 0x1a);
+  for (let i = 0; i < 6; i++) m.w16(si + 0x18 + 2 * i, m.u16(hb + 2 * i));
+  m.w16(si + 2, cls);
 }

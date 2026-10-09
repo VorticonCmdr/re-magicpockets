@@ -599,10 +599,37 @@ function floorEnemy(m, bx, ctx) {
   m.w16(bx + 0x24, m.u16(bx + 0x24) | 2);
 }
 
-/** 1000:E5B3 for kind 2 (ceiling). */
-function ceilingEnemy(m, bx) {
+/** 1000:E5B3 (ceiling): kind 2 and 4 set the flag, kinds 5/6 (E66F) and 7 (E9D8) bounce off it. */
+function ceilingEnemy(m, bx, ctx) {
   if (m.u8(R.C9) === 0) return;
-  if (m.u16(bx + 4) === 5) { m.w16(bx + 0x24, m.u16(bx + 0x24) | 1); return; } // E66F is not ported: only the flag
+  const kind = m.u16(bx + 4);
+  const bounce = () => { // FABD, flag, then the vertical speed reverses
+    alignToCeiling(m, bx);
+    m.w16(bx + 0x24, m.u16(bx + 0x24) | 1);
+    m.w8(bx + 0x26, -m.u8(bx + 0x26));
+  };
+  if (kind === 5 || kind === 6) { // E66F
+    const cls = m.u16(bx + 2);
+    if (cls === 0x55) {
+      if (m.u8(bx + 1) !== 0xb1) { m.w8(bx + 1, 0xb1); m.w16(bx + 0xc, 0xc7cf); }
+      return;
+    }
+    if (cls === 6) return;
+    bounce();
+    return;
+  }
+  if (kind === 7) { // E9D8
+    const world = m.u16(0x8b89) || m.u16(0x8b8b);
+    const cls = m.u16(bx + 2);
+    if (world === 1 && [0xa, 0xb, 0xc, 0xd, 0x27].includes(cls)) { // EA10: shatter a 0x3C tile
+      let di = m.u16(R.D7);
+      if (m.u8(R.C5) === 0) di -= 1;
+      if (m.u8(di) === 0x3c) { m.w8(di, -m.u8(di)); m.w8(bx + 0x40, 0x19); return; }
+      if (m.u8(0x8be8) !== 0 && m.u8(di + 0x80) === 0x3c) { m.w8(di + 0x80, -m.u8(di + 0x80)); m.w8(bx + 0x40, 0x19); return; }
+    }
+    bounce();
+    return;
+  }
   if (m.u8(R.C5) !== 0) alignToCeiling(m, bx);
   m.w16(bx + 0x24, m.u16(bx + 0x24) | 1);
 }
@@ -610,7 +637,7 @@ function ceilingEnemy(m, bx) {
 /** 1000:E2C2: vertical resolution by the sign of the vertical speed. */
 function verticalEnemy(m, bx, ctx) {
   const vy = m.s8(bx + 0x26);
-  if (vy > 0) ceilingEnemy(m, bx); else floorEnemy(m, bx, ctx);
+  if (vy > 0) ceilingEnemy(m, bx, ctx); else floorEnemy(m, bx, ctx);
 }
 
 /** The enemy half of 1000:E14F (world 1-2, kinds other than the player). */
