@@ -26,6 +26,21 @@ function advanceAnim(m, si, al) { // 1000:3178
   m.w16(si + 0xa, m.u16(si + 0xa) === m.u16(si + 0x12) ? m.u16(si + 0x10) : m.u16(si + 0xa) + 1);
 }
 
+/** 1000:677C: start an action (a hop with horizontal speed) chosen by class; `dx` is the caller's DX. */
+function startAction(m, si, dx, ctx) {
+  m.w8(si + 0x27, ((dx & 0xff) + 1) * 2);
+  m.w8(si + 0x26, 7);
+  const cls = m.u16(si + 2);
+  const set = (state, script) => { m.w8(si + 1, state); m.w16(si + 0xc, script); };
+  if (cls === 0x2c) { set(0x15, 0xc625); return; } // 6C4C
+  const world = m.u16(0x8b89) || m.u16(0x8b8b);
+  if (world !== 1) { ctx.unported.add(`AI action 677C world ${world}`); return; }
+  if (cls === 0x13) set(0x83, 0xced5); // 6C2E
+  else if (cls === 0x23) set(0x99, 0xd08d); // 6C42
+  else if (cls === 0x20) set(0x97, 0xd062); // 6C38
+  else if (cls === 0x14) ctx.unported.add('AI action 677C class 0x14 (jumps into the opcode loop)');
+}
+
 /** 1000:71D5 Entity_RollRandomBehaviorIndex. The generator is called with CF = 0 here. */
 export function rollRandom(m, si, ctx) {
   if (m.u8(0x8ba4) !== 0 || m.u8(0x8ba3) !== 0) { m.w16(0x8be5, 1); return; }
@@ -56,7 +71,7 @@ function aiTurn(m, si, di, ctx) {
     if (cls === 0x2c) { ctx.unported.add('AI 6C80 class 0x2c'); return; }
     let w = m.u16(0x8b89);
     if (w === 0) w = m.u16(0x8b8b);
-    if (w === 1 && cls === 0x14) { ctx.unported.add('AI 6C61 class 0x14'); return; }
+    if (w === 1 && cls === 0x14) { m.w8(si + 1, 0x85); m.w16(si + 0xc, 0xcf07); return; } // 6C61
     if (w >= 1 && w <= 4) turnAround(m, si);
     return;
   }
@@ -183,7 +198,7 @@ export function behaviorKind2(m, si, ctx) {
   const ceac = () => { // CEAC: a random roll may start an action
     rollRandom(m, si, ctx);
     if (m.u16(0x8be5) === 0) return;
-    ctx.unported.add(`AI action 677C class 0x${cls.toString(16)}`);
+    startAction(m, si, 0, ctx);
   };
   if (cls === 0x23) { ceac(); return; }
   if (cls === 0x51) { if (m.u8(si + 0x39) === 0x41) return; ceac(); return; }

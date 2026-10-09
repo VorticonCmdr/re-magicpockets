@@ -513,7 +513,62 @@ function noFloorProp(m, bx, cls, ctx) {
   if (m.u8(bx + 1) === 0) { m.w8(bx + 1, 0x8e); m.w16(bx + 0xc, 0xcfd5); } // F410
 }
 
+/** 1000:EB20/EB23 (+ ECE5, EE60): the floor under a kind 7 projectile, world 1 only. */
+function floorProjectile(m, bx, ctx) {
+  const world = m.u16(0x8b89) || m.u16(0x8b8b);
+  if (m.u8(R.CA) === 0) { // EDCC: nothing happens in worlds 1-3; world 4 is not ported
+    if (world === 4) ctx.unported.add('EDED kind 7 without floor, world 4');
+    return;
+  }
+  if (m.u8(R.C6) !== 0) alignToFloor(m, bx); // EB20: FAF5
+  if (world !== 1) { ctx.unported.add(`EB23 kind 7 world ${world}`); return; }
+  const cls = m.u16(bx + 2);
+  const kill = () => m.w8(bx + 0x40, 0x19);
+  if ([0xa, 0xb, 0xc, 0xd, 0x27].includes(cls)) { // ECBA: breakable tiles under the shot
+    const tile = m.u16(R.D7);
+    let broke = false;
+    if (m.u8(tile) === 0x3c) { m.w8(tile, -m.u8(tile)); broke = true; }
+    else if (m.u8(0x8be8) !== 0 && m.u8(tile + 0x80) === 0x3c) { m.w8(tile + 0x80, -m.u8(tile + 0x80)); broke = true; }
+    if (broke) { // sound 1CCF skipped; F1F6 decides what the shot becomes
+      if (cls === 0xa) { kill(); } else ctx.unported.add(`F1F6 class 0x${cls.toString(16)}`);
+    }
+  } else if (cls === 0x10) { // ED32
+    if (m.u8(bx + 1) === 0x5c) return;
+    m.w16(bx + 0x26, 0); m.w8(bx + 1, 0x5c); m.w16(bx + 0xc, 0xcac4);
+    return;
+  }
+  else if (cls !== 0x44 && cls !== 0x28) { kill(); return; }
+  // ECE5
+  if (m.u8(R.E7) !== 0) return;
+  m.w16(bx + 0x24, m.u16(bx + 0x24) | 2);
+  let al = m.s8(bx + 0x26);
+  if (al !== 0) {
+    if (al > 0) return;
+    al = (-al) & 0xff;
+    m.w8(bx + 0x26, al);
+    m.w8(bx + 0x26, al - (m.s8(bx + 0x26) >> 1)); // sar al,1 on the negated byte, then subtract
+    if (m.u8(0x8c03) !== 0) { ctx.unported.add('F0F5 bounce with [8C03]'); return; }
+    if (m.s8(bx + 0x26) > 3) return; // ED19: only the bounce sound
+  }
+  // EE60 -> F08F: the shot has run out of bounce
+  if (cls === 0x44 || cls === 0x27 || cls === 0x28 || cls === 0x5f || cls === 0x16) { ctx.unported.add(`EE60 class 0x${cls.toString(16)}`); return; }
+  if (cls === 0xa) {
+    if (m.s8(bx + 1) < 0) return;
+    m.w8(bx + 1, 0x93); m.w16(bx + 0xc, 0xd006); m.w8(bx + 0x40, 0x65);
+  } else if (cls === 0xb) {
+    if (m.s8(bx + 1) < 0) return;
+    m.w8(bx + 1, 0x92); m.w16(bx + 0xc, 0xcffb);
+  } else if (cls === 0xc) {
+    if (m.s8(bx + 1) < 0) return;
+    m.w8(bx + 1, 0x91); m.w16(bx + 0xc, 0xcff0);
+  } else if (cls === 0xd) {
+    if (m.s8(bx + 1) < 0) return;
+    m.w16(bx + 0x26, 0); m.w8(bx + 1, 0x90); m.w16(bx + 0xc, 0xcfe3);
+  } else kill();
+}
+
 function floorEnemy(m, bx, ctx) {
+  if (m.u16(bx + 4) === 7) { floorProjectile(m, bx, ctx); return; }
   if (m.u16(bx + 4) === 5 || m.u16(bx + 4) === 6) { floorProp(m, bx, ctx); return; }
   const cls = m.u16(bx + 2);
   if (m.u8(R.CA) === 0) { // E703 -> F37D
