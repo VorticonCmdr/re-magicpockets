@@ -135,6 +135,11 @@ function aiOpcodes(m, si, ctx) {
         aiTurn(m, si, di, ctx);
         return;
       }
+      if (set === 5 && cls !== 0x2c && cls !== 0x14) { // 64C2 (set 5 or not, but only the set-5 world-1 case is ported)
+        const r = aiNoticeHero(m, si, di, ctx);
+        if (r === 'end') return;
+        continue;
+      }
       if (cls === 0x2c || set === 5 || (cls === 0x14 && set === 0)) { ctx.unported.add(`AI opcode 's' class 0x${cls.toString(16)} set ${set}`); return; }
       continue; // 6555 -> 6320
     }
@@ -549,4 +554,53 @@ function aiOpP(m, si, ctx) {
   if (m.u8(si + 0x36) === 0) return 'next';
   startAction(m, si, dl, ctx);
   return 'end';
+}
+
+/** 1000:64C2..6555 + 69CA: an enemy of animation set 5 looks for the hero and attacks. */
+function aiNoticeHero(m, si, di, ctx) {
+  const cls = m.u16(si + 2);
+  if ((cls === 0x20 || cls === 0x4b || cls === 0x51 || cls === 0x57) && ((m.u8(si + 0x36) + m.u8(si + 0x37) + m.u8(si + 0x38)) & 0xff) === 0x1b) {
+    ctx.unported.add('AI 6642'); return 'end';
+  }
+  const bx = findByClass(m, 3);
+  if (bx === 0) return 'next';
+  const flags = targetDistance(m, si, bx);
+  m.w16(0x8c2b, flags);
+  const attack = () => { // 69CA, world 1, set 5
+    if (cls === 0x42) { ctx.unported.add('AI 6CD4'); return 'end'; }
+    if (m.u8(0x8b96) !== 0) return 'next';
+    const world = m.u16(0x8b89) || m.u16(0x8b8b);
+    if (world !== 1) { ctx.unported.add(`AI attack world ${world}`); return 'end'; }
+    if (m.u8(si + 0x39) !== 5) return 'next';
+    const set = (state, script) => { m.w8(si + 1, state); m.w16(si + 0xc, script); };
+    if (cls === 0x13) { // 6BAA
+      if (m.u8(si + 0x39) !== 0) { m.w8(si + 0x32, m.u16(0x8c1b) & 0xff); set(0x8b, 0xcf7c); }
+      return 'end';
+    }
+    if (cls === 0x20) { m.w8(si + 0x32, m.u16(0x8c1b) & 0xff); set(0x8c, 0xcfb4); return 'end'; } // 6BC0
+    if (cls === 0x23) { // 6C14
+      if (m.s16(0x8c1b) > 4) return 'next';
+      if (m.u8(si + 0x39) !== 0) set(0x9a, 0xd09c);
+      return 'end';
+    }
+    if (cls === 0x14) { ctx.unported.add('AI 6C75'); return 'end'; }
+    return 'next';
+  };
+  if (flags === 0) return attack();
+  const reach = m.u8(si + 0x37);
+  if (m.s16(0x8c1b) > reach) { m.w16(0x8c2b, m.u16(0x8c2b) & 3); return 'next'; }
+  if (m.s16(0x8c1d) > (reach >> 1)) { m.w16(0x8c2b, m.u16(0x8c2b) & 0xc); return 'next'; }
+  rollRandom(m, si, ctx);
+  if (m.u16(0x8be5) === 0) return 'next';
+  const facing = m.u16(0x8c2b) & m.u16(si + 0x14);
+  if (facing === 0) { // 65E2
+    rollRandom(m, si, ctx);
+    if (m.u16(0x8be5) === 0) return 'next';
+    aiTurn(m, si, di, ctx);
+    return 'end';
+  }
+  if (m.u8(si + 0x38) === 9 || cls === 0x42) return attack();
+  const scan = tileScan(m, m.u16(si + 0x14) === 4 ? 'up' : 'down', (m.u16(0x8bd7) - 2) & 0xffff, 1, facing & 0xff);
+  if (scan.dh !== 0) return 'next';
+  return attack();
 }

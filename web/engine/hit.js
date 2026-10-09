@@ -56,7 +56,8 @@ function playerTouchesProp(m, si, bx, ctx) {
   if (cls === 0xe) return crate(m, si, bx, ctx);
   if (cls === 0x26) return bonusItem(m, bx); // 5B26
   if (cls === 0x1b) return powerUp(m, bx, ctx);
-  if (cls === 0x1c || cls === 6 || cls === 0x56 || cls === 0x2e) return false;
+  if (cls === 0x1c) return levelGoal(m, si, bx); // 5851
+  if (cls === 6 || cls === 0x56 || cls === 0x2e) return false;
   if (!PICKUP_STAY.includes(cls) && (m.u8(bx + 0x40) === 0xf6 || m.u8(bx + 0x3e) === 0)) return true; // 5850
   m.w16(0x8c01, bx); // 584C: remember the prop the player stands against
   return true;
@@ -377,6 +378,10 @@ function powerUp(m, bx, ctx) {
     m.w8(bx + 0x40, 0x19);
     return true;
   }
+  if (frame === 0x1d) { // 5C4C
+    if (m.u8(bx + 1) !== 0x28) { m.w8(bx + 1, 0x28); m.w16(bx + 0xc, 0xc6e5); }
+    return true;
+  }
   if (frame === 0x15 || frame === 0x1c) { // 5CC6 / 5CAC: a life icon
     const icon = findByClass(m, 0x18);
     if (m.u16(icon + 0xa) === 0x7f) return maxed();
@@ -440,5 +445,25 @@ function bonusItem(m, bx) {
   if (f === 0xb8) award(0x32, 0x29, 0xc6ea);
   else if (f === 0xb9) award(0x64, 0x21, 0xc6a0);
   else if (f === 0xba) award(0xc8, 0x5e, 0xcb09);
+  return true;
+}
+
+/** 1000:5851: the player reaches the level's goal prop (class 0x1C): freeze the level and start the finale. */
+function levelGoal(m, si, bx) {
+  m.w8(bx + 0x3e, 0x1d);
+  if (m.u8(si + 1) !== 0) return true;
+  if (m.u16(si + 8) !== m.u16(bx + 8)) return true;
+  let ax = m.u16(si + 6);
+  const hit = ax === m.u16(bx + 6) || ((ax - 4) & 0xffff) === m.u16(bx + 6) || ((ax - 8) & 0xffff) === m.u16(bx + 6) ||
+    (m.u8(0x8b98) === 0x15 && (((ax - 8 + 0xc) & 0xffff) === m.u16(bx + 6) || ((ax - 8 + 0x10) & 0xffff) === m.u16(bx + 6)));
+  if (!hit) return true;
+  m.w8(0x8b5f, 1);
+  m.w8(si + 0x3e, 0);
+  m.w8(si + 0x40, 0x65); m.w8(bx + 0x40, 0x65);
+  m.w8(si + 1, 0x47); m.w16(si + 0xc, 0xc967);
+  m.w16(0x8c2f, m.u16(0x8c2d));
+  m.w8(findByClass(m, 1) + 1, 0);
+  const flag = findByClass(m, 0x2b);
+  if (flag !== 0) { m.w8(flag + 0x40, 0x19); m.w16(flag + 4, 0); }
   return true;
 }

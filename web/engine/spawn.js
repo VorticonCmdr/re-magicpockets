@@ -31,7 +31,7 @@ const SPECIAL_TYPES = new Set([0x11, 0x25, 0x1f, 0x1d, 0x44, 0x53, 0x2b, 0x2f, 0
  * the first class 3/8, after the first class 2, after the first class 0x1C; 5 inserts into the front
  * list after the class-7 entry. Returns the slot where the caller's next append goes.
  */
-function insertByGroup(m, group, si, slot) {
+export function insertByGroup(m, group, si, slot) {
   const FRONT_END = 0x91ba;
   const firstZeroFrom = (di) => { while (m.u16(di) !== 0 && di < 0x9400) di += 2; return di; };
   if (group === 1) { m.w16(FRONT_END, si); return slot; }

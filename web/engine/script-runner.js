@@ -14,7 +14,7 @@
 import { findByClass } from './ds-memory.js';
 import { resetExtendedFields } from './entity-behavior.js';
 import { pushEvent4, pushEvent5, pushSpawnEvent, pushEntityEvent } from './fire.js';
-import { setupLineMotion } from './spawn.js';
+import { setupLineMotion, insertByGroup } from './spawn.js';
 
 const ABORT = Symbol('abort');
 
@@ -267,9 +267,31 @@ function handler(m, si, di, op, ctx) {
       }
       return ABORT;
     }
+    case 8: { // 3A32: place the entity at (x, y) cells of the level (positive operands only)
+      const x = m.s8(di);
+      if (x < 0) return teleportViaTable(m, si, di + 1, ctx); // 3A5B
+      if (x === 0) { // 3AF0: come back from the bonus room
+        const hero = findByClass(m, 3);
+        const bx = m.u16(0x8c5f), by = m.u16(0x8c61);
+        m.w16(0x8c5f, 0); m.w16(0x8c61, 0);
+        m.w16(si + 6, bx); m.w16(si + 8, by);
+        if (m.u8(hero + 1) === 0x37) return di + 1;
+        m.w16(si + 0x26, 0); m.w8(si + 1, 0); m.w8(0x8c0c, 0);
+        m.w16(hero + 0x24, m.u16(hero + 0x24) | 2);
+        m.w8(hero + 0x3e, 0); m.w8(hero + 1, 0);
+        m.w16(hero + 0x10, 0x41); m.w16(hero + 0x12, 0x48); m.w16(hero + 0xa, 0x40);
+        m.w16(0x8c38, 0);
+        if (m.u8(0x8b98) === 1) m.w8(0x8b98, 0);
+        return di + 1;
+      }
+      const y = m.s8(di + 1);
+      m.w16(si + 6, (-(x * 0x20)) & 0xffff);
+      m.w16(si + 8, (-(y * 0x10)) & 0xffff);
+      return di + 2;
+    }
     case 49: { // 2DA7: operand != 0 turns this entity into another class (C8C0)
       const cls = m.u8(di); di += 1;
-      if (cls === 0) { ctx.unported.add('opcode 49 operand 0'); return ABORT; }
+      if (cls === 0) return carryItem(m, si, di, ctx); // 2DB5
       changeClass(m, si, cls);
       return di;
     }
@@ -576,4 +598,63 @@ function spawnOtherEffect(m, si, di, type, ctx) {
   m.w16(0x8c23, m.u16(si + 0x14));
   pushEvent4(m);
   return di + 2;
+}
+
+/** 1000:2DB5: opcode 49 with operand 0: the power-up the player picked becomes the item he carries. */
+function carryItem(m, si, di, ctx) {
+  m.w16(si + 6, m.u16(si + 6) - 8);
+  const idx = m.u16(0x8bff);
+  m.w16(0x8bff, 0);
+  const al = m.u8(0xeeea + idx);
+  if (al === 0x2a) { m.w16(si + 8, m.u16(si + 8) - 0x10); changeClass(m, si, al); return di; } // 2E0A
+  if (al === 0x22) { m.w16(si + 6, m.u16(si + 6) - 8); changeClass(m, si, al); return di; } // 2E11
+  if (al === 0x45) { m.w16(si + 8, m.u16(si + 8) - 0x10); changeClass(m, si, al); return di; } // 2E18
+  if (m.u8(0x8b98) === 0x41) { ctx.unported.add(`opcode 49 item 0x${al.toString(16)} in mode 0x41`); return ABORT; }
+  m.w16(0x8c1f, al);
+  changeClass(m, si, 0x1a);
+  m.w16(si + 0xa, al);
+  let d = 0x9090; // C15F: find the entity's slot, close the gap, then C807 re-inserts it after the hero sprite
+  while (m.u16(d) !== si && d < 0x91a8) d += 2;
+  for (; ; d += 2) { const nx = m.u16(d + 2); m.w16(d, nx); if (nx === 0) break; }
+  insertByGroup(m, 4, si, 0x9090);
+  return di;
+}
+
+/** 1000:3A5B (opcode 8 with a negative operand): jump to the next waypoint of the level's table at [8C63]. */
+function teleportViaTable(m, si, di, ctx) {
+  if (m.u16(0x8c5f) !== 0) { // 3B55: already in the bonus room: freeze the hero and start the level transition
+    const hero = findByClass(m, 3);
+    m.w8(hero + 1, 0x47); m.w16(hero + 0xc, 0xc967);
+    m.w8(0x8bee, 0xff);
+    const t = findByClass(m, 7);
+    m.w8(t + 1, 0xf9); m.w16(t + 0xc, 0xd922);
+    return di;
+  }
+  let bx = m.u16(0x8c63);
+  m.w16(0x8c29, m.u16(bx)); bx += 2;
+  m.w16(0x8c27, m.u16(bx)); bx += 2;
+  m.w16(0x8c25, m.u16(bx)); bx += 2;
+  if (m.u16(0x8c29) === 0) { // 3B7A: no more waypoints: scroll back so the goal prop is on screen
+    const goal = findByClass(m, 0x1c);
+    if (goal === 0) return di;
+    m.w16(si + 6, m.u16(si + 6) - (m.u16(goal + 6) - 0x90)); m.w16(si + 8, m.u16(si + 8) - (m.u16(goal + 8) - 0x50));
+    m.w16(0x8c5f, 0); m.w16(0x8c61, 0);
+    const t = findByClass(m, 7);
+    m.w8(t + 1, 0xf9); m.w16(t + 0xc, 0xd922);
+    m.w8(0x8bee, 1);
+    return di;
+  }
+  m.w16(0x8c1d, m.u16(si + 6)); m.w16(0x8c1f, m.u16(si + 8));
+  m.w16(si + 6, m.u16(0x8c29)); m.w16(si + 8, m.u16(0x8c27));
+  m.w16(0x8c63, bx);
+  if (m.u16(0x8c25) !== 0) {
+    m.w16(0x8c5f, m.u16(0x8c1d)); m.w16(0x8c61, m.u16(0x8c1f));
+    const t = findByClass(m, 7);
+    m.w8(t + 1, m.u16(0x8c25) & 0xff);
+    m.w16(t + 0xc, m.u16(0xd996 + 2 * m.u16(0x8c25)));
+  } else {
+    const flag = findByClass(m, 0x2b);
+    m.w8(flag + 0x40, 0x19); // a missing flag writes into DS:0x0040, which the game never reads
+  }
+  return di;
 }

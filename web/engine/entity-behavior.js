@@ -120,14 +120,37 @@ export function crateGrab(m, si, bx) {
   m.w8(0x8b96, 0);
 }
 
+/** 1000:4014: pick up the item prop `di`: it rides the player from now on. */
+function takeItem(m, si, bx, di) {
+  if (m.u8(di + 1) === 0x8e) return;
+  if (m.u16(di + 0x2a) === 0) m.w16(di + 0x2a, 0x3e8);
+  m.w16(0x8c71, Math.floor(m.u16(di + 0x2a) / 0x3c));
+  m.w8(0x8b98, 0x1a);
+  m.w8(di + 0x40, 0xf6);
+  m.w16(di + 0x2c, bx);
+  m.w8(di + 1, 0); m.w8(di + 0x3e, 0);
+  switch (m.u16(di + 0xa) & 0xfffe) {
+    case 0xe0: m.w16(di + 0xa, 0xe4); break; // 4067 (the alternate-build screen call is skipped)
+    case 0xe8: // 4091
+      m.w8(0x8b96, 0x32);
+      m.w8(si + 1, 0x95); m.w16(si + 0xc, 0xd020);
+      m.w8(di + 1, 0x9d); m.w16(di + 0xc, 0xd0c9);
+      m.w8(findByClass(m, 7) + 0x3e, 0x96);
+      break;
+    case 0xea: m.w8(0x8b96, 1); break; // 40B5
+    case 0xec: m.w8(0x8c04, 0x1d); break; // 40BB
+    default: break; // 0xe6: nothing
+  }
+}
+
 /** 1000:3E15: Down was pressed: interact with the prop remembered in [8C01]. */
 function downPressed(m, si, bx, ctx) {
   if (m.u8(0x8b67) & 0x80) return;
   if (m.u16(0x8bfd) !== 0) return;
   m.w16(0x8bfd, 1);
   if (m.u8(si + 1) !== 0) return;
-  let ax = 2;
-  if (m.u16(0x8c01) !== 0) { ax = m.u16(m.u16(0x8c01) + 2); m.w16(0x8c01, 0); }
+  let ax = 2, item = 0;
+  if (m.u16(0x8c01) !== 0) { item = m.u16(0x8c01); ax = m.u16(item + 2); m.w16(0x8c01, 0); }
   const t = m.u8(0x8b98), c04 = m.u8(0x8c04);
   const unp = (n) => ctx.unported.add(`3E15 ${n}`);
   if (ax === 0x22) { unp('class 0x22'); return; }
@@ -137,13 +160,14 @@ function downPressed(m, si, bx, ctx) {
     if (c04 === 0x40) { unp('c04 0x40'); return; }
     if (ax === 0x24) { unp('class 0x24'); return; }
     if (ax === 0xd || ax === 0x33) { crateGrab(m, si, bx); return; }
-    if (t !== 0x41 && ax === 0x1a) { unp('class 0x1a'); return; }
+    if (t !== 0x41 && ax === 0x1a) { takeItem(m, si, bx, item); return; } // 4014
     if (c04 === 0x27) { unp('c04 0x27'); return; }
   }
   if (c04 === 0x45) { unp('c04 0x45'); return; }
   if (ax === 0x2a || ax === 0x45) { unp(`class 0x${ax.toString(16)}`); return; }
   if (t === 0x1a) { unp('target 0x1a'); return; }
-  if (ax === 0x15 || ax === 0x40 || ax === 0x41 || ax === 0x43) unp(`class 0x${ax.toString(16)}`);
+  if (ax === 0x41) { takeItem(m, si, bx, item); return; } // 4014
+  if (ax === 0x15 || ax === 0x40 || ax === 0x43) unp(`class 0x${ax.toString(16)}`);
 }
 
 /** 1000:3CE8 Entity_HandleCollisionOrStateDispatch (SI = the world entity). */
