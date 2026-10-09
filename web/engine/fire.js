@@ -24,6 +24,16 @@ export function pushEvent4(m) {
   m.w16(0x8bb5, si);
 }
 
+/** 1000:BFCA: a 5-word spawn event (the projectile spawn), tag 5. */
+export function pushEvent5(m) {
+  let si = m.u16(0x8bb5);
+  if (si < EVENT_FLOOR) return;
+  for (const a of [0x8c21, 0x8c23, 0x8c25, 0x8c27, 0x8c29]) { pushWord(m, si, m.u16(a)); si -= 2; }
+  pushWord(m, si, 5); si -= 2;
+  m.w16(si, 0xeeee); si -= 2;
+  m.w16(0x8bb5, si);
+}
+
 /** 1000:C035 Entity_PushSpawnEvent: a 6-word event, tag 6. */
 export function pushSpawnEvent(m) {
   let si = m.u16(0x8bb5);

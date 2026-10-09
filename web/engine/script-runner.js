@@ -12,6 +12,7 @@
 'use strict';
 
 import { findByClass } from './ds-memory.js';
+import { pushEvent5 } from './fire.js';
 
 const ABORT = Symbol('abort');
 
@@ -115,6 +116,7 @@ function handler(m, si, di, op, ctx) {
       m.w16(si + 0x2a, 0);
       return ret;
     }
+    case 13: return spawnEffect(m, si, di, ctx); // SpawnEffectByTypeCode
     case 14: { // GotoStateScript
       const a = m.u8(di); di += 1;
       return a < 128 ? m.u16(STATE_SCRIPTS + 2 * a) : m.u16(NEG_STATE_SCRIPTS + 2 * (a & 0x7f));
@@ -248,4 +250,36 @@ function tickKind1(m, si, di) {
   if (face === 0) return;
   if ((face & m.u16(si + 0x24)) !== 0) return;
   if (face === 8) m.w16(si + 6, m.u16(si + 6) - h); else m.w16(si + 6, m.u16(si + 6) + h);
+}
+
+/** Opcode 13 at 1000:334E. Only type 0xA (the weapon projectile, 1000:3802) is ported. */
+function spawnEffect(m, si, di, ctx) {
+  for (const a of [0x8c1b, 0x8c1d, 0x8c1f, 0x8c21, 0x8c23, 0x8c25, 0x8c27, 0x8c29]) m.w16(a, 0);
+  const type = m.u8(di); di += 1;
+  m.w16(0x8c29, type);
+  if (type !== 0x0a) { ctx.unported.add(`opcode 13 type 0x${type.toString(16)}`); return ABORT; }
+  m.w16(0x8c21, m.u16(si + 0x24) & 0x80);
+  if (m.u16(0x8c21) !== 0) return di; // 36CC: the player is flagged, nothing is spawned
+  m.w16(0x8c21, m.u16(0x8bf3));
+  m.w16(0x8bf3, 0x17);
+  m.w16(0x8c23, m.u16(si + 0x14));
+  m.w16(0x8c25, m.u16(si + 8));
+  m.w16(0x8c27, m.u16(si + 6));
+  const id = m.u16(0x8c69);
+  m.w16(0x8c29, id);
+  if (id === 0xe || id === 0x1b || id === 0x27) { ctx.unported.add(`opcode 13 weapon ${id}`); return ABORT; }
+  let w = m.u16(0x8b89);
+  m.w16(0x8c1d, w);
+  if (w === 0) { w = m.u16(0x8b8b); m.w16(0x8c1d, w); }
+  const base = { 1: 0xa, 2: 0x30, 3: 0x35 }[w];
+  if (base === undefined) { if (w !== 4) return di; ctx.unported.add('opcode 13 world 4 weapon'); return ABORT; }
+  const v = id - base;
+  if (v < 0 || v > 3) return di;
+  const left = m.u16(0x8c23) === 4;
+  const dy = [8, 4, 2, 0][v];
+  const dxl = [-6, -6, -10, -0x12][v], dxr = [0x1a, 0x1a, 0x16, 0xe][v];
+  m.w16(0x8c25, m.u16(0x8c25) + dy);
+  m.w16(0x8c27, m.u16(0x8c27) + (left ? dxl : dxr));
+  pushEvent5(m);
+  return di;
 }
