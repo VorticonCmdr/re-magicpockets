@@ -1,0 +1,14 @@
+---
+name: mp-re-tooling
+description: Usage notes and gotchas for the Ghidra MCP, DOSBox MCP and the headless verify suite used to reverse-engineer Magic Pockets (GAMEU.EXE) and check the web port. Use before or while disassembling, live-tracing in DOSBox, or running `npm run verify`.
+---
+
+# Magic Pockets reverse-engineering tooling
+
+- **Ghidra MCP** (`mcp__ghidra__*`). The project is `ghidra/magicpockets.gpr` (gitignored, machine-local). Several programs may be open: always pass `program=` explicitly. 16-bit real-mode code reaches strings and tables through DS-relative immediates, so `get_xrefs_to` on a data address usually returns nothing: use `search_instructions` with the offset as an operand pattern. Some code (e.g. the 4-instruction trampoline pattern) sits in analysis gaps that `get_function_callers` cannot see. Ghidra scripting is disabled, so `symbols/*.json` is exported by hand.
+- **DOSBox MCP** (`mcp__dosbox__*`), full recipe in `docs/dosbox-debugging.md`. `bridge_start` repeatedly timed out for this project: ask the user to launch DOSBox-X themselves (mount the project as `C:`, stop at the prompt), then `bridge_connect`. Code addresses need `debug_map_set_base`; globals live at `live_DS*16 + offset` (GAMEU's PSP landed at segment `0x1E5`, code at `0x1F5` in the recorded session). Breakpoints only take effect after a pause followed by `debug_continue`, and back-to-back pause/continue can freeze the CPU. Lua scripting (`script_run`) was reported broken: re-test before building a capture harness on it. Port 8386 may be taken by something else: check `lsof -iTCP:8386` before assuming a local fault.
+- **Layout.** Original files: `game/` (executables, `pockets.ini`) and `data/` (the `.pak/.pap/.pip/.pin` assets, RNC-packed). Both are gitignored. `GAMEU.EXE` (450130 bytes) is the unpacked copy of `game.exe`.
+- **The verify suite.** `npm run verify` runs `tools/lint-checks.mjs` (rejects tautological checks) then `tools/verify-node.mjs`, which prints its own totals. Quote that output; do not copy counts from docs. Checks live in `web/verify/checks.js`: each takes `{fetchRaw, listData}` and must compare against a literal or a value read from the shipped bytes. A row made with `note()` is a measurement, not an assertion.
+- **Evidence tags.** `[PROVEN]` executed or live-traced, `[STATIC]` read from the binary, `[WF]` unreviewed subagent output, `[UNKNOWN]` not established (register as `UNKNOWN_<id>` in `docs/open-questions-history.md`).
+- **Legacy pipeline.** `npm run extract` (`tools/build-all.js`) regenerates `build/` for `level.html` and the MIDI player only; the playable port never reads `build/`.
+- **CodeGraph** is not initialized for this project (no `.codegraph/`).

@@ -148,6 +148,7 @@ A full follow-up pass named the entire immediate + one-level-deep callee graph o
   `web/engine/real-terrain.js` for the JS port's real (not placeholder) collision built from it --
   this closes the open item `docs/port-plan.md` Phase 3 left tracked, and the placeholder
   collision surface it introduced has been retired.
+  ⚠️ **Correction pending (`UNKNOWN_alt_ground_table_extent`, ledger item 9).** The default table's contents are `[PROVEN]` byte-for-byte against `GAMEU.EXE` (file offset 447225; `npm run verify`). The "alternate table at `6de3:f27b`, near-identical with every `16` replaced by `0`" claim above is contradicted by the addresses themselves: `0xf27b` is only 0xf2 bytes past `0xf189`, so a 256-byte table there overlaps the default one, and compared at that offset 67 entries differ other than 16→0. Treat that claim as unverified until re-read live.
 - **Two independent AI systems exist for entities**: `Entity_RunScript`'s bytecode VM (opcode
   jump table at `1000:2383`, entity-behavior-level) and a second, movement-focused interpreter,
   `Entity_RunMovementAiScript` (`1000:6320`), which consumes opcode *characters*

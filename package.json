@@ -1,0 +1,20 @@
+{
+  "name": "magic-pockets",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Magic Pockets asset explorer and vanilla JavaScript browser port",
+  "scripts": {
+    "dev": "vite --host 127.0.0.1",
+    "build": "vite build",
+    "preview": "vite preview --host 127.0.0.1",
+    "extract": "node tools/build-all.js",
+    "lint": "node tools/lint-checks.mjs",
+    "verify": "node tools/lint-checks.mjs && node tools/verify-node.mjs"
+  },
+  "devDependencies": {
+    "acorn": "^8.14.0",
+    "vite": "^7.1.0"
+  },
+  "engines": { "node": ">=22.12.0" }
+}

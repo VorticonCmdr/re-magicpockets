@@ -41,4 +41,4 @@ for (const [name, bytes] of Object.entries(RAW_BANKS)) {
   WORLD_PALETTES[name] = decodeBank(bytes);
 }
 
-export { decodeBank, scaleComponent };
+export { decodeBank, scaleComponent, RAW_BANKS };
