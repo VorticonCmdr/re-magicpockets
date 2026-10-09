@@ -23,11 +23,23 @@ export function pairEvent(m, si, bx, cl, ctx) {
 function playerTouchesProjectile(m, si, bx) {
   const world = m.u16(0x8b89) || m.u16(0x8b8b);
   const cls = m.u16(bx + 2);
-  if (world === 1) return cls !== 0xd && cls !== 0x10; // 4C33: only classes 0xD and 0x10 do anything
+  if (world === 1) {
+    if (cls === 0xd) return crateTouched(m, si, bx);
+    return cls !== 0x10; // 4DE2 (class 0x10) is not ported
+  }
   if (world === 2) return cls !== 0x33 && cls !== 0x34;
   if (world === 3) return cls !== 0x38 && cls !== 0x39;
   if (world === 4) return !(cls >= 0x3a && cls <= 0x3e);
   return true;
+}
+
+/** 1000:4CE0: the player touches a pushable crate (class 0xD): remember it, then the gating checks. */
+function crateTouched(m, si, bx) {
+  m.w16(0x8c01, bx);
+  if (m.u8(bx + 0x26) !== 0 || m.u8(si + 0x26) !== 0) return true;
+  if (m.u8(0x8b98) !== 0) return true; // 1 and every other non-zero value return alike
+  if (m.u8(si + 1) !== 0) return true;
+  return false; // 4D1C (the crate is pushed into the world entity) is not ported
 }
 
 const PICKUP_STAY = [0x15, 0x40, 0x41, 0x43, 0x1a, 0x24, 0x2a, 0x45, 0x22, 0x29];
@@ -179,7 +191,7 @@ function die(m, bx, ctx) {
 }
 
 /** 1000:5609: advance the kill-bonus meter shown in the HUD. */
-function bonus(m, ctx) {
+export function bonus(m, ctx) {
   if (m.u16(0x8c6d) !== 0) return true;
   const queueOk = () => m.u16(0x8bb5) >= 0x926a;
   const setFrame = (bx) => { m.w16(bx + 0xa, m.u16(0x8c1f)); m.w8(bx + 0x3e, 0); };

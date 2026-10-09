@@ -7,6 +7,8 @@
 
 'use strict';
 
+import { bonus } from './hit.js';
+
 const EVENT_FLOOR = 0x926a; // spawn events grow downward from [8BB5]; below this the queue is full
 
 function pushWord(m, si, value) { // big-endian in memory, as `mov al,ah; mov ah,lo; mov [si],ax` stores it
@@ -90,7 +92,7 @@ export function fireAndCharge(m, si, bx, ctx) {
   if (m.u8(0x8b67) & 0x80) { // 42B7: fire held
     if (m.u16(0x8bfb) !== 0) { m.w16(0x8bfb, m.u16(0x8bfb) - 1); return frameIs4x(m, bx); }
     m.w8(0x8b91, m.u8(0x8b91) + m.u8(0x8b93));
-    if (m.s8(0x8b91) > 0x1f) { m.w8(0x8b91, 0x1f); ctx.unported.add('5609 charge maxed'); }
+    if (m.s8(0x8b91) > 0x1f) { m.w8(0x8b91, 0x1f); bonus(m, ctx); }
     m.w8(0xbbea, m.u8(0x8b91));
     if (!frameIs4x(m, bx)) return false;
     level = m.u8(0x8b91);

@@ -273,13 +273,13 @@ export function updateAll(m, ctx, only = null) {
   let di = VISIBLE_LIST;
   for (;;) {
     m.w16(G.CUR_LIST, di);
-    const si = m.u16(di);
+    let si = m.u16(di);
     if (si === 0xffff) return;
     let freed = m.u8(si + 0x40) === 0x19;
     if (!freed) {
       if (only && !only.has(si)) { di = m.u16(G.CUR_LIST) + 2; continue; }
       if (m.u8(si + 1) !== 0) {
-        runScript(m, si, ctx);
+        si = runScript(m, si, ctx); // opcode 45 may leave SI on another entity
         freed = m.u8(si + 0x40) === 0x19;
       }
       if (!freed) {

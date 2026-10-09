@@ -50,17 +50,18 @@ const sx8 = (v) => (v > 127 ? v - 256 : v);
  * @param {{unported:Set<string>, events:any[]}} ctx
  */
 export function runScript(m, si, ctx) {
+  ctx.swapTo = 0;
   const cls = m.u16(si + 2);
   const frz = m.u8(0x8ba1);
   // 1000:22DA-2322: which entities are skipped while the AI-freeze byte [8BA1] is set.
   const bypass = (c) => c === 0x2d || c === 8 || c === 3 || c === 1 || c === 0x29 || c === 7;
   if (cls !== 0x2d) {
-    if (frz === 0x32) return;
+    if (frz === 0x32) return si;
     if (!bypass(cls)) {
-      if (frz === 0x66) return;
+      if (frz === 0x66) return si;
       if (cls !== 0x1f && cls !== 0xf) {
-        if (frz === 0x45) return;
-        if (frz > 127) return; // `js`
+        if (frz === 0x45) return si;
+        if (frz > 127) return si; // `js`
       }
     }
   }
@@ -74,11 +75,12 @@ export function runScript(m, si, ctx) {
     let di = m.u16(si + 0xc);
     const op = m.u8(di);
     di += 1;
-    if (op === 0xff) return;
-    if (op === 0xfc) { m.w16(si + 0xc, di); return; } // yield: cursor advances past the FC byte
-    if (op === 0xae) return;
+    if (op === 0xff) return si;
+    if (op === 0xfc) { m.w16(si + 0xc, di); return si; } // yield: cursor advances past the FC byte
+    if (op === 0xae) return si;
     const r = handler(m, si, di, op, ctx);
-    if (r === ABORT) return;
+    if (r === ABORT) return si;
+    if (ctx.swapTo) { si = ctx.swapTo; ctx.swapTo = 0; } // opcode 45: the register pair was exchanged
     m.w16(si + 0xc, r);
   }
 }
@@ -209,6 +211,32 @@ function handler(m, si, di, op, ctx) {
       return di + 1;
     }
     case 58: aimGlow(m, si); return di; // 2AE1
+    case 25: { // 39BD: the HUD kill-meter frame for this slot
+      m.w16(0x8c6d, 0);
+      if (m.u16(si + 6) === 0x128) m.w16(si + 0xa, (m.s8(0x8c05) & 0xffff) % 10 + 0x14);
+      else if (m.u16(si + 6) === 8) {
+        let ax = ((m.s8(0x8c05) * 2) << 24 >> 24) + (m.u16(0x8b8b) & 1);
+        if (ax >= 0x12) ax = 0x56;
+        m.w16(si + 0xa, ax);
+      }
+      return di;
+    }
+    case 45: { // 2FEF: run the rest of this script on another entity (the pair swaps registers)
+      const target = findByClass(m, m.u8(di)); di += 1;
+      m.w16(si + 0xc, m.u16(target + 0xc));
+      m.w16(target + 0xc, di);
+      ctx.partner = si; // BX keeps the original entity until opcode 46 swaps back
+      ctx.swapTo = target;
+      return di;
+    }
+    case 46: { // 3004: give the script back to the entity that started it
+      const orig = ctx.partner;
+      m.w16(si + 0xc, m.u16(orig + 0xc));
+      m.w16(orig + 0xc, di);
+      ctx.swapTo = orig;
+      ctx.partner = si;
+      return di;
+    }
     case 67: m.w8(si + 0x3d, m.u8(di)); return di + 1; // SetAnimLockFlag
     case 71: m.w8(0x8c0c, m.u8(di)); return di + 1; // SetGlobalEventTrigger
     case 76: m.w8(0x8c0e, 0); return di; // clears [8C0E]
@@ -230,7 +258,8 @@ function animTable(m, si, di, ctx) {
   idx += 2;
   if (m.u8(di + idx) !== 0xae) return ABORT; // park on this opcode until the terminator
   m.w16(si + 0x30, 0);
-  return di + idx + 1;
+  m.w16(si + 0xc, di + idx + 1); // 3CE2: the cursor moves past the terminator, then the tick ends
+  return ABORT;
 }
 
 /** 1000:DD1A Entity_TickKind1SpeedDecay: the world entity's vertical speed tick (always parks). */
