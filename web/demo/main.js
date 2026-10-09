@@ -1,8 +1,7 @@
 // Plays the attract demo through the ported engine (web/engine/iteration.js), in the browser.
 // The game's own files are loaded at runtime from /game/GAMEU.EXE (or a picked file) and /data/;
-// nothing from them is bundled. The engine state is seeded from the first captured demo row
-// (tools/attract-capture/entities-full.capture.json.gz) because booting a level from the files alone
-// is not parity-checked yet (docs/open-questions-history.md item 21).
+// nothing from them is bundled. The level is booted from the files alone (web/engine/boot.js), which
+// `npm run verify` checks against the first captured demo row and a free run of the whole demo.
 
 'use strict';
 
@@ -10,7 +9,8 @@ import { AssetCache } from '../loader/asset-cache.js';
 import { sourceFromFetch } from '../loader/asset-source.js';
 import { WORLD_PALETTES } from '../core/palette.js';
 import { buildBackgroundCanvas } from '../render/canvas.js';
-import { prepare, loadRow, expandRows } from '../verify/conformance-lib.js';
+import { prepare, bootFromFiles } from '../verify/conformance-lib.js';
+import { rncUnpack } from '../core/rnc.js';
 import { stepIteration } from '../engine/iteration.js';
 import { Clock } from '../engine/clock.js';
 import { INPUT_BITS } from '../core/demo-tape.js';
@@ -36,28 +36,18 @@ async function loadExe() {
   return new Promise((resolve) => input.addEventListener('change', async () => resolve(new Uint8Array(await input.files[0].arrayBuffer())), { once: true }));
 }
 
-async function loadCapture() {
-  const res = await fetch('/tools/attract-capture/entities-full.capture.json.gz');
-  if (!res.ok) throw new Error(`capture: ${res.status}`);
-  const raw = new Uint8Array(await res.arrayBuffer());
-  // Some servers add Content-Encoding: gzip, in which case the browser has already inflated it.
-  const text = raw[0] === 0x1f && raw[1] === 0x8b
-    ? await new Response(new Blob([raw]).stream().pipeThrough(new DecompressionStream('gzip'))).text()
-    : new TextDecoder().decode(raw);
-  return expandRows(JSON.parse(text).rows.slice(0, 1));
-}
-
 const hue = (cls) => `hsl(${(cls * 47) % 360} 80% 60%)`;
 
 async function main() {
-  const [exe, tape, pap, rows] = await Promise.all([loadExe(), fetchBytes('/data/autoplay.pin'), fetchBytes('/data/pcmap.pap'), loadCapture()]);
+  const [exe, tape, pap, script] = await Promise.all([loadExe(), fetchBytes('/data/autoplay.pin'), fetchBytes('/data/pcmap.pap'), fetchBytes('/data/level0.pin')]);
   const cache = new AssetCache(sourceFromFetch('/data', ['blocks1.pak', 'pcmap.pap']));
   const [pak, papDecoded] = await Promise.all([cache.getPak('blocks1.pak', WORLD_PALETTES.world1), cache.getPap('pcmap.pap')]);
   const background = buildBackgroundCanvas(pak, papDecoded);
   const env = prepare(exe, tape, pap);
   let m, ticks, step;
   const sim = { unported: new Set(), events: [] };
-  const restart = () => { m = loadRow(env, rows[0]); ticks = 0; };
+  const levelScript = rncUnpack(script).data;
+  const restart = () => { m = bootFromFiles(env, levelScript).m; ticks = 0; };
   restart();
   // ?play (or the button): the keyboard replaces the demo tape. Call #7 then just copies the key
   // bytes [8B5D]/[8B58] (what the original's keyboard ISR writes) into the input words.

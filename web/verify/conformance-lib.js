@@ -7,6 +7,7 @@ import { decodeDemoTape } from '../core/demo-tape.js';
 import { DsMemory, ENTITY_ARRAY, ENTITY_ARRAY_END, ENTITY_SIZE } from '../engine/ds-memory.js';
 import { stepIteration } from '../engine/iteration.js';
 import { rebuildVisibleList } from '../engine/entity-behavior.js';
+import { bootAttractDemo } from '../engine/boot.js';
 
 export const GLOBALS_BASE = 0x8b50;
 // Probe results, scratch words, list cursors, the render row counter and the timer ISR's seconds
@@ -157,7 +158,7 @@ export function midConsumeParticles(row) {
 export function runFreeRun(env, rows, o = {}) {
   rows = expandRows(rows);
   const from = o.from ?? 0, to = Math.min(o.to ?? rows.length - 1, rows.length - 1);
-  let m = loadRow(env, rows[from]);
+  let m = o.start ?? loadRow(env, rows[from]);
   const key = (mm) => (mm.u16(0x8ba6) << 8 | mm.u8(0x8ba8)) & 0xffffff;
   for (let k = from; k < to; k++) {
     const b = rows[k + 1];
@@ -176,9 +177,36 @@ export function runFreeRun(env, rows, o = {}) {
       const w = hexBytes(e.hex), got = m.get(e.ptr, ENTITY_SIZE);
       for (let off = 0; off < ENTITY_SIZE; off++) if (w[off] !== got[off]) diffs.push(`e${i} +0x${off.toString(16)} want ${w[off]} got ${got[off]}`);
     });
-    const gw = hexBytes(b.g), gg = m.get(GLOBALS_BASE, gw.length);
+    const gw = o.entitiesOnly ? [] : hexBytes(b.g), gg = m.get(GLOBALS_BASE, gw.length);
     for (let off = 0; off < gw.length; off++) if (gw[off] !== gg[off] && !isScratch(GLOBALS_BASE + off)) diffs.push(`G 0x${(GLOBALS_BASE + off).toString(16)} want ${gw[off]} got ${gg[off]}`);
     if (diffs.length) return { matched: k - from, firstBad: b.done, diffs: diffs.slice(0, 12), unported: [...ctx.unported] };
   }
   return { matched: to - from, firstBad: null, diffs: [], unported: [] };
+}
+
+/**
+ * A memory image built from the game's files alone: the EXE's data segment, the level script
+ * (unpacked `new1.pin` sits at DS:0), the map, and Level_LoadEntities for sub-level 1 of world 0 (the
+ * attract demo's level). Globals the new-game initializer would set are not modelled yet.
+ */
+export function bootFromFiles(env, levelScript) {
+  const m = env.base.clone();
+  m.put(0, levelScript);
+  m.put(0x8200, env.tape);
+  m.put(0x4200, env.map);
+  const ctx = { unported: new Set(), events: [] };
+  bootAttractDemo(m, ctx);
+  return { m, unported: [...ctx.unported] };
+}
+
+/** Entity records of `row` that differ from `m`'s, as [ptr, offset] pairs, plus whether the pointer order matches. */
+export function diffBootEntities(m, row) {
+  const diffs = [];
+  for (const e of row.e) {
+    const want = hexBytes(e.hex), got = m.get(e.ptr, ENTITY_SIZE);
+    for (let off = 0; off < ENTITY_SIZE; off++) if (want[off] !== got[off]) diffs.push([e.ptr, off]);
+  }
+  const ours = [];
+  for (let o = ENTITY_ARRAY; o < ENTITY_ARRAY_END; o += 2) if (m.u16(o) !== 0) ours.push(m.u16(o));
+  return { diffs, sameOrder: ours.length === row.e.length && row.e.every((e, i) => e.ptr === ours[i]) };
 }

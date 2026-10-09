@@ -18,7 +18,7 @@ import { RAW_BANKS } from '../core/palette.js';
 import { decodeDemoTape, DemoPlayback, INPUT_BITS, DEMO_RNG_SEED } from '../core/demo-tape.js';
 import { FRAME_ORDER } from '../engine/frame.js';
 import { Rng } from '../engine/rng.js';
-import { prepare, runConformance, runFreeRun, expandRows, midConsumeParticles } from './conformance-lib.js';
+import { prepare, runConformance, runFreeRun, bootFromFiles, diffBootEntities, expandRows, midConsumeParticles } from './conformance-lib.js';
 
 export function makeChecker() {
   const results = [];
@@ -303,6 +303,13 @@ export async function checkConformance(ctx) {
   // The strongest claim: start from row 0 only and let the engine run on its own state.
   const free = runFreeRun(env, rows, { skip: MID_CALL_SAMPLES });
   check('a free run from the first captured state matches the capture for at least 2340 consecutive iterations', free.matched >= 2340, `${free.matched} rows, first mismatch ${free.firstBad ?? 'none'}`);
+  // Files-only boot: Level_LoadEntities on the unpacked level0.pin reproduces the first captured row's records.
+  const boot = bootFromFiles(env, rncUnpack(await ctx.fetchRaw('data/level0.pin')).data);
+  const bd = diffBootEntities(boot.m, rows[0]);
+  check('a boot from the files alone creates the captured entity records at the captured addresses and pointer order', bd.sameOrder && boot.unported.length === 0, `order ${bd.sameOrder}, unported ${boot.unported.length}`);
+  check('that boot reproduces every byte of the first captured row\'s entity records', bd.diffs.length === 0, `${bd.diffs.length} bytes`);
+  const bootRun = runFreeRun(env, rows, { start: boot.m, entitiesOnly: true, skip: MID_CALL_SAMPLES });
+  check('a free run from that files-only boot reproduces every captured entity record for the whole demo', bootRun.matched === 2341, `${bootRun.matched} rows, first mismatch ${bootRun.firstBad ?? 'none'}`);
   const top = [...all.unportedHist].sort((a, b) => b[1] - a[1]).slice(0, 6).map(([k, n]) => `${k} x${n}`).join(', ');
   note('unported branches still hit', top || 'none');
   return results;
