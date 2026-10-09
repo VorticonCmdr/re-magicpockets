@@ -50,7 +50,7 @@ const PICKUP_STAY = [0x15, 0x40, 0x41, 0x43, 0x1a, 0x24, 0x2a, 0x45, 0x22, 0x29]
 function playerTouchesProp(m, si, bx, ctx) {
   const cls = m.u16(bx + 2);
   if (cls === 0xe) return crate(m, si, bx, ctx);
-  if (cls === 0x1b) return powerUp(m, bx);
+  if (cls === 0x1b) return powerUp(m, bx, ctx);
   if (cls === 0x1c || cls === 6 || cls === 0x26 || cls === 0x56 || cls === 0x2e) return false;
   if (!PICKUP_STAY.includes(cls) && (m.u8(bx + 0x40) === 0xf6 || m.u8(bx + 0x3e) === 0)) return true; // 5850
   m.w16(0x8c01, bx); // 584C: remember the prop the player stands against
@@ -77,7 +77,13 @@ function crate(m, si, bx, ctx) {
     return true; // + sound 0xE
   }
   m.w16(0x8bf7, ax);
-  ax = Math.floor(ax / 2); // 596B: sound (ax + 0x28)
+  ax = Math.floor(ax / 2);
+  awardScore(m, bx, ax, ctx);
+  return true;
+}
+
+/** 1000:596B: turn a touched pickup into a floating score of `ax` (sound ax+0x28 skipped). */
+function awardScore(m, bx, ax, ctx) {
   if (m.u16(bx + 0x10) === 0x50) ax = 9;
   m.w16(bx + 0xa, ax);
   m.w16(bx + 0xa, m.u16(bx + 0xa) + 0x3c);
@@ -91,7 +97,6 @@ function crate(m, si, bx, ctx) {
   // 599C: the generator's carry-in is the score addition's carry
   ctx.rng(m, score > 0xffff ? 1 : 0);
   m.w16(bx + 8, m.u16(bx + 8) - (m.u16(0x8b6b) & 7));
-  return true;
 }
 
 const byte = (v) => v & 0xff;
@@ -332,7 +337,7 @@ function particles(m) {
 }
 
 /** 1000:5BAD: the player touches a class-0x1B power-up; its frame says which one (sounds skipped). */
-function powerUp(m, bx) {
+function powerUp(m, bx, ctx) {
   if (m.u8(bx + 0x3e) === 0) return true;
   const frame = m.u16(bx + 0xa);
   if (frame === 0x16) { // 5C23
@@ -340,8 +345,29 @@ function powerUp(m, bx) {
     m.w8(bx + 0x40, 0x19); m.w8(0x8c04, 0xe);
     return true;
   }
+  const maxed = () => { awardScore(m, bx, m.u16(bx + 0xa) - 0x14, ctx); return true; }; // 5D6A
+  if (frame === 0x1b) { // 5C5E
+    if (m.u8(0x8bb2) === 3) return maxed();
+    m.w8(0x8bb2, m.u8(0x8bb2) + 1); m.w8(bx + 0x40, 0x19);
+    return true;
+  }
+  if (frame === 0x1a) { // 5C74
+    if (m.u16(0x8b89) !== 3 && m.u8(0x8c03) !== 0) return maxed();
+    m.w8(0x8c03, m.u8(0x8c03) + 5); m.w8(bx + 0x40, 0x19);
+    return true;
+  }
+  if (frame === 0x19) { // 5D47
+    if (m.u8(0x8b93) === 3) return maxed();
+    m.w8(0x8b93, 3); m.w8(bx + 0x40, 0x19);
+    return true;
+  }
+  if (frame === 0x18) { // 5D30
+    if (m.u8(0x8b90) === 2) return maxed();
+    m.w8(0x8b90, 2); m.w8(bx + 0x40, 0x19);
+    return true;
+  }
   if (frame === 0x14) { // 5C36
-    if (m.u16(0x8bff) === 6) return false; // 5D6A is not ported
+    if (m.u16(0x8bff) === 6) return maxed();
     m.w16(0x8bff, m.u16(0x8bff) + 1);
     m.w8(bx + 0x40, 0x19);
     return true;

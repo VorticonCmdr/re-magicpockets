@@ -17,6 +17,7 @@ import { Rng } from './rng.js';
 import { updateAll, cameraUpdateScroll } from './entity-behavior.js';
 import { levelUpdateEventQueue } from './spawn.js';
 import { hudUpdateScoreDisplay, fxUpdateTransition } from './hud.js';
+import { levelUpdateAnimatedTiles } from './tiles.js';
 
 const G = { INPUT_A: 0x8b67, INPUT_B: 0x8b68, KEY_A: 0x8b5d, KEY_B: 0x8b58, FREEZE: 0x8ba1, DEMO_FLAG: 0x8baa,
   TAPE_STATE: 0x8ba9, TAPE_LEFT: 0x8ba8, TAPE_PTR: 0x8ba6, RNG_STATE: 0x8b71, RNG_OUT: 0x8b6b };
@@ -79,5 +80,6 @@ export function stepIteration(m, ctx, only = null) {
   hudUpdateScoreDisplay(m, ctx); // call 12 (calls 9-11 only read input hardware)
   rngNext(m); // call 13
   cameraUpdateScroll(m); // call 1 of the next iteration
+  levelUpdateAnimatedTiles(m, ctx); // call 2
   renderConsumes(m); // call 3: the capture sample is taken after it
 }
