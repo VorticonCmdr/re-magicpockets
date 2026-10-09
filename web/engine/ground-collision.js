@@ -11,6 +11,7 @@
 'use strict';
 
 import { pairEvent } from './hit.js';
+import { pushEvent5 } from './fire.js';
 
 const MAP = 0x4200;
 const S = { X: 0x8c1f, Y: 0x8c21, X2: 0x8c27, Y2: 0x8c29, CX: 0x8c1b, CY: 0x8c1d, OX: 0x8c23, OY: 0x8c25 };
@@ -555,7 +556,15 @@ function floorProjectile(m, bx, ctx) {
     al = (-al) & 0xff;
     m.w8(bx + 0x26, al);
     m.w8(bx + 0x26, al - (m.s8(bx + 0x26) >> 1)); // sar al,1 on the negated byte, then subtract
-    if (m.u8(0x8c03) !== 0) { ctx.unported.add('F0F5 bounce with [8C03]'); return; }
+    if (m.u8(0x8c03) !== 0) { // F0F5: a class-0xD shot sheds two sparks when it bounces
+      if (world !== 1) { ctx.unported.add(`F0F5 world ${world}`); return; }
+      if (cls === 0xd) {
+        m.w16(0x8c29, 0xa); m.w16(0x8c21, 0x17);
+        m.w16(0x8c25, m.u16(bx + 8)); m.w16(0x8c27, m.u16(bx + 6) + 8);
+        m.w16(0x8c23, 4); pushEvent5(m);
+        m.w16(0x8c23, 8); pushEvent5(m);
+      }
+    }
     if (m.s8(bx + 0x26) > 3) return; // ED19: only the bounce sound
   }
   // EE60 -> F08F: the shot has run out of bounce

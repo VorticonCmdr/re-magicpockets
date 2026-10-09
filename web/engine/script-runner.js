@@ -13,7 +13,7 @@
 
 import { findByClass } from './ds-memory.js';
 import { resetExtendedFields } from './entity-behavior.js';
-import { pushEvent5, pushSpawnEvent } from './fire.js';
+import { pushEvent4, pushEvent5, pushSpawnEvent, pushEntityEvent } from './fire.js';
 
 const ABORT = Symbol('abort');
 
@@ -216,6 +216,29 @@ function handler(m, si, di, op, ctx) {
       if (m.u16(si + 2) === 3 || m.u8(0x8ba4) !== 0 || m.u8(0x8bb2) !== 0) { ctx.unported.add('opcode 68 trigger'); return ABORT; }
       return di;
     }
+    case 47: { // 2EC0: step towards the point (x, y) given by the two operands, keeping the slope
+      let cx = m.u8(di), dx = m.u8(di + 1); di += 2;
+      m.w16(0x8c1d, cx); m.w16(0x8c1f, dx);
+      if (m.u16(si + 2) === 0x2b && m.u16(0x8c6b) !== 0) { m.w16(0x8c6b, m.u16(0x8c6b) - 1); return di; }
+      const s16 = (v) => ((v & 0xffff) >= 0x8000 ? (v & 0xffff) - 0x10000 : v & 0xffff);
+      cx = (cx - m.u16(si + 6)) & 0xffff;
+      let sx, sy;
+      let xZero = cx === 0;
+      if (!xZero && s16(cx) < 0) cx = (-cx) & 0xffff;
+      dx = (dx - m.u16(si + 8)) & 0xffff;
+      const yZero = dx === 0;
+      if (!yZero && s16(dx) < 0) dx = (-dx) & 0xffff;
+      if (xZero) { sx = 1; sy = 8; }
+      else if (yZero) { sx = 8; sy = 1; }
+      else if (s16(cx) > s16(dx)) { sx = Math.floor(cx / dx); if (sx > 8) sx = 8; sy = 1; }
+      else { sy = Math.floor(dx / cx); if (sy > 8) sy = 8; sx = 1; }
+      const tx = m.u16(0x8c1d), ty = m.u16(0x8c1f);
+      if (s16(tx) < s16(m.u16(si + 6))) m.w16(si + 6, m.u16(si + 6) - sx);
+      else if (s16(tx) > s16(m.u16(si + 6))) m.w16(si + 6, m.u16(si + 6) + sx);
+      if (s16(ty) < s16(m.u16(si + 8))) m.w16(si + 8, m.u16(si + 8) - sy);
+      else if (s16(ty) > s16(m.u16(si + 8))) m.w16(si + 8, m.u16(si + 8) + sy);
+      return di;
+    }
     case 49: { // 2DA7: operand != 0 turns this entity into another class (C8C0)
       const cls = m.u8(di); di += 1;
       if (cls === 0) { ctx.unported.add('opcode 49 operand 0'); return ABORT; }
@@ -311,7 +334,7 @@ function spawnEffect(m, si, di, ctx) {
   for (const a of [0x8c1b, 0x8c1d, 0x8c1f, 0x8c21, 0x8c23, 0x8c25, 0x8c27, 0x8c29]) m.w16(a, 0);
   const type = m.u8(di); di += 1;
   m.w16(0x8c29, type);
-  if (type !== 0x0a) { ctx.unported.add(`opcode 13 type 0x${type.toString(16)}`); return ABORT; }
+  if (type !== 0x0a) return spawnOtherEffect(m, si, di, type, ctx);
   m.w16(0x8c21, m.u16(si + 0x24) & 0x80);
   if (m.u16(0x8c21) !== 0) return di; // 36CC: the player is flagged, nothing is spawned
   m.w16(0x8c21, m.u16(0x8bf3));
@@ -480,4 +503,34 @@ function specialWeapon(m) {
   if (lvl === 2 || lvl >= 3) { push(0x54); if (tier > 2) push(0x56); }
   if (lvl === 1 || lvl === 2 || lvl >= 3) { push(0x15); if (tier > 3) push(0x57); }
   push(0x14); if (tier > 4) push(0x58);
+}
+
+/** 1000:334E..35CB: the remaining opcode-13 effect types. @returns the next cursor or ABORT */
+function spawnOtherEffect(m, si, di, type, ctx) {
+  const sb = (o) => sx8(m.u8(o));
+  if (type === 0x44) { // 3577
+    m.w16(0x8c27, m.u16(si + 6) + 0x10);
+    m.w16(0x8c25, m.u16(si + 8));
+    m.w16(0x8c23, 4);
+    if (m.u8(0x8b6b) & 1) m.w16(0x8c23, 8);
+    m.w16(0x8c21, 0x3b);
+    pushEvent5(m);
+    return di;
+  }
+  if (type === 0x11 || type === 0x25 || type === 0x1d) { pushEntityEvent(m, si); return di; } // 35A4-35AA: C0AE
+  if (type === 0x2d || type === 0x47) { // 35AD
+    m.w16(0x8c27, m.u8(di)); m.w16(0x8c25, m.u8(di + 1)); m.w16(0x8c1f, m.u8(di + 2));
+    m.w16(0x8c23, m.u16(si + 0x14));
+    m.w16(0x8c21, m.u8(di + 3));
+    pushSpawnEvent(m);
+    return di + 4;
+  }
+  const special = [0xe, 0x1b, 0x16, 0x53, 0x28, 0x5f, 0xf, 0x1f, 0x30, 0x21, 0x4d, 0x2b];
+  if (special.includes(type)) { ctx.unported.add(`opcode 13 type 0x${type.toString(16)}`); return ABORT; }
+  // 3406: the generic effect: two signed offsets from the entity, facing as the entity
+  m.w16(0x8c27, (sb(di) + m.u16(si + 6)) & 0xffff);
+  m.w16(0x8c25, (sb(di + 1) + m.u16(si + 8)) & 0xffff);
+  m.w16(0x8c23, m.u16(si + 0x14));
+  pushEvent4(m);
+  return di + 2;
 }

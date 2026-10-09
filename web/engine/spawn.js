@@ -159,7 +159,41 @@ function spawn(m, slot, type, tag, data, ctx) {
     setupLineMotion(m, si, cl);
     return finishSpawn(m, si, slot, bx, tpl);
   }
-  if (SPECIAL_TYPES.has(type) && !(type === 0x1f)) { ctx.unported.add(`spawn type 0x${type.toString(16)}`); return none; }
+  if (type === 0x11) { // C523: a marker bound to another entity, given as a raw pointer
+    m.w16(si + 2, type);
+    const parent = m.u16(bx); bx += 2;
+    if (m.u8(parent + 1) === 1 || m.u16(parent + 0x2c) !== 0 || m.u16(parent + 2) === 0 || m.u8(parent + 0x40) === 0x19) return { di: slot, si };
+    m.w16(si + 6, m.u16(parent + 6));
+    m.w16(si + 8, m.u16(parent + 8) - 8);
+    m.w16(si + 0x2c, parent); m.w16(parent + 0x2c, si);
+    m.w8(si + 0x40, 0xf6);
+    return finishSpawn(m, si, slot, bx, tpl);
+  }
+  if (type === 0x44) { // C66C: a falling pickup with a random initial speed
+    m.w16(si + 2, type);
+    m.w16(si + 6, be16(m, bx)); bx += 2;
+    m.w16(si + 8, be16(m, bx)); bx += 2;
+    m.w16(si + 0x14, be16(m, bx)); bx += 2;
+    const w = be16(m, bx); bx += 2;
+    m.w8(si + 1, w & 0xff);
+    m.w16(si + 0xc, m.u16(0xcd88 + 2 * (w & 0xff)));
+    m.w16(si + 0x26, m.u16(0x8b6b) & 0x70f);
+    return finishSpawn(m, si, slot, bx, tpl);
+  }
+  if (type === 0x53 && m.u16(bx + 6) === 0) { // C6AF
+    m.w16(si + 2, type);
+    m.w16(si + 6, be16(m, bx)); bx += 2;
+    m.w16(si + 8, be16(m, bx)); bx += 2;
+    m.w16(si + 0x14, be16(m, bx)); bx += 4;
+    m.w16(si + 0xa, be16(m, bx)); bx += 2;
+    m.w8(si + 1, 0x3b);
+    m.w16(si + 0xc, m.u16(0xcd88 + 2 * 0x3b));
+    m.w16(si + 0x26, 0x204);
+    return finishSpawn(m, si, slot, bx, tpl);
+  }
+  if (type === 0x2b) { // C707: presets, then the generic placement
+    m.w8(si, 0); m.w8(si + 0x3f, 0x14); m.w8(si + 0x36, 0x32); m.w16(si + 0x14, 4);
+  } else if (SPECIAL_TYPES.has(type) && type !== 0x1f && type !== 0x53) { ctx.unported.add(`spawn type 0x${type.toString(16)}`); return none; }
   // C40C: generic placement from the event data
   m.w16(si + 2, type);
   m.w16(si + 6, be16(m, bx)); bx += 2;

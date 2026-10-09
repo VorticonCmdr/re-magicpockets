@@ -297,9 +297,9 @@ export async function checkConformance(ctx) {
   const head = runConformance(env, first700, { ignoreScratch: true, skip: MID_CALL_SAMPLES });
   const all = runConformance(env, rows, { ignoreScratch: true, skip: MID_CALL_SAMPLES });
   check('every one of the first 700 iterations\' 697 usable transitions reproduces every captured entity byte for byte', head.entExact === head.total && head.total === 697, `${head.entExact}/${head.total}`);
-  check('at least 2201 of the whole demo\'s 2339 usable transitions reproduce every captured entity byte for byte', all.entExact >= 2201, `${all.entExact}/${all.total}`);
+  check('at least 2294 of the whole demo\'s 2339 usable transitions reproduce every captured entity byte for byte', all.entExact >= 2294, `${all.entExact}/${all.total}`);
   check('every one of the first 700 iterations\' usable transitions also reproduces every non-scratch global', head.exact === head.total, `${head.exact}/${head.total}`);
-  check('at least 2174 of the whole demo\'s usable transitions also reproduce every non-scratch global', all.exact >= 2174, `${all.exact}/${all.total}`);
+  check('at least 2269 of the whole demo\'s usable transitions also reproduce every non-scratch global', all.exact >= 2269, `${all.exact}/${all.total}`);
   const top = [...all.unportedHist].sort((a, b) => b[1] - a[1]).slice(0, 6).map(([k, n]) => `${k} x${n}`).join(', ');
   note('unported branches still hit', top || 'none');
   return results;
