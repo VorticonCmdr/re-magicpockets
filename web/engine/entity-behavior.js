@@ -109,6 +109,43 @@ function airSteer(m, si, bx) {
   advanceAnim(m, bx, 0);
 }
 
+/** 1000:3FE2: the player grabs the crate (class 0xD/0x33) he is standing against. */
+function crateGrab(m, si, bx) {
+  m.w8(0x8b98, 1);
+  m.w8(si + 1, 0x1c); m.w16(si + 0xc, 0xc655);
+  m.w16(si + 0x14, m.u16(bx + 0x14));
+  m.w16(bx + 0x10, 0x90); m.w16(bx + 0x12, 0x93); m.w16(bx + 0xa, 0x90);
+  m.w8(bx + 1, 0);
+  m.w8(0x8bb3, m.u8(0x8bb3) + 1);
+  m.w8(0x8b96, 0);
+}
+
+/** 1000:3E15: Down was pressed: interact with the prop remembered in [8C01]. */
+function downPressed(m, si, bx, ctx) {
+  if (m.u8(0x8b67) & 0x80) return;
+  if (m.u16(0x8bfd) !== 0) return;
+  m.w16(0x8bfd, 1);
+  if (m.u8(si + 1) !== 0) return;
+  let ax = 2;
+  if (m.u16(0x8c01) !== 0) { ax = m.u16(m.u16(0x8c01) + 2); m.w16(0x8c01, 0); }
+  const t = m.u8(0x8b98), c04 = m.u8(0x8c04);
+  const unp = (n) => ctx.unported.add(`3E15 ${n}`);
+  if (ax === 0x22) { unp('class 0x22'); return; }
+  if (t !== 0x1a) {
+    if (ax === 0x29) { unp('class 0x29'); return; }
+    if (t === 0x43) { unp('target 0x43'); return; }
+    if (c04 === 0x40) { unp('c04 0x40'); return; }
+    if (ax === 0x24) { unp('class 0x24'); return; }
+    if (ax === 0xd || ax === 0x33) { crateGrab(m, si, bx); return; }
+    if (t !== 0x41 && ax === 0x1a) { unp('class 0x1a'); return; }
+    if (c04 === 0x27) { unp('c04 0x27'); return; }
+  }
+  if (c04 === 0x45) { unp('c04 0x45'); return; }
+  if (ax === 0x2a || ax === 0x45) { unp(`class 0x${ax.toString(16)}`); return; }
+  if (t === 0x1a) { unp('target 0x1a'); return; }
+  if (ax === 0x15 || ax === 0x40 || ax === 0x41 || ax === 0x43) unp(`class 0x${ax.toString(16)}`);
+}
+
 /** 1000:3CE8 Entity_HandleCollisionOrStateDispatch (SI = the world entity). */
 function handleCollisionOrStateDispatch(m, si, ctx) {
   if (m.u8(G.NO_INPUT) !== 0) return;
@@ -122,7 +159,7 @@ function handleCollisionOrStateDispatch(m, si, ctx) {
   const ax = ((m.u8(G.EXTRA_FLAGS) | m.u16(si + 0x24) | m.u16(bx + 0x24)) ^ 0xff) & 0xffff;
   const c27 = (ax & 0xff00) | (ax & m.u8(G.INPUT));
   m.w16(G.SCRATCH_C27, c27);
-  if (c27 & 2) { ctx.unported.add('3CE8 down/fire path 3E15'); return; }
+  if (c27 & 2) { downPressed(m, si, bx, ctx); return; } // 3E15
   if (c27 & 1) { // 3DA5: Up starts a jump
     if (m.u8(si + 1) === 0 && m.u8(bx + 1) === 0) {
       m.w8(bx + 0x3e, 0);

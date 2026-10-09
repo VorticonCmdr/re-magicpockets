@@ -13,7 +13,7 @@
 
 import { findByClass } from './ds-memory.js';
 import { resetExtendedFields } from './entity-behavior.js';
-import { pushEvent5 } from './fire.js';
+import { pushEvent5, pushSpawnEvent } from './fire.js';
 
 const ABORT = Symbol('abort');
 
@@ -321,7 +321,8 @@ function spawnEffect(m, si, di, ctx) {
   m.w16(0x8c27, m.u16(si + 6));
   const id = m.u16(0x8c69);
   m.w16(0x8c29, id);
-  if (id === 0xe || id === 0x1b || id === 0x27) { ctx.unported.add(`opcode 13 weapon ${id}`); return ABORT; }
+  if (id === 0xe || id === 0x1b) { specialWeapon(m); return di; } // 35CE
+  if (id === 0x27) { ctx.unported.add(`opcode 13 weapon ${id}`); return ABORT; }
   let w = m.u16(0x8b89);
   m.w16(0x8c1d, w);
   if (w === 0) { w = m.u16(0x8b8b); m.w16(0x8c1d, w); }
@@ -464,4 +465,19 @@ export function changeClass(m, si, cls) {
   const hb = 0xf3af + m.u16(tpl + 0x1a);
   for (let i = 0; i < 6; i++) m.w16(si + 0x18 + 2 * i, m.u16(hb + 2 * i));
   m.w16(si + 2, cls);
+}
+
+/** 1000:35CE: the special weapon (ids 0xE and 0x1B): a fan of sprites whose count grows with the level. */
+function specialWeapon(m) {
+  m.w16(0x8c1f, m.u16(0x8bf7));
+  m.w16(0x8c1d, m.u16(0x8bf9));
+  m.w16(0x8c25, m.u16(0x8c25) + 8);
+  m.w16(0x8c27, m.u16(0x8c27) + (m.u16(0x8c23) === 4 ? -6 : 0x1a));
+  const push = (v) => { m.w16(0x8c21, v); pushSpawnEvent(m); };
+  const tier = m.s8(0x8bb2);
+  const lvl = m.u16(0x8c1d);
+  if (lvl >= 3 || (lvl !== 0 && lvl !== 1 && lvl !== 2)) { push(0x13); if (tier !== 0) push(0x55); }
+  if (lvl === 2 || lvl >= 3) { push(0x54); if (tier > 2) push(0x56); }
+  if (lvl === 1 || lvl === 2 || lvl >= 3) { push(0x15); if (tier > 3) push(0x57); }
+  push(0x14); if (tier > 4) push(0x58);
 }

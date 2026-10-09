@@ -54,3 +54,15 @@ export function hudUpdateScoreDisplay(m, ctx) {
     put(0, m.u8(0x8baf)); put(3, m.u8(0x8bae));
   }
 }
+
+/**
+ * Call #5, Fx_UpdateTransition (1000:1028): the palette-fade state byte [8BA2]. 0x19 finishes a
+ * fade (the screen copy it triggers is graphics only); the stepping states 0xFB-0xFF and the
+ * special values 1, 0x32 and 0x63 are not ported.
+ */
+export function fxUpdateTransition(m, ctx) {
+  const al = m.u8(0x8ba2);
+  if (al === 0) return;
+  if (al === 0x19) { m.w8(0x8ba2, 0); return; }
+  ctx.unported.add(`Fx_UpdateTransition state 0x${al.toString(16)}`);
+}

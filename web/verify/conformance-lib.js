@@ -10,9 +10,9 @@ import { rebuildVisibleList } from '../engine/entity-behavior.js';
 
 export const GLOBALS_BASE = 0x8b50;
 // Probe results, scratch words, list cursors, the render row counter and the timer ISR's seconds
-// counter ([8BAD]/[8BAE], advanced by the 50 Hz interrupt, not by the main loop): byproducts and
-// asynchronous state, not game state.
-export const SCRATCH = [[0x8bc5, 0x8bec], [0x8c1b, 0x8c2a], [0x8b87, 0x8b88], [0x8bad, 0x8bae], [0x8bd5, 0x8be4],
+// and minutes counters ([8BAD]-[8BAF], advanced by the 50 Hz interrupt, not by the main loop):
+// byproducts and asynchronous state, not game state.
+export const SCRATCH = [[0x8bc5, 0x8bec], [0x8c1b, 0x8c2a], [0x8b87, 0x8b88], [0x8bad, 0x8baf], [0x8bd5, 0x8be4],
   [0x8b9c, 0x8b9d], [0x8c77, 0x8c7c]];
 const isScratch = (a) => SCRATCH.some(([lo, hi]) => a >= lo && a <= hi);
 const hexBytes = (h) => Uint8Array.from(h.match(/../g), (x) => parseInt(x, 16));
@@ -72,6 +72,7 @@ export function runConformance(env, rows, o = {}) {
   const firstBad = [];
   for (let k = from; k < to; k++) {
     const a = rows[k], b = rows[k + 1];
+    if (o.skip?.has(b.done)) continue;
     const m = loadRow(env, a);
     const ctx = { unported: new Set(), events: [] };
     const only = o.only ? new Set(a.e.slice(0, o.only).map((e) => e.ptr)) : null;

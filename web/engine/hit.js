@@ -50,7 +50,8 @@ const PICKUP_STAY = [0x15, 0x40, 0x41, 0x43, 0x1a, 0x24, 0x2a, 0x45, 0x22, 0x29]
 function playerTouchesProp(m, si, bx, ctx) {
   const cls = m.u16(bx + 2);
   if (cls === 0xe) return crate(m, si, bx, ctx);
-  if (cls === 0x1c || cls === 6 || cls === 0x1b || cls === 0x26 || cls === 0x56 || cls === 0x2e) return false;
+  if (cls === 0x1b) return powerUp(m, bx);
+  if (cls === 0x1c || cls === 6 || cls === 0x26 || cls === 0x56 || cls === 0x2e) return false;
   if (!PICKUP_STAY.includes(cls) && (m.u8(bx + 0x40) === 0xf6 || m.u8(bx + 0x3e) === 0)) return true; // 5850
   m.w16(0x8c01, bx); // 584C: remember the prop the player stands against
   return true;
@@ -111,7 +112,6 @@ function findNextByClass(m, from, cls) {
 
 /** 1000:4F27: a projectile (si, kind 7) hits an enemy (bx, kind 2). @returns {boolean} handled */
 export function weaponHitsEnemy(m, si, bx, ctx) {
-  if (globalThis.process?.env?.MP_TRACE) console.error('HIT weapon', si.toString(16), 'cls', m.u16(si + 2), 'enemy', bx.toString(16), 'cls', m.u16(bx + 2), 'kind', m.u16(bx + 4), '+39', m.u8(bx + 0x39).toString(16), '+3f', m.u8(bx + 0x3f), '+40', m.u8(bx + 0x40).toString(16), 'wst40', m.u8(si + 0x40).toString(16));
   if (m.u8(bx + 0x40) === 0x65 || m.u8(si + 0x40) === 0x65 || m.u8(bx + 0x40) === 0x19 || m.u8(si + 0x40) === 0x19) return true;
   const target = m.u16(bx + 2);
   if (target === 0x2c || target === 0x42) return true;
@@ -329,4 +329,22 @@ function particles(m) {
   m.w16(0x8c29, 0xf);
   for (const [a, b] of [[9, 4], [9, 8], [8, 4], [8, 8]]) { m.w16(0x8c21, a); m.w16(0x8c23, b); pushEvent5(m); }
   return true;
+}
+
+/** 1000:5BAD: the player touches a class-0x1B power-up; its frame says which one (sounds skipped). */
+function powerUp(m, bx) {
+  if (m.u8(bx + 0x3e) === 0) return true;
+  const frame = m.u16(bx + 0xa);
+  if (frame === 0x16) { // 5C23
+    if (m.u8(0x8c04) !== 0) return true;
+    m.w8(bx + 0x40, 0x19); m.w8(0x8c04, 0xe);
+    return true;
+  }
+  if (frame === 0x14) { // 5C36
+    if (m.u16(0x8bff) === 6) return false; // 5D6A is not ported
+    m.w16(0x8bff, m.u16(0x8bff) + 1);
+    m.w8(bx + 0x40, 0x19);
+    return true;
+  }
+  return false;
 }

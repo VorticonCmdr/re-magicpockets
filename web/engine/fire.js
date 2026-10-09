@@ -129,7 +129,13 @@ export function fireAndCharge(m, si, bx, ctx) {
   m.w16(0x8bfb, m.u8(0x8b90));
   m.w8(0x8b91, 0);
   const ax = Math.floor(((level - 1) & 0xffff) / 8);
-  if (c04 === 0xe || c04 === 0x1d || c04 === 0x40 || c04 === 0x1b || c04 === 0x27) { ctx.unported.add(`4269 special mode ${c04}`); return false; }
+  if (c04 === 0xe) { // 451D: the special weapon is armed for one shot
+    m.w16(0x8c69, 0xe);
+    m.w16(0x8bf9, ax);
+    m.w8(0x8c04, 0);
+    return m.u16(bx + 0xa) === 0x40;
+  }
+  if (c04 === 0x1d || c04 === 0x40 || c04 === 0x1b || c04 === 0x27) { ctx.unported.add(`4269 special mode ${c04}`); return false; }
   weaponId(m, bx, ax, ctx);
   checkTimerEvent(m, bx);
   return m.u16(bx + 0xa) === 0x40;

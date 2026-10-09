@@ -288,9 +288,13 @@ export async function checkConformance(ctx) {
   const hero = runConformance(env, rows, { ents: 3, only: 3, ignoreScratch: true });
   check('at least 696 of 699 transitions reproduce entities 0-2 byte for byte', hero.entExact >= 696, `${hero.entExact}/${hero.total}`);
   check('at least 639 of 699 transitions also reproduce every non-scratch global', hero.exact >= 639, `${hero.exact}/${hero.total}`);
-  const all = runConformance(env, rows, { ignoreScratch: true });
-  check('at least 694 of 699 transitions reproduce every captured entity byte for byte', all.entExact >= 694, `${all.entExact}/${all.total}`);
-  check('at least 688 of 699 transitions reproduce every entity and every non-scratch global', all.exact >= 688, `${all.exact}/${all.total}`);
+  // Rows 536 and 537 were polled while call 6 (the event consumer) was running: three of the four
+  // queued particle events have already spawned entities but [8BB5] still points at all four. A
+  // whole-iteration model cannot reproduce a mid-call snapshot, so these two rows are exempt.
+  const MID_CALL_SAMPLES = new Set([536, 537]);
+  const all = runConformance(env, rows, { ignoreScratch: true, skip: MID_CALL_SAMPLES });
+  check('every one of the 697 usable transitions reproduces every captured entity byte for byte', all.entExact === all.total && all.total === 697, `${all.entExact}/${all.total}`);
+  check('every one of the 697 usable transitions reproduces every entity and every non-scratch global', all.exact === all.total, `${all.exact}/${all.total}`);
   const top = [...all.unportedHist].sort((a, b) => b[1] - a[1]).slice(0, 6).map(([k, n]) => `${k} x${n}`).join(', ');
   note('unported branches still hit', top || 'none');
   return results;

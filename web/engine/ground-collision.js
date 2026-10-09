@@ -151,9 +151,17 @@ function fall(m, si, bx, ctx) {
   if (ws === 0x11 || ws === 0x10 || ws === 0xd || ws === 0xaf || ws === 4 || ws === 0x43 || ws === 0x47) return;
   const ps = m.u8(bx + 1);
   if (ps === 0xaa || ps === 0x35 || ps === 0x2f) return;
-  if (ps === 0x1d) { ctx.unported.add('F77B player state 0x1d'); return; }
+  const f82d = () => { // the world entity starts to fall
+    if (m.u8(si + 1) === 0x75) return;
+    m.w16(si + 0x26, 0); m.w8(si + 1, 0x11); m.w16(si + 0xc, 0xc606);
+  };
+  if (ps === 0x1d && (((m.u16(bx + 0xc) - 0xc65a) << 16) >> 16) < 0xa) { // F819: the punch script is early enough to cancel
+    m.w8(bx + 1, 0x35); m.w16(bx + 0xc, 0xc7f7);
+    f82d();
+    return;
+  }
   if (t === 0x41 || t === 0x21) return;
-  if (t === 0x43) { ctx.unported.add('F77B target 0x43'); return; }
+  if (t === 0x43) { f82d(); return; }
   if (t === 3) { m.w8(si + 1, 0); return; }
   if (t === 1) return;
   if ((m.u16(bx + 0x24) & 2) !== 0) return;
