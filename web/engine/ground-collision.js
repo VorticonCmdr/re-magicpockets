@@ -341,11 +341,154 @@ function resolveSide(m, si, bx, probeAddr, ctx) {
   lateral(m, si, bx, ctx);
 }
 
+// --- Enemy (non-player) collision: the second branch of E14F, kind 2 leaves only ---
+
+/** 1000:FA46: pull a blocked entity back to the tile edge on the side it faces. */
+function alignToWall(m, bx) {
+  const face = m.u16(bx + 0x14);
+  if (face === 4) {
+    if (m.u8(R.C7) === 0) return;
+    m.w16(bx + 6, m.u16(R.DD) + 0x20);
+    if (m.u8(R.EC) !== 0) return;
+    m.w8(R.C7, 0);
+    m.w8(R.C9, Math.max(0, m.s8(R.C9) - 1) & 0xff); // sub 1; jns keep else 0
+    m.w8(R.CA, Math.max(0, m.s8(R.CA) - 1) & 0xff);
+  } else if (face === 8) {
+    if (m.u8(R.C8) === 0) return;
+    m.w16(bx + 6, (m.u16(R.DD) - m.u16(bx + 0x18)) & 0xffff);
+    if (m.u8(R.EC) !== 0) return;
+    m.w8(R.C8, 0);
+    m.w8(R.C9, Math.max(0, m.s8(R.C9) - 1) & 0xff);
+    m.w8(R.CA, Math.max(0, m.s8(R.CA) - 1) & 0xff);
+  }
+}
+
+/** 1000:FABD: lift an entity out of the ceiling it ran into. */
+function alignToCeiling(m, bx) {
+  if (m.u8(R.C5) === 0) return;
+  m.w16(bx + 8, (m.u16(0x8be3) + 0x10) & 0xffff);
+  if (m.u8(R.EC) !== 0) return;
+  m.w8(R.C5, 0);
+  if (m.u8(R.CB) !== 0) m.w8(R.CB, m.u8(R.CB) - 1);
+  if (m.u8(R.CC) !== 0) m.w8(R.CC, m.u8(R.CC) - 1);
+}
+
+/** 1000:FAF5: lift an entity out of the floor it sank into. */
+function alignToFloor(m, bx) {
+  if (m.u8(R.C6) === 0) return;
+  m.w16(bx + 8, (m.u16(R.D9) - m.u16(bx + 0x1a)) & 0xffff);
+  if (m.u8(R.EC) !== 0) return;
+  m.w8(R.C6, 0);
+  if (m.u8(R.CB) !== 0) m.w8(R.CB, m.u8(R.CB) - 1);
+  if (m.u8(R.CC) !== 0) m.w8(R.CC, m.u8(R.CC) - 1);
+}
+
+/** 1000:E2D3: ledge probe for kind 2; sets [8BE9] when there is no floor under the next step. */
+function ledgeProbe(m, bx) {
+  if (m.u16(0x8b89) === 3 || m.u16(bx + 4) !== 2) return;
+  const ef = m.u16(EF23);
+  const solid = (di) => m.u8(ef + m.s8(di) & 0xffff) !== 0;
+  let di = (m.u16(R.D7) - 0x80) & 0xffff;
+  if (solid(di - 1)) {
+    di = (di + 0x100) & 0xffff;
+    if (solid(di - 1)) { m.w8(R.E9, 0xff); return; }
+  }
+  if (m.u16(R.C7) !== 0) return;
+  di = m.u16(R.D7);
+  if (!solid(di)) return;
+  di = (di - 0x80) & 0xffff;
+  if (solid(di)) return;
+  di = (di + 0x100) & 0xffff;
+  if (solid(di)) return;
+  m.w8(R.E9, 1);
+}
+
+/** 1000:F270 / F283: kind 2 side contact. */
+function sideContact(m, bx, withAlign) {
+  if (withAlign) alignToWall(m, bx);
+  if (!withAlign && m.u8(bx + 1) !== 0 && m.s8(bx + 0x26) < 0) return;
+  m.w16(bx + 0x24, m.u16(bx + 0x24) | m.u16(bx + 0x14));
+}
+
+/** 1000:E2AF: resolve the side probe (kind 2 only). */
+function sideEnemy(m, bx, ctx) {
+  const face = m.u16(bx + 0x14);
+  if (face === 0) return;
+  if (m.u16(bx + 4) !== 2) { ctx.unported.add(`E8D7/E961 kind ${m.u16(bx + 4)}`); return; }
+  const probe = face === 8 ? R.CC : R.CB;
+  const hit2 = face === 8 ? R.C8 : R.C7;
+  if (m.u8(probe) === 0) return;
+  sideContact(m, bx, m.u8(hit2) !== 0);
+}
+
+/** 1000:F290 (kind 2 floor contact) and F37D (no floor). */
+function floorEnemy(m, bx, ctx) {
+  const cls = m.u16(bx + 2);
+  if (m.u8(R.CA) === 0) { // E703 -> F37D
+    if (cls !== 0x13) { ctx.unported.add(`F37D class 0x${cls.toString(16)}`); return; }
+    if (m.u8(bx + 1) !== 0) return;
+    m.w16(bx + 0xa, 0x24);
+    m.w8(bx + 1, 0x8d); m.w16(bx + 0xc, 0xcfd1);
+    return;
+  }
+  if (m.u8(R.C6) !== 0) alignToFloor(m, bx); // E6D5 -> F28D
+  if (m.u8(bx + 1) === 0) { m.w16(bx + 0x24, m.u16(bx + 0x24) | 2); return; } // F2DC
+  if (m.s8(bx + 0x26) >= 0) return;
+  if (m.u8(R.E7) !== 0) return;
+  m.w16(bx + 0x26, 0);
+  if (cls === 0x14 || cls === 0x20 || cls === 0x2c) { ctx.unported.add(`F290 class 0x${cls.toString(16)}`); return; }
+  if (m.u8(bx + 1) === 0x8d) {
+    m.w16(bx + 0xa, m.u16(bx + 0x10)); m.w8(bx + 1, 0);
+    m.w16(bx + 6, m.u16(bx + 6) & 0xfffc);
+    m.w16(bx + 0x24, m.u16(bx + 0x24) | 2);
+    return;
+  }
+  m.w16(bx + 6, m.u16(bx + 6) & 0xfffc);
+  m.w16(bx + 0xc, m.u16(bx + 0xc) + 3);
+  m.w16(bx + 0x24, m.u16(bx + 0x24) | 2);
+}
+
+/** 1000:E5B3 for kind 2 (ceiling). */
+function ceilingEnemy(m, bx) {
+  if (m.u8(R.C9) === 0) return;
+  if (m.u8(R.C5) !== 0) alignToCeiling(m, bx);
+  m.w16(bx + 0x24, m.u16(bx + 0x24) | 1);
+}
+
+/** 1000:E2C2: vertical resolution by the sign of the vertical speed. */
+function verticalEnemy(m, bx, ctx) {
+  const vy = m.s8(bx + 0x26);
+  if (vy > 0) ceilingEnemy(m, bx); else floorEnemy(m, bx, ctx);
+}
+
+/** The enemy half of 1000:E14F (world 1-2, kinds other than the player). */
+function resolveEnemy(m, bx, di, ctx) {
+  if (m.u16(bx + 4) !== 2) { ctx.unported.add(`E14F kind ${m.u16(bx + 4)}`); return; }
+  const vy = m.s8(bx + 0x26);
+  let dl, dh;
+  if (vy > 0) { scanLeft(m, bx, di); dl = m.s8(R.C9); } else { scanFloor(m, bx, di); dl = m.s8(R.CA); }
+  if (m.u16(bx + 0x14) === 8) { scanBottom(m, bx, di); ledgeProbe(m, bx); dh = m.s8(R.CC); } else { scanTop(m, bx, di); ledgeProbe(m, bx); dh = m.s8(R.CB); }
+  const side = () => sideEnemy(m, bx, ctx);
+  const vert = () => verticalEnemy(m, bx, ctx);
+  const finish = () => { if (m.u8(R.E9) !== 0) m.w16(bx + 0x24, m.u16(bx + 0x24) | 0xc); };
+  if (dh === dl) { // E276
+    if (m.u16(R.C5) === 0) { side(); vert(); finish(); return; } // E263
+    if (m.u16(R.C7) === 0) { vert(); side(); finish(); return; } // E255
+    if (m.u8(R.E7) !== 0) m.w8(R.EC, 0xff);
+    if (m.u16(bx + 4) === 7) { vert(); side(); finish(); return; }
+    if (m.u16(R.D5) !== m.u16(R.D7)) { vert(); side(); finish(); return; }
+    vert();
+    return;
+  }
+  if (dh > dl) { side(); vert(); } else { vert(); side(); }
+  finish();
+}
+
 /** 1000:E14F Entity_ResolveGroundCollision, player (class 3) branch only. */
 function resolveGroundCollision(m, si, bx, di, ctx) {
   m.w16(bx + 0x24, 0);
   if (m.u16(0x8b89) === 3) { ctx.unported.add('E14F world 3'); return; }
-  if (m.u16(bx + 2) !== 3) { ctx.unported.add('E14F non-player'); return; }
+  if (m.u16(bx + 2) !== 3) { resolveEnemy(m, bx, di, ctx); return; }
   scanFloor(m, bx, di);
   scanLeft(m, bx, di);
   scanTop(m, bx, di);

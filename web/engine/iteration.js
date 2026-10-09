@@ -58,7 +58,16 @@ export function renderConsumes(m) {
   if (m.u16(0x8c38) !== 0) m.w16(0x8c38, 0);
 }
 
+/** An extra Rng_NextValue call from elsewhere in the code, with an explicit carry-in. */
+function rngWithCarry(m, carry) {
+  const rng = new Rng(m.u16(G.RNG_STATE));
+  const v = rng.next(carry);
+  m.w16(G.RNG_OUT, v);
+  m.w16(G.RNG_STATE, v);
+}
+
 export function stepIteration(m, ctx, only = null) {
+  ctx.rng = rngWithCarry;
   demoPlaybackInput(m); // call 7
   updateAll(m, ctx, only); // call 8
   rngNext(m); // call 13

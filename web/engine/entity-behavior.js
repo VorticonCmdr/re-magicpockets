@@ -13,6 +13,8 @@ import { VISIBLE_LIST, ENTITY_ARRAY, findByClass } from './ds-memory.js';
 import { runScript } from './script-runner.js';
 import { terrainCollision, overlapTest } from './ground-collision.js';
 import { fireAndCharge } from './fire.js';
+import { behaviorKind2 } from './enemy.js';
+import { Rng } from './rng.js';
 
 export const G = {
   INPUT: 0x8b67, EXTRA_FLAGS: 0x8b5e, NO_INPUT: 0x8b5f, WALK_SPEED: 0x8b97, TARGET: 0x8b98,
@@ -232,7 +234,8 @@ export function updateBehavior(m, si, ctx) {
   if (toKindDispatch) {
     if (kind === 0) return;
     if (kind === 1) { behaviorKind1(m, si, ctx); return; }
-    if (kind === 2 || kind === 4 || kind === 5 || kind === 6 || kind === 7) { ctx.unported.add(`behavior kind ${kind}`); return; }
+    if (kind === 2) { behaviorKind2(m, si, ctx); return; }
+    if (kind === 4 || kind === 5 || kind === 6 || kind === 7) { ctx.unported.add(`behavior kind ${kind}`); return; }
     interactions(m, si, ctx); // CB07
   }
   if (kind === 3) behaviorKind3(m, si, ctx); // CB10
