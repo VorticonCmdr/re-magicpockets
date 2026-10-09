@@ -112,3 +112,13 @@ assuming a placeholder was the real thing.
 `ghidra/` holds the Ghidra project analyzing the game executables under `game/` (gitignored,
 binary, machine-specific project files). `docs/*.md` narrate what was found there; `symbols/*.json`
 are the exported symbol data. Don't expect to open `ghidra/` directly — go through the docs.
+
+## Parity workflow (how the port is checked against DOSBox)
+
+The method is gods-web's: port one original function at a time, and check each against ground truth captured from the real game.
+
+- **Ground truth.** `tools/attract-capture/capture-full.lua` (loaded through the dosbox-mcp `script_load`, `debug:true`) logs, for each main-loop iteration of the attract demo, the globals block `DS:0x8B50..0x8CAF` and the first 8 entity records. `import-entities.mjs` turns the host-side debug log into `entities.capture.json` (committed, 700 iterations). Procedure and limits (1M-instruction budget, 64 KB output cap, how to reach the demo): `docs/dosbox-debugging.md`. The demo is deterministic across runs.
+- **Conformance.** `node tools/attract-capture/conformance.mjs --ents 3 --ignore-scratch` loads each captured row into a `DsMemory` (`web/engine/ds-memory.js`: the EXE's data segment plus the capture), runs one `stepIteration` (`web/engine/iteration.js`) and diffs the next row. The mismatch histogram and the "unported branches hit" list are the work queue. `--show DONE` prints every differing byte of one transition. `npm run verify` asserts a ratchet on the exact-transition counts: raise it when you port more, never lower it.
+- **Sampling.** A captured row is taken after calls 1 and 3 of the NEXT main-loop iteration, so a transition is calls 7, 8, 13, 1 and 3 (`iteration.js` documents this).
+- **Porting rule.** Transliterate the disassembly (`ndisasm -b 16 -o <off> -e 0x340+<off> game/GAMEU.EXE`; `1000:xxxx` = file offset `0x340 + xxxx`, DS offset 0 = file offset `0x5E230`), keep the `1000:` address in a comment, and send every branch you have not read to `ctx.unported` rather than guessing. Docs written from the Ghidra decompile have been wrong about operand semantics; the disassembly wins.
+- **Staging.** Commit with explicit file names. `git add web` / `web/engine` can sweep in unrelated uncommitted work.
