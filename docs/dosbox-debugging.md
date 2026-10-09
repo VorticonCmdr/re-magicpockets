@@ -9,11 +9,27 @@ after a session that got there, but only after a lot of avoidable friction.
 - `.mcp.json` declares a `dosbox` MCP server (`uvx dosbox-mcp`). If its tools (`mcp__dosbox__*`)
   aren't showing up, the session hasn't connected to it yet — restarting/reconnecting the session
   usually fixes this.
-- `bridge_start` (spawning a fresh managed instance) was unreliable in this environment — it
-  repeatedly timed out ("engine produced no token within 30.0s") and self-exited. **The reliable
-  path**: ask the user to manually launch DOSBox-X themselves (mount the project directory as
-  `C:`, stop at the `C:\>` prompt, don't run anything yet), then call `bridge_connect` to attach
-  to their already-running instance. This worked every time; self-spawning did not.
+- **Start the emulator with `bridge_start`** (spawns a managed, debugger-capable instance and
+  attaches in one call). Confirm with `bridge_status` / `dosbox_status` that the attached engine
+  reports the debugger capability before relying on breakpoints. Per the maintainer, `bridge_start`
+  works now. `[PROVEN]` 2026-10-09: `bridge_start` spawned an instance without the old 30 s
+  timeout. ⚠️ **But it did not attach to it:** three `dosbox_with_debugger` processes were
+  listening on `127.0.0.1:8386` at once (the new one, plus two older ones from other projects),
+  and `bridge_status`/`dosbox_status` talked to a stale 3-day-old instance running another game
+  (`TIMU.EXE`, `C:` mounted on `dosgames/tim/game/`). The tell is `bridge_status.managed_instance.pid`
+  differing from the engine pid in `bridge_start`'s result. Before every session run
+  `lsof -nP -iTCP:8386 -sTCP:LISTEN` and make sure exactly one DOSBox owns the port (and that it
+  is the one you spawned) before reading any memory; otherwise you are tracing the wrong game.
+  `[PROVEN]` 2026-10-09: after `pkill -f dosbox_with_debugger` cleared the stale instances,
+  `bridge_start` spawned pid 24766, the engine reported that same pid with `uptime_ms` 40, and
+  `lsof` showed it as the sole listener on 8386 — the clean case. `bridge_stop` only stops an
+  instance the bridge itself spawned, so it errors ("no managed instance") after the process has
+  been killed from outside; that is harmless, just call `bridge_start`.
+  ⚠️ **Superseded earlier advice:** this document used to say `bridge_start` was unreliable here
+  (it repeatedly timed out with "engine produced no token within 30.0s" and self-exited) and that
+  the only reliable path was asking the user to launch DOSBox-X by hand, mounting the project
+  directory as `C:`, stopping at the `C:\>` prompt and calling `bridge_connect`. Keep that manual
+  route only as a fallback if `bridge_start` regresses.
 - `dosbox_status` and `dos_memory_map` are good first checks — `dos_memory_map` in particular
   shows the real MCB segment layout, which is deterministic across runs of the same setup (in
   this session, `GAME.EXE`'s PSP consistently landed at segment `0x1E5`, code at `0x1F5`).
@@ -109,4 +125,5 @@ function, not just the interesting-looking part.
   a fresh session/bridge version, since frame-accurate scripted input (rather than manually
   interleaving `input_key`/`debug_continue`/`debug_status` calls) would have avoided most of the
   timing friction above.
-- `bridge_start` — see Setup above.
+- `bridge_start` — it failed in the original session (see the ⚠️ note in Setup); it is now
+  reported to work.

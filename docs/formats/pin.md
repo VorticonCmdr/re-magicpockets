@@ -163,7 +163,8 @@ leading bytes only, **not decoded**:
   `adlib2`-style wrapper (`01 00 7a 00 08 00 ff 78 ...`). Not decoded.
   Given `data\*.pin`'s file-size the largest by a wide margin, likely contains the most complete
   driver code and/or the richest sound-effect/music resource of any file here.
-- **`autoplay.pin`, `extra_2.pin`** — each a distinct, unclassified header shape. Not decoded.
+- **`autoplay.pin`** — the attract-demo input tape `[STATIC]` (decoded 2026-10-09, `web/core/demo-tape.js`): `(count, state)` byte pairs ending with the word `0xFFFF` at byte 628 (314 records, 2342 loop iterations), then zero padding to 2000 bytes. The state byte is the game's input bitmask: Up `0x01`, Down `0x02`, Left `0x04`, Right `0x08`, Fire `0x80` (`[PROVEN]` live from the scancode table at `CS:0x1E27`, which is filled at startup from `pockets.ini`). Loaded at `DS:0x8200`; read by `Demo_PlaybackInput` (`1000:0159`). Earlier note here ("distinct header shape, not decoded") is superseded. See `docs/open-questions-history.md` item 1.
+- **`extra_2.pin`** — a distinct, unclassified header shape. Not decoded.
   (`level0/new1/level2/level3a-c/level4.pin`, previously listed here, are RESOLVED — see above.)
 
 ## Open questions

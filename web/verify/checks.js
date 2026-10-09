@@ -15,6 +15,7 @@ import { decodePinSoundBank } from '../core/pin-sound.js';
 import { decodeLevelScript } from '../core/pin-level-script.js';
 import { GROUND_TABLE } from '../core/tile-collision.js';
 import { RAW_BANKS } from '../core/palette.js';
+import { decodeDemoTape, DemoPlayback, INPUT_BITS, DEMO_RNG_SEED } from '../core/demo-tape.js';
 
 export function makeChecker() {
   const results = [];
@@ -143,21 +144,47 @@ export async function checkLevelScripts(ctx) {
   return results;
 }
 
-/** autoplay.pin: leading evidence only — the format is NOT decoded yet. */
+/** autoplay.pin: the attract-demo tape, plus the EXE-side constants the decoder relies on. */
 export async function checkDemoTape(ctx) {
   const { results, check, note } = makeChecker();
   const { r } = await unpackData(ctx, 'autoplay.pin');
-  check('autoplay.pin unpacks to exactly 2000 bytes', r.data.length === 2000, `got ${r.data.length}`);
   const exe = await ctx.fetchRaw('game/GAMEU.EXE');
-  const name = new TextEncoder().encode('autoplay.pin');
-  check('GAMEU.EXE references the filename "autoplay.pin"', indexOfBytes(exe, name) !== -1);
-  let pairs = 0, sum = 0;
-  for (let i = 0; i + 1 < r.data.length; i += 2) {
-    if (r.data[i] === 0 && r.data[i + 1] === 0) break;
-    sum += r.data[i]; pairs++;
-  }
-  note('UNKNOWN_autoplay_format',
-    `${pairs} (count,state) pairs before the first 00 00, counts sum to ${sum}; role as the attract-demo tape is a hypothesis`);
+  check('autoplay.pin unpacks to exactly 2000 bytes', r.data.length === 2000, `got ${r.data.length}`);
+  check('GAMEU.EXE references the filename "autoplay.pin"', indexOfBytes(exe, new TextEncoder().encode('autoplay.pin')) !== -1);
+
+  const tape = decodeDemoTape(r.data);
+  check('tape ends with the word 0xFFFF at byte 628', tape.terminated && tape.terminatorOffset === 628, `terminated=${tape.terminated} at ${tape.terminatorOffset}`);
+  check('tape holds 314 (count,state) records', tape.records.length === 314, `got ${tape.records.length}`);
+  check('tape plays for 2342 loop iterations', tape.frames === 2342, `got ${tape.frames}`);
+  check('every byte after the terminator is zero padding', r.data.subarray(630).every((b) => b === 0));
+  const usedBits = tape.records.reduce((m, rec) => m | rec.state, 0);
+  check('tape states only use bits 0x01 0x02 0x04 0x08 0x80', usedBits === 0x8f, `union 0x${usedBits.toString(16)}`);
+
+  const play = new DemoPlayback(tape);
+  let n = 0, last = null;
+  for (let s = play.next(); s !== null; s = play.next()) { n++; last = s; }
+  check('DemoPlayback yields exactly 2342 states then stops', n === 2342 && play.done, `got ${n}`);
+  check('the last recorded state is applied on the final iteration', last === tape.records[313].state, `0x${(last ?? 0).toString(16)}`);
+
+  /* The keyboard scancode -> input-flag table at CS:0x1E27 is NOT in the EXE file: it is filled at
+   * startup from pockets.ini's five key lines (Up, Down, Left, Right, Fire, in that order). So
+   * assert what the shipped ini really contains; the flag values themselves were read live. */
+  const ini = new TextDecoder().decode(await ctx.fetchRaw('game/pockets.ini')).split(/\r?\n/).filter((l) => l.trim());
+  const keyLines = ini.slice(5, 10);
+  const scancodes = keyLines.map((l) => Number(l.split(' ')[0].replace(',', '')) >> 8);
+  check('pockets.ini binds Up, Down, Left, Right, Fire to scancodes 0x48 0x50 0x4B 0x4D 0x39', scancodes.join(',') === '72,80,75,77,57', scancodes.join(','));
+  check('keyboard flag table signature (Up/Left/Right/Down run) is absent from the EXE file, so it is built at runtime',
+    indexOfBytes(exe, Uint8Array.from([1,0, 0,0, 0,0, 4,0, 0,0, 8,0, 0,0, 0,0, 2,0])) === -1);
+  note('INPUT_BITS (Up 0x01, Down 0x02, Left 0x04, Right 0x08, Fire 0x80) [PROVEN] live', `read from DOSBox memory CS:0x1E27+scancode*2 on 2026-10-09; port has ${JSON.stringify(INPUT_BITS)}`);
+
+  /* Game_StartAttractDemoAndRunLoop's constants: mov word [8BA6],8200 / mov word [8B71],imm16 /
+   * mov byte [8BAA],1. */
+  check('demo start points the tape cursor [8BA6] at DS:0x8200', indexOfBytes(exe, Uint8Array.from([0xc7,0x06,0xa6,0x8b,0x00,0x82])) !== -1);
+  check('demo start sets the playback flag [8BAA] to 1', indexOfBytes(exe, Uint8Array.from([0xc6,0x06,0xaa,0x8b,0x01])) !== -1);
+  const seedAt = indexOfBytes(exe, Uint8Array.from([0xc7,0x06,0x71,0x8b]));
+  const seedWord = seedAt === -1 ? -1 : exe[seedAt + 4] | (exe[seedAt + 5] << 8);
+  check('demo start seeds the RNG state [8B71] with the port\'s DEMO_RNG_SEED', seedWord === DEMO_RNG_SEED, `EXE has 0x${seedWord.toString(16)}`);
+  note('UNKNOWN_demo_which_level', 'demo start sets world word [8B89]=0 and sublevel [8B8B]=1 (static read); the level it actually plays is not yet confirmed live');
   return results;
 }
 
