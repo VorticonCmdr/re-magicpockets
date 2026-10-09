@@ -13,7 +13,7 @@ import { VISIBLE_LIST, ENTITY_ARRAY, findByClass } from './ds-memory.js';
 import { runScript } from './script-runner.js';
 import { terrainCollision, overlapTest } from './ground-collision.js';
 import { fireAndCharge } from './fire.js';
-import { behaviorKind2, behaviorKind5 } from './enemy.js';
+import { behaviorKind2, behaviorKind5, behaviorKind6, behaviorKind7 } from './enemy.js';
 import { Rng } from './rng.js';
 
 export const G = {
@@ -147,7 +147,7 @@ function handleCollisionOrStateDispatch(m, si, ctx) {
 }
 
 /** 1000:DF5A. Entity-vs-entity interactions, driven by the kind-pair table at 0xF36F. */
-function interactions(m, si, ctx) {
+export function interactions(m, si, ctx) {
   if (m.u16(si + 2) === 0) return;
   const row = 0xf36f + m.u16(si + 4) * 8;
   for (let p = VISIBLE_LIST; ; p += 2) {
@@ -157,7 +157,7 @@ function interactions(m, si, ctx) {
     if (cl === 0) continue;
     // DFAC: entity must exist; 0x63 is the terrain collision of the player against the map.
     if (m.u16(bx + 2) === 0) continue;
-    if (cl === 0x63) terrainCollision(m, si, bx, ctx); else overlapTest(m, si, bx, cl, ctx);
+    if (cl === 0x63) terrainCollision(m, si, bx, ctx); else if (overlapTest(m, si, bx, cl, ctx)) return;
   }
 }
 
@@ -226,17 +226,24 @@ export function updateBehavior(m, si, ctx) {
   else if (cls === 0x5e) { ctx.unported.add('behavior class 0x5e'); return; }
   else if (frz === 0x66 || frz === 0x32) toCB10 = true;
   else if (cls === 0x1f || cls === 7) toKindDispatch = true;
-  else if (cls === 0xf) { ctx.unported.add('behavior class 0xf'); return; }
+  else if (cls === 0xf) { behaviorClassF(m, si); return; } // CB1C
   else if (cls === 0x2d) return;
   else if (frz === 0x45) toCB10 = true;
-  else if (cls === 0x1e || cls === 0x11 || cls === 0x2f) { ctx.unported.add(`behavior class ${cls}`); return; }
+  else if (cls === 0x1e) { // CC01
+    const al = m.u8(si + 0x3d);
+    if (!(al & 0x80)) advanceAnim(m, si, al);
+    return;
+  } else if (cls === 0x11) { behaviorClass11(m, si, ctx); return; } // CC52
+  else if (cls === 0x2f) { behaviorClass2f(m, si); return; } // CC0F
   else toKindDispatch = true;
   if (toKindDispatch) {
     if (kind === 0) return;
     if (kind === 1) { behaviorKind1(m, si, ctx); return; }
     if (kind === 2) { behaviorKind2(m, si, ctx); return; }
     if (kind === 5) { behaviorKind5(m, si, ctx); return; }
-    if (kind === 4 || kind === 6 || kind === 7) { ctx.unported.add(`behavior kind ${kind}`); return; }
+    if (kind === 6) { behaviorKind6(m, si, ctx); return; }
+    if (kind === 7) { behaviorKind7(m, si, ctx); return; }
+    if (kind === 4) { ctx.unported.add(`behavior kind ${kind}`); return; }
     interactions(m, si, ctx); // CB07
   }
   if (kind === 3) behaviorKind3(m, si, ctx); // CB10
@@ -307,4 +314,58 @@ export function cameraUpdateScroll(m) {
   m.w16(0x8c17, (-m.u16(0x8c17)) & 0xffff);
   m.w16(G.SCROLL_DX, 0);
   m.w16(G.SCROLL_DY, 0);
+}
+
+const kill = (m, si) => m.w8(si + 0x40, 0x19);
+
+/** 1000:CB1C class 0xF (frame-driven effect sprites; the frame number selects the step). */
+function behaviorClassF(m, si) {
+  const f = m.s16(si + 0xa), rnd = m.u16(0x8b6b);
+  const cb48 = () => { advanceAnim(m, si, m.u8(si + 0x3d)); if (m.u16(si + 0xa) === 0x4f) kill(m, si); };
+  const cb61 = () => { m.w16(si + 0xa, 0x46); cb48(); };
+  const fall = () => { if (m.s16(si + 8) > 0xc8) kill(m, si); };
+  if (f === 0x46) { cb48(); return; }
+  if (f < 0x46) { fall(); return; } // CB59
+  if (f === 0x50) { // CB68
+    if ((rnd & 1) === 0) { cb61(); return; }
+    m.w16(si + 0x10, 0x50); m.w16(si + 0x12, 0x5b);
+    advanceAnim(m, si, 0);
+    fall();
+    return;
+  }
+  if (f === 0xc8) { m.w16(si + 0xa, rnd & 0xf); return; } // CB88
+  if (f === 0x64) { // CBBC
+    const v = rnd & 3;
+    if (v === 0) { cb61(); return; }
+    const frame = v === 1 ? 0x66 : v === 2 ? 0x67 : 0x1e;
+    m.w16(si + 0xa, frame); m.w16(si + 0x10, frame); m.w16(si + 0x12, frame);
+    return;
+  }
+  if (f === 0x96) { m.w16(si + 0xa, (rnd & 1) ? 0x14 : 0x1d); return; } // CBA5
+  if (f === 0xfa) { m.w16(si + 0xa, (rnd & 7) + 0x15); return; } // CB95
+  cb48();
+}
+
+/** 1000:CC0F class 0x2F: an overlay that follows the entity it was attached to. */
+function behaviorClass2f(m, si) {
+  const bx = m.u16(si + 0x2c);
+  if (m.u8(bx + 0x40) === 0x19 || m.u16(bx + 2) === 0) { kill(m, si); return; }
+  m.w16(si + 6, m.u16(bx + 6));
+  m.w16(si + 8, m.u16(bx + 8) - 0x10);
+  m.w16(si + 0xa, m.u16(bx + 0xa) - 0x38 + (m.u16(bx + 0x14) === 8 ? 0x42 : 0x46));
+}
+
+/** 1000:CC52 class 0x11: a marker that follows the entity at [+0x2C] and dies with the player's grab. */
+function behaviorClass11(m, si, ctx) {
+  const bx = m.u16(si + 0x2c);
+  m.w16(si + 6, m.u16(bx + 6));
+  m.w16(si + 8, m.u16(bx + 8) - 8);
+  advanceAnim(m, si, m.u8(si + 0x3d));
+  if (m.u16(bx + 2) !== 3) return;
+  m.w8(si + 1, 0);
+  m.w16(si + 0xc, 0);
+  if (m.s8(0x8b96) > 1) return;
+  kill(m, si);
+  m.w16(bx + 0x2c, 0);
+  // 1D4C sound request (ax = 4) writes nothing this model compares yet.
 }

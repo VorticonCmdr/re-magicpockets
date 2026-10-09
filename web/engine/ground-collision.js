@@ -10,6 +10,8 @@
 
 'use strict';
 
+import { pairEvent } from './hit.js';
+
 const MAP = 0x4200;
 const S = { X: 0x8c1f, Y: 0x8c21, X2: 0x8c27, Y2: 0x8c29, CX: 0x8c1b, CY: 0x8c1d, OX: 0x8c23, OY: 0x8c25 };
 const R = { C5: 0x8bc5, C6: 0x8bc6, C7: 0x8bc7, C8: 0x8bc8, C9: 0x8bc9, CA: 0x8bca, CB: 0x8bcb, CC: 0x8bcc,
@@ -411,10 +413,35 @@ function sideContact(m, bx, withAlign) {
 }
 
 /** 1000:E2AF: resolve the side probe (kind 2 only). */
-function sideEnemy(m, bx, ctx) {
+/** 1000:E8D7 / E961 -> EA41..EAF6 for kind 7: projectiles breaking 0x3C tiles or bouncing off walls. */
+function sideProjectile(m, bx, di, face, probe, ctx) {
+  if (m.u8(probe) === 0) return;
+  const contact = face === 8 ? R.C8 : R.C7;
+  let ax;
+  if (m.u8(contact) === 0) ax = face === 8 ? 0x80 : -0x80; // EA46 / EA41
+  else { ax = m.u8(0x8be8) === 0 ? 0 : 0x80; if (face === 4) ax = 0; } // EA4B
+  di = (di + ax) & 0xffff;
+  ax &= 0xffff;
+  const world = m.u16(0x8b89) || m.u16(0x8b8b);
+  const cls = m.u16(bx + 2);
+  if (world === 1 && [0xa, 0xb, 0xc, 0xd, 0x27].includes(cls)) { // EAA5
+    // The 1CCF sound request writes nothing this model compares yet.
+    const breakTile = (o) => { m.w8(di + o, -m.u8(di + o)); m.w8(bx + 0x40, 0x19); };
+    ax &= 0xffff;
+    if (m.u8(di) === 0x3c) { breakTile(0); ax = 1; if (cls !== 0xd) return; }
+    if (m.u8(di + 1) === 0x3c) { breakTile(1); ax = 2; }
+    if (cls === 0xd && m.u8(di + 2) === 0x3c && ax !== 2) { breakTile(2); return; } // EADD
+  }
+  if (m.u16(R.C7) !== 0) alignToWall(m, bx); // EA90
+  m.w16(bx + 0x24, m.u16(bx + 0x24) | m.u16(bx + 0x14));
+  m.w16(bx + 0x14, m.u16(bx + 0x14) ^ 0xc);
+}
+
+function sideEnemy(m, bx, ctx, di) {
   const face = m.u16(bx + 0x14);
   if (face === 0) return;
   const probe = face === 8 ? R.CC : R.CB;
+  if (m.u16(bx + 4) === 7) { sideProjectile(m, bx, di, face, probe, ctx); return; }
   if (m.u16(bx + 4) === 5) { // E940 / E9CA: turn around at a wall
     if (m.u8(probe) === 0) return;
     if (m.u16(bx + 2) === 6) return;
@@ -429,26 +456,75 @@ function sideEnemy(m, bx, ctx) {
 }
 
 /** 1000:F290 (kind 2 floor contact) and F37D (no floor). */
-function floorProp(m, bx, ctx) { // kind 5: E703 -> F3EA, E6A4/E6D5 -> E740
+function floorProp(m, bx, ctx) { // kind 5/6: E703 -> F3EA; E6A4/E6D5 -> E734/E740
   const cls = m.u16(bx + 2);
-  if (m.u8(R.CA) === 0) { ctx.unported.add('F3EA kind 5 without floor'); return; }
+  if (m.u8(R.CA) === 0) { noFloorProp(m, bx, cls, ctx); return; }
   if (m.u8(R.C6) !== 0) { if (cls === 6) return; alignToFloor(m, bx); } // E734
   m.w16(bx + 0x24, m.u16(bx + 0x24) | 2); // E740
-  if (m.s8(bx + 0x26) < 0) { ctx.unported.add('E74D kind 5 bounce'); return; }
-  if (m.u8(bx + 1) !== 0) return; // E7F9
-  const stay = [0x15, 0x40, 0x41, 0x43, 0x24, 0x26, 0x29, 0x1a, 0x2a, 0x22, 0x1c];
-  if (!stay.includes(cls)) ctx.unported.add(`E846 kind 5 class 0x${cls.toString(16)}`);
+  if (m.s8(bx + 0x26) >= 0) { // E7F9
+    if (m.u8(bx + 1) === 0) idleProp(m, bx, cls);
+    return;
+  }
+  // E74D: bounce. The sound requests (1CCF) write nothing this model compares yet.
+  if (cls === 0xe) m.w8(bx + 0x3e, 1);
+  else if (cls === 0x41) { if (m.u8(bx + 1) === 0x2e) m.w8(bx + 1, 0); }
+  else if (cls !== 0x1a) m.w8(bx + 0x3e, 1);
+  const half = ((-m.u8(bx + 0x26)) & 0xff) >> 1;
+  m.w8(bx + 0x26, half); // E7A8
+  if (m.s8(bx + 0x26) > 4) return;
+  m.w16(bx + 0xc, m.u16(bx + 0xc) + 3);
+  m.w16(bx + 0x26, 0);
+  const state = (s, script) => { m.w8(bx + 1, s); m.w16(bx + 0xc, script); };
+  if (cls === 0x16) state(0xae, 0xd20b);
+  else if (cls === 0x28) state(0xad, 0xd1fe);
+  else if (cls === 0x53) {
+    if (m.s8(bx + 1) < 0) return;
+    m.w8(bx + 0x40, 0x65);
+    if (m.u16(bx + 0xa) === 0x104) state(0xf6, 0xd8f1); else state(0xf7, 0xd8fd);
+  } else if (cls === 0x5f) state(0xff, 0xd97e);
+  else if (cls === 0xe && m.s16(bx + 0xa) >= 0x50) { m.w16(bx + 0xa, 0x12); m.w8(bx + 0x3d, 0xff); }
+}
+
+/** 1000:E846: a settled prop with state 0 picks its idle script by class. */
+function idleProp(m, bx, cls) {
+  if ([0x15, 0x40, 0x41, 0x43, 0x24, 0x26, 0x29, 0x1a, 0x2a, 0x22, 0x1c].includes(cls)) return;
+  if (cls === 0xe && m.u16(bx + 0xa) === 0x12) m.w8(bx + 0x3d, 0xff);
+  m.w8(bx + 1, 0x20); m.w16(bx + 0xc, 0xc697);
+}
+
+/** 1000:F3EA: a kind 5/6 prop with no floor under it. */
+function noFloorProp(m, bx, cls, ctx) {
+  if (cls === 0x29 || cls === 0x1c || cls === 6) return;
+  const f426 = () => { m.w8(bx + 0x3e, 0); m.w8(bx + 1, 0x8f); m.w16(bx + 0xc, 0xcfd9); };
+  if (cls === 0x41) { // F451
+    if (m.s8(m.u16(R.D7)) < 0) {
+      if (m.u8(bx + 1) === 0x2e) return;
+      ctx.unported.add('F461 class 0x41 spawn event (BF1E)');
+      return;
+    }
+  } else if (cls === 0xe) {
+    if (m.u16(bx + 0xa) === 0x12) { // F434
+      m.w16(bx + 0x10, 0x50); m.w16(bx + 0x12, 0x5b); m.w16(bx + 0xa, 0x50);
+      m.w8(bx + 1, 0x8f); m.w16(bx + 0xc, 0xcfd9); m.w8(bx + 0x3d, 0);
+      return;
+    }
+    f426(); return;
+  } else if (cls === 0x1b || cls === 0x45) { f426(); return; }
+  if (m.u8(bx + 1) === 0) { m.w8(bx + 1, 0x8e); m.w16(bx + 0xc, 0xcfd5); } // F410
 }
 
 function floorEnemy(m, bx, ctx) {
-  if (m.u16(bx + 4) === 5) { floorProp(m, bx, ctx); return; }
+  if (m.u16(bx + 4) === 5 || m.u16(bx + 4) === 6) { floorProp(m, bx, ctx); return; }
   const cls = m.u16(bx + 2);
   if (m.u8(R.CA) === 0) { // E703 -> F37D
-    const frame = { 0x13: 0x24, 0x23: 0xdc, 0x14: 0xc }[cls];
-    if (frame === undefined) { ctx.unported.add(`F37D class 0x${cls.toString(16)}`); return; }
-    if (cls !== 0x14 && m.u8(bx + 1) !== 0) return;
-    m.w16(bx + 0xa, frame);
-    if (m.u8(bx + 1) === 0) { m.w8(bx + 1, 0x8d); m.w16(bx + 0xc, 0xcfd1); }
+    // 1000:F37D: no floor under the entity; pick the falling frame by class, then F3DA.
+    const frame = { 0x13: 0x24, 0x23: 0xdc, 0x14: 0xc, 0x20: 0xcf, 0x4b: 0x31 }[cls];
+    if (frame !== undefined && cls !== 0x14) {
+      if (cls === 0x4b && m.u8(bx + 0x40) === 0x67) return;
+      if (m.u8(bx + 1) !== 0) return;
+    }
+    if (frame !== undefined) m.w16(bx + 0xa, frame);
+    if (m.u8(bx + 1) === 0) { m.w8(bx + 1, 0x8d); m.w16(bx + 0xc, 0xcfd1); } // F3DA
     return;
   }
   if (m.u8(R.C6) !== 0) alignToFloor(m, bx); // E6D5 -> F28D
@@ -485,12 +561,12 @@ function verticalEnemy(m, bx, ctx) {
 /** The enemy half of 1000:E14F (world 1-2, kinds other than the player). */
 function resolveEnemy(m, bx, di, ctx) {
   const kind = m.u16(bx + 4);
-  if (kind !== 2 && kind !== 5) { ctx.unported.add(`E14F kind ${kind}`); return; }
+  if (kind !== 2 && kind !== 5 && kind !== 7) { ctx.unported.add(`E14F kind ${kind}`); return; }
   const vy = m.s8(bx + 0x26);
   let dl, dh;
   if (vy > 0) { scanLeft(m, bx, di); dl = m.s8(R.C9); } else { scanFloor(m, bx, di); dl = m.s8(R.CA); }
   if (m.u16(bx + 0x14) === 8) { scanBottom(m, bx, di); ledgeProbe(m, bx); dh = m.s8(R.CC); } else { scanTop(m, bx, di); ledgeProbe(m, bx); dh = m.s8(R.CB); }
-  const side = () => sideEnemy(m, bx, ctx);
+  const side = () => sideEnemy(m, bx, ctx, di);
   const vert = () => verticalEnemy(m, bx, ctx);
   const finish = () => { if (m.u8(R.E9) !== 0) m.w16(bx + 0x24, m.u16(bx + 0x24) | 0xc); };
   if (dh === dl) { // E276
@@ -543,10 +619,21 @@ export function terrainCollision(m, si, bx, ctx) {
   if (m.u16(bx + 2) === 3) m.w8(R.EB, 0);
 }
 
+/**
+ * 1000:5761, DFAC's handler for a negative pair-table value: run the terrain collision with the
+ * roles swapped (the partner is the reference) unless `si` is scenery or a settled prop. Returns
+ * true when the original `pop ax; ret` (5780..57A0) abandons the whole interaction scan.
+ */
+function negativePair(m, si, bx, ctx) {
+  const cls = m.u16(si + 2), kind = m.u16(si + 4);
+  if (!(cls === 6 || cls === 0x1d || (kind === 5 && m.u8(si + 0x3e) !== 0))) terrainCollision(m, bx, si, ctx);
+  return kind === 2 || kind === 4 || kind === 6 || kind === 5 || cls === 0x10;
+}
+
 /** 1000:DFAC: box overlap test between `si` and `bx` for pair-table value `cl` (not 0x63). */
 export function overlapTest(m, si, bx, cl, ctx) {
   if (m.u16(bx + 2) === 0) return;
-  if (cl > 127) { ctx.unported.add('DFAC negative pair value (5761)'); return; }
+  if (cl > 127) return negativePair(m, si, bx, ctx);
   m.w16(S.CX, m.u16(si + 6) + m.u16(si + 0x1c));
   m.w16(S.CY, m.u16(si + 8) + m.u16(si + 0x1e));
   m.w16(S.OX, m.u16(bx + 6) + m.u16(bx + 0x1c));
@@ -561,5 +648,5 @@ export function overlapTest(m, si, bx, cl, ctx) {
   if (m.s16(S.X) < m.s16(S.OX)) return;
   if (m.s16(S.Y2) < m.s16(S.CY)) return;
   if (m.s16(S.X2) < m.s16(S.CX)) return;
-  ctx.unported.add('45F8 overlap event');
+  return pairEvent(m, si, bx, cl, ctx);
 }

@@ -17,6 +17,18 @@ export const SCRATCH = [[0x8bc5, 0x8bec], [0x8c1b, 0x8c2a], [0x8b87, 0x8b88], [0
 const isScratch = (a) => SCRATCH.some(([lo, hi]) => a >= lo && a <= hi);
 const hexBytes = (h) => Uint8Array.from(h.match(/../g), (x) => parseInt(x, 16));
 
+/** Rebuild each row's full entity list `e` from a compressed capture (see import-entities.mjs compressRows). */
+export function expandRows(rows) {
+  if (!rows.some((r) => r.ptrs)) return rows;
+  const cur = new Map();
+  return rows.map((r) => {
+    if (!r.ptrs) return r;
+    for (const [ptr, hex] of r.d) cur.set(ptr, hex);
+    for (const [ptr, hex] of r.dx || []) cur.set(ptr, hex);
+    return { ...r, e: r.ptrs.map((ptr) => ({ ptr, hex: cur.get(ptr) })), x: (r.xptrs || []).map((ptr) => ({ ptr, hex: cur.get(ptr) })) };
+  });
+}
+
 export function prepare(exeBytes, tapeFile, papFile) {
   const base = new DsMemory(exeBytes);
   const tape = rncUnpack(tapeFile).data;
@@ -35,8 +47,10 @@ export function loadRow(env, row) {
   m.put(0x4200, env.map);
   m.w16(0xef23, 0xefa5); // world 1's tile table (set by the new-game initializer)
   m.put(GLOBALS_BASE, hexBytes(row.g));
+  if (row.q) m.put(0x9270, hexBytes(row.q)); // the spawn queue region (0x9270..0x939B), when captured
   for (let o = ENTITY_ARRAY; o < ENTITY_ARRAY_END; o += 2) m.w16(o, 0);
   row.e.forEach((e, i) => { m.w16(ENTITY_ARRAY + 2 * i, e.ptr); m.put(e.ptr, hexBytes(e.hex)); });
+  for (const e of row.x || []) m.put(e.ptr, hexBytes(e.hex)); // live records outside the pointer array
   // The captured row has no copy of the 0x91BE list; rebuild it from positions without scrolling.
   const dx = m.u16(0x8bb7), dy = m.u16(0x8bb9);
   m.w16(0x8bb7, 0); m.w16(0x8bb9, 0);
@@ -51,7 +65,8 @@ export function loadRow(env, row) {
  * @param {{from?:number,to?:number,ents?:number,only?:number,ignoreScratch?:boolean,show?:number}} o
  */
 export function runConformance(env, rows, o = {}) {
-  const from = o.from ?? 0, to = Math.min(o.to ?? rows.length - 1, rows.length - 1), cmpN = o.ents ?? 99;
+  rows = expandRows(rows);
+  const from = o.from ?? 0, to = Math.min(o.to ?? rows.length - 1, rows.length - 1), cmpN = o.ents ?? 999;
   const entHist = new Map(), globHist = new Map(), unportedHist = new Map(), shown = [];
   let exact = 0, entExact = 0, total = 0;
   const firstBad = [];

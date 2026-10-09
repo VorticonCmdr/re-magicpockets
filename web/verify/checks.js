@@ -18,7 +18,7 @@ import { RAW_BANKS } from '../core/palette.js';
 import { decodeDemoTape, DemoPlayback, INPUT_BITS, DEMO_RNG_SEED } from '../core/demo-tape.js';
 import { FRAME_ORDER } from '../engine/frame.js';
 import { Rng } from '../engine/rng.js';
-import { prepare, runConformance } from './conformance-lib.js';
+import { prepare, runConformance, expandRows } from './conformance-lib.js';
 
 export function makeChecker() {
   const results = [];
@@ -263,34 +263,34 @@ export async function checkCaptureRng(ctx) {
   return results;
 }
 
+/** Read a gzipped JSON capture through the platform's DecompressionStream (browser and Node 18+). */
+async function loadGzJson(ctx, path) {
+  const raw = await ctx.fetchRaw(path);
+  const stream = new Blob([raw]).stream().pipeThrough(new DecompressionStream('gzip'));
+  return JSON.parse(await new Response(stream).text());
+}
+
 /**
- * One-step conformance against the DOSBox capture of the first 700 demo iterations: load captured
- * row k, run one ported iteration, compare entities 0-2 and non-scratch globals with row k+1.
- * The two literals are a RATCHET: raise them when more of the engine is ported, never lower them.
+ * One-step conformance against the DOSBox capture of the first 700 demo iterations (every entity,
+ * the pointer array and the spawn queue): load captured row k, run one ported iteration (or as many
+ * as the stalled demo tape needs), compare every entity record and the non-scratch globals with
+ * row k+1. The literals are a RATCHET: raise them when more of the engine is ported, never lower.
  */
 export async function checkConformance(ctx) {
   const { results, check, note } = makeChecker();
   let cap = null;
-  try { cap = JSON.parse(new TextDecoder().decode(await ctx.fetchRaw('tools/attract-capture/entities.capture.json'))); } catch { /* absent */ }
-  if (!cap) { note('entity capture not found', 'tools/attract-capture/entities.capture.json is missing; conformance skipped'); return results; }
+  try { cap = await loadGzJson(ctx, 'tools/attract-capture/entities-full.capture.json.gz'); } catch { /* absent */ }
+  if (!cap) { note('entity capture not found', 'tools/attract-capture/entities-full.capture.json.gz is missing; conformance skipped'); return results; }
   const env = prepare(await ctx.fetchRaw('game/GAMEU.EXE'), await ctx.fetchRaw('data/autoplay.pin'), await ctx.fetchRaw('data/pcmap.pap'));
-  check('entity capture holds 700 consecutive iterations of up to 8 entities', cap.rows.length === 700 && cap.rows.every((r, i) => r.done === i));
-  const r = runConformance(env, cap.rows, { ents: 3, only: 3, ignoreScratch: true });
-  check('at least 694 of 699 transitions reproduce entities 0-2 byte for byte', r.entExact >= 694, `${r.entExact}/${r.total}`);
-  check('at least 595 of 699 transitions also reproduce every non-scratch global', r.exact >= 595, `${r.exact}/${r.total}`);
-  const all = runConformance(env, cap.rows, { ignoreScratch: true });
-  check('at least 654 of 699 transitions reproduce all 8 captured entities byte for byte', all.entExact >= 654, `${all.entExact}/${all.total}`);
-  check('at least 592 of 699 transitions reproduce all 8 entities and every non-scratch global', all.exact >= 592, `${all.exact}/${all.total}`);
-  let cap14 = null;
-  try { cap14 = JSON.parse(new TextDecoder().decode(await ctx.fetchRaw('tools/attract-capture/entities14.capture.json'))); } catch { /* absent */ }
-  if (cap14) {
-    // 400 iterations with up to 14 entities, the pointer array and spawn queue. Only 12 entities
-    // are compared: entities beyond the 14-record cap shift into view when an earlier one dies.
-    check('second capture holds 400 consecutive iterations with 14-entity records', cap14.rows.length === 400 && cap14.rows.every((r, i) => r.done === i));
-    const r14 = runConformance(env, cap14.rows, { ents: 12, ignoreScratch: true });
-    check('at least 377 of 399 transitions of the second capture reproduce 12 entities byte for byte', r14.entExact >= 377, `${r14.entExact}/${r14.total}`);
-    check('at least 342 of 399 transitions of the second capture also reproduce every non-scratch global', r14.exact >= 342, `${r14.exact}/${r14.total}`);
-  }
+  check('entity capture holds 700 consecutive iterations', cap.rows.length === 700 && cap.rows.every((r, i) => r.done === i));
+  const rows = expandRows(cap.rows);
+  check('the capture lists up to 112 entities per row, each record 66 bytes', Math.max(...rows.map((r) => r.e.length)) === 112 && rows.every((r) => r.e.every((e) => e.hex.length === 132)));
+  const hero = runConformance(env, rows, { ents: 3, only: 3, ignoreScratch: true });
+  check('at least 695 of 699 transitions reproduce entities 0-2 byte for byte', hero.entExact >= 695, `${hero.entExact}/${hero.total}`);
+  check('at least 616 of 699 transitions also reproduce every non-scratch global', hero.exact >= 616, `${hero.exact}/${hero.total}`);
+  const all = runConformance(env, rows, { ignoreScratch: true });
+  check('at least 466 of 699 transitions reproduce every captured entity byte for byte', all.entExact >= 466, `${all.entExact}/${all.total}`);
+  check('at least 441 of 699 transitions reproduce every entity and every non-scratch global', all.exact >= 441, `${all.exact}/${all.total}`);
   const top = [...all.unportedHist].sort((a, b) => b[1] - a[1]).slice(0, 6).map(([k, n]) => `${k} x${n}`).join(', ');
   note('unported branches still hit', top || 'none');
   return results;

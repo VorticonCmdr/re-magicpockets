@@ -89,7 +89,7 @@ export function levelUpdateEventQueue(m, ctx) {
   if (si !== QUEUE_TOP) {
     let di = ENTITY_ARRAY;
     si += 2;
-    for (let guard = 0; guard < 64; guard++) {
+    for (let guard = 0; guard < 400; guard++) { // the array's 0xFFFF terminator ends the real loop
       if (m.u16(di) === 0xffff) break;
       if (m.u16(di) !== 0) { di += 2; continue; }
       if (be16(m, si) !== 0xeeee) break;

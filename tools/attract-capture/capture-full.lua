@@ -3,13 +3,14 @@
 --
 -- Row (one dosbox.log line per iteration, same sampling rule as capture.lua):
 --   ROW <done> <rec>,<rem> G:<hex of DS:0x8B50..0x8CAF> E:<ptr>=<hex of 66 bytes>;<ptr>=...
--- Entities are the pointers in the array at DS:0x9090 (first 14, stopping at a 0 or 0xFFFF word);
--- P: is the whole pointer array, L: the visible list at 0x91BE, Q: the spawn queue 0x9270..0x939B.
+-- P: is the whole pointer array at DS:0x9090, L: the visible list at 0x91BE, Q: the spawn queue
+-- 0x9270..0x939B, B: the first 120 entity records (0x9398 + 66*i). The importer rebuilds the entity
+-- list by following the pointers in P (one Lua instruction per poll instead of per entity).
 -- Polls cost ~350 Lua instructions each, so the whole run is limited to the first END_ITER
 -- iterations to stay under the script's 1,000,000-instruction budget.
 
 local DS = 0x5FD8
-local END_ITER = 400
+local END_ITER = 700
 local rb, rw, wf, fmt, byte, mr = dosbox.mem_read_byte, dosbox.mem_read_word, dosbox.wait_frames, string.format, string.byte, dosbox.mem_read
 local F66 = ('%02x'):rep(66)
 local GLEN = 352
@@ -17,6 +18,8 @@ local FG = ('%02x'):rep(GLEN)
 local FP = ('%02x'):rep(280) -- pointer array 0x9090..0x91A7
 local FL = ('%02x'):rep(48)  -- visible list 0x91BE..
 local FQ = ('%02x'):rep(300) -- spawn queue 0x9270..0x939B
+local BLEN = 66 * 120        -- the first 120 entity records of the block at 0x9398
+local FB = ('%02x'):rep(BLEN)
 
 local state = 'wait'
 local prev, prevkey, prevdone = nil, nil, nil
@@ -55,16 +58,11 @@ while true do
     end
     if done >= END_ITER then prev = nil; break end
     local g = fmt(FG, byte(mr(DS, 0x8B50, GLEN), 1, -1))
-    local es = {}
-    for i = 0, 13 do
-      local p = rw(DS, 0x9090 + 2 * i)
-      if p == 0 or p == 0xFFFF then break end
-      es[#es + 1] = fmt('%04x', p) .. '=' .. fmt(F66, byte(mr(DS, p, 66), 1, -1))
-    end
+    local bl = fmt(FB, byte(mr(DS, 0x9398, BLEN), 1, -1))
     local pa = fmt(FP, byte(mr(DS, 0x9090, 280), 1, -1))
     local vl = fmt(FL, byte(mr(DS, 0x91BE, 48), 1, -1))
     local qu = fmt(FQ, byte(mr(DS, 0x9270, 300), 1, -1))
-    prev = rr .. ',' .. rem .. ' G:' .. g .. ' P:' .. pa .. ' L:' .. vl .. ' Q:' .. qu .. ' E:' .. table.concat(es, ';')
+    prev = rr .. ',' .. rem .. ' G:' .. g .. ' P:' .. pa .. ' L:' .. vl .. ' Q:' .. qu .. ' B:' .. bl
     prevkey, prevdone = key, done
   end
 end

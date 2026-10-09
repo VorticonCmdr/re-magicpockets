@@ -10,6 +10,7 @@
 
 import { findByClass } from './ds-memory.js';
 import { terrainCollision } from './ground-collision.js';
+import { interactions } from './entity-behavior.js';
 
 const AI_TABLES = { floor: 0xec68, wall: 0xec7c, ledge: 0xec90 };
 
@@ -205,5 +206,43 @@ export function behaviorKind5(m, si, ctx) {
   if (m.u8(si + 0x40) === 0xf6) { ctx.unported.add(`kind 5 tracking entity class 0x${cls.toString(16)}`); return; }
   terrainCollision(m, findByClass(m, 1), si, ctx); // D584
   if (cls !== 0xe) return;
-  ctx.unported.add('kind 5 class 0xe');
+  const f = m.s16(si + 0xa);
+  if (f === 0x12) { // D077: switch to the idle loop 0x50..0x5b
+    if (m.s8(si + 0x3d) < 0) return;
+    m.w16(si + 0x10, 0x50); m.w16(si + 0x12, 0x5b); m.w16(si + 0xa, 0x50);
+    return;
+  }
+  if (f < 0x50) return;
+  const al = m.u8(si + 0x3d);
+  if (al & 0x80) return;
+  advanceAnim(m, si, al);
+}
+
+/** 1000:CFBA kind 6 (scenery that falls and animates). */
+export function behaviorKind6(m, si, ctx) {
+  if (m.u8(si + 0x40) === 0xf6) { // CFD1: ride the scroll
+    m.w16(si + 6, m.u16(si + 6) + m.u16(0x8bb7));
+    m.w16(si + 8, m.u16(si + 8) + m.u16(0x8bb9));
+    return;
+  }
+  terrainCollision(m, findByClass(m, 1), si, ctx); // D584
+  const al = m.u8(si + 0x3d);
+  if (al & 0x80) return;
+  advanceAnim(m, si, al);
+}
+
+/** 1000:CFDE kind 7 (the hero's projectiles). */
+export function behaviorKind7(m, si, ctx) {
+  const st = m.u8(si + 0x40);
+  if (st === 0xf6) { // D006: follow the hero's weapon-hand offset
+    const hero = findByClass(m, 3);
+    const idx = (m.u16(hero + 0xa) - 0x1f) & 0xffff;
+    m.w16(si + 8, m.u16(hero + 8) + m.u16(0xf4f9 + 2 * idx + 1));
+    return;
+  }
+  if (st !== 0x65) interactions(m, si, ctx); // DF5A
+  let ax = m.s8(si + 0x3d);
+  if (ax < 0) return;
+  if (m.u8(0x8b98) === 0x41) ax += 1;
+  advanceAnim(m, si, ax);
 }

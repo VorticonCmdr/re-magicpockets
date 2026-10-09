@@ -132,3 +132,24 @@ export function fireAndCharge(m, si, bx, ctx) {
   checkTimerEvent(m, bx);
   return m.u16(bx + 0xa) === 0x40;
 }
+
+/** 1000:BF1E: a 3-word spawn event (y, x, type from 8C25/8C27/8C29), tag 3. */
+export function pushEvent3(m) {
+  let si = m.u16(0x8bb5);
+  if (si < EVENT_FLOOR) return;
+  for (const a of [0x8c25, 0x8c27, 0x8c29]) { pushWord(m, si, m.u16(a)); si -= 2; }
+  pushWord(m, si, 3); si -= 2;
+  m.w16(si, 0xeeee); si -= 2;
+  m.w16(0x8bb5, si);
+}
+
+/** 1000:C0AE: an event naming an entity: its pointer (little-endian), the type from 8C29, tag 3. */
+export function pushEntityEvent(m, entity) {
+  let di = m.u16(0x8bb5);
+  if (di < EVENT_FLOOR) return;
+  m.w16(di, entity); di -= 2;
+  pushWord(m, di, m.u16(0x8c29)); di -= 2;
+  pushWord(m, di, 3); di -= 2;
+  m.w16(di, 0xeeee); di -= 2;
+  m.w16(0x8bb5, di);
+}

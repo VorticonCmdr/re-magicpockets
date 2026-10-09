@@ -69,10 +69,12 @@ function rngWithCarry(m, carry) {
 
 export function stepIteration(m, ctx, only = null) {
   ctx.rng = rngWithCarry;
+  // Call 6 of the previous iteration comes after the capture sample (calls 1-3) and before this
+  // iteration's call 7, so it opens the step.
+  levelUpdateEventQueue(m, ctx);
   demoPlaybackInput(m); // call 7
   updateAll(m, ctx, only); // call 8
   rngNext(m); // call 13
   cameraUpdateScroll(m); // call 1 of the next iteration
   renderConsumes(m); // call 3: the capture sample is taken after it
-  levelUpdateEventQueue(m, ctx); // call 6 (see note in the harness: it runs before the sample when events are pending)
 }

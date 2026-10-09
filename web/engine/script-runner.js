@@ -155,8 +155,9 @@ function handler(m, si, di, op, ctx) {
     case 55: // DispatchSpeedTickByKind
       if (m.u16(si + 4) === 1) { tickKind1(m, si, di); return ABORT; }
       if (m.u16(si + 4) === 2) { tickKind2(m, si, di, ctx); return ABORT; }
-      ctx.unported.add(`opcode 55 kind ${m.u16(si + 4)}`);
-      return ABORT;
+      if (m.u16(si + 4) === 7) return tickKind7(m, si, di, ctx); // DDBA
+      if (m.u16(si + 4) === 4) { ctx.unported.add('opcode 55 kind 4 (DC1E)'); return ABORT; }
+      return genericTick(m, si, di); // 2C90
     case 21: { // WaitUntilSyncTriple
       const a = m.u8(di), b = m.u8(di + 1), c = m.u8(di + 2); di += 3;
       if (a !== m.u8(0x8bb0) || b !== m.u8(0x8baf) || c !== m.u8(0x8bae)) return ABORT;
@@ -207,6 +208,7 @@ function handler(m, si, di, op, ctx) {
       for (let i = 0; i < 16; i++) m.w16(0x8ae7 + 2 * i, m.u16(src + 2 * i));
       return di + 1;
     }
+    case 58: aimGlow(m, si); return di; // 2AE1
     case 67: m.w8(si + 0x3d, m.u8(di)); return di + 1; // SetAnimLockFlag
     case 71: m.w8(0x8c0c, m.u8(di)); return di + 1; // SetGlobalEventTrigger
     case 76: m.w8(0x8c0e, 0); return di; // clears [8C0E]
@@ -323,4 +325,88 @@ function moveHorizontalByFlagsRunner(m, si, ax) {
   const dx = m.u16(si + 0x24);
   if (m.u16(si + 0x14) === 4) { if ((dx & 4) === 0) m.w16(si + 6, m.u16(si + 6) - ax); return; }
   if ((dx & 8) === 0) m.w16(si + 6, m.u16(si + 6) + ax);
+}
+
+/** 1000:DDBA opcode 55 for kind 7 (projectiles): the vertical arc and horizontal drift, per world. */
+function tickKind7(m, si, di, ctx) {
+  const world = m.u16(0x8b89) || m.u16(0x8b8b);
+  if (world === 2) { ctx.unported.add('DE74 kind 7 world 2 tick'); return ABORT; }
+  if (world !== 1 && world !== 3 && world !== 4) return di; // DDDB
+  if (m.u16(si + 0x26) === 0) { // load the vertical and horizontal speeds
+    m.w8(si + 0x26, m.u8(di)); di += 1;
+    m.w8(si + 0x27, m.u8(di)); di += 1;
+  }
+  let ax = sx8(m.u8(si + 0x26));
+  if (ax < 0) moveDown(m, si, -ax); else moveUp(m, si, ax);
+  if (ax > -15) m.w8(si + 0x26, m.u8(si + 0x26) - 1);
+  const h = sx8(m.u8(si + 0x27));
+  if (h < 0 || m.u16(si + 0x14) === 0) return ABORT;
+  moveHorizontalByFlagsRunner(m, si, h);
+  return ABORT;
+}
+
+/** 1000:2C90 opcode 55 for the remaining kinds (kind 5 props among them): vertical arc, then drift. */
+function genericTick(m, si, di) {
+  if (m.u16(si + 0x26) === 0) {
+    m.w8(si + 0x26, m.u8(di)); di += 1;
+    m.w8(si + 0x27, m.u8(di)); di += 1;
+  }
+  let ax = sx8(m.u8(si + 0x26));
+  if (ax < 0) moveDown(m, si, -ax); else moveUp(m, si, ax);
+  if (ax <= -15) return ABORT;
+  ax -= 1;
+  if (m.u16(si + 4) === 5) ax -= 1;
+  m.w8(si + 0x26, ax & 0xff);
+  const h = sx8(m.u8(si + 0x27));
+  if (h < 0 || m.u16(si + 0x14) === 0) return ABORT;
+  moveHorizontalByFlagsRunner(m, si, h);
+  return ABORT;
+}
+
+/**
+ * 1000:2AE1 opcode 58: the aiming glow. Finds the world's target entity (class 0x15/0x40/0x41/0x43
+ * by world, else class 0x1C), and shows the sprite frame pointing from this entity towards it.
+ */
+function aimGlow(m, si) {
+  const kill = () => m.w8(si + 0x40, 0x19);
+  if (m.u16(0x8c5f) !== 0 || (m.u16(0x8b89) === 4 && m.u16(0x8b8b) === 9)) { kill(); return; }
+  const world = m.u16(0x8b89) || m.u16(0x8b8b);
+  const cls = { 1: 0x15, 2: 0x40, 3: 0x41, 4: 0x43 }[world];
+  if (cls === undefined) return;
+  let bx = findByClass(m, cls);
+  if (bx === 0 || m.u8(bx + 0x40) === 0xf6) { // 2B2E
+    bx = findByClass(m, 0x1c);
+    if (bx === 0) { kill(); return; }
+  }
+  // 1000:7227: direction flags and distances (in 32x16 cells) from this entity to the target
+  const tx = m.u16(bx + 6), ty = m.u16(bx + 8), sx = m.u16(si + 6), sy = m.u16(si + 8);
+  let flags = 0;
+  if (m.s16(si + 8) < m.s16(bx + 8)) flags |= 2;
+  if (m.s16(si + 6) < m.s16(bx + 6)) flags |= 8;
+  if (m.s16(bx + 8) < m.s16(si + 8)) flags |= 1;
+  if (m.s16(bx + 6) < m.s16(si + 6)) flags |= 4;
+  const ax = Math.abs(sx - tx), bxd = Math.abs(sy - ty);
+  m.w16(0x8c29, flags);
+  m.w16(0x8c1b, Math.floor(ax / 0x20));
+  m.w16(0x8c1d, Math.floor(bxd / 0x10));
+  m.w16(0x8b9a, 0x10 + (bxd % 0x10)); // cx = 0x10 and dx = the last remainder survive the call
+  m.w16(0x8c25, flags);
+  const hero = findByClass(m, 3);
+  let keep = false;
+  if (hero !== 0 && m.u16(hero + 0x2c) !== 0) {
+    const marker = m.u16(hero + 0x2c);
+    keep = m.u16(marker + 2) === 0x11 && m.u8(marker + 0x40) === 0xf6;
+  }
+  if (!keep) m.w8(si + 0x3d, 0xff);
+  const cx = m.s16(0x8c1b), cy = m.s16(0x8c1d);
+  const far = cx > 6 && cy > 6;
+  const vertBigger = cy > cx;
+  const frame = {
+    1: 0xa6, 2: 0xaa, 4: 0xac, 8: 0xa8,
+    5: far ? 0xad : (vertBigger ? 0xa6 : 0xac),
+    9: far ? 0xa7 : (vertBigger ? 0xa6 : 0xa8),
+    6: far ? 0xab : (vertBigger ? 0xaa : 0xac),
+    10: far ? 0xa9 : (vertBigger ? 0xaa : 0xa8),
+  }[flags];
+  if (frame !== undefined) m.w16(si + 0xa, frame);
 }
