@@ -16,6 +16,7 @@ import { decodeLevelScript } from '../core/pin-level-script.js';
 import { GROUND_TABLE } from '../core/tile-collision.js';
 import { RAW_BANKS } from '../core/palette.js';
 import { decodeDemoTape, DemoPlayback, INPUT_BITS, DEMO_RNG_SEED } from '../core/demo-tape.js';
+import { FRAME_ORDER } from '../engine/frame.js';
 
 export function makeChecker() {
   const results = [];
@@ -188,8 +189,38 @@ export async function checkDemoTape(ctx) {
   return results;
 }
 
+/** The main loop's 14 consecutive near calls, found in GAMEU.EXE and compared to FRAME_ORDER. */
+export async function checkFrameOrder(ctx) {
+  const { results, check, note } = makeChecker();
+  const exe = await ctx.fetchRaw('game/GAMEU.EXE');
+  const hdr = (exe[8] | (exe[9] << 8)) * 16; // MZ header size; load module starts here
+  check('MZ header is 0x340 bytes, so file offset = 0x340 + (1000:xxxx offset)', hdr === 0x340, `got 0x${hdr.toString(16)}`);
+  check('Demo_PlaybackInput (1000:0159) begins "mov al,[8B5D]" in the file', exe[hdr + 0x159] === 0xa0 && exe[hdr + 0x15a] === 0x5d && exe[hdr + 0x15b] === 0x8b);
+
+  const runs = [];
+  for (let p = hdr; p + 14 * 3 <= exe.length; p++) {
+    let ok = true;
+    for (let k = 0; k < 14 && ok; k++) ok = exe[p + k * 3] === 0xe8;
+    if (!ok) continue;
+    const targets = [];
+    for (let k = 0; k < 14; k++) {
+      const site = p + k * 3 - hdr;
+      const rel = exe[p + k * 3 + 1] | (exe[p + k * 3 + 2] << 8);
+      targets.push((site + 3 + rel) & 0xffff);
+    }
+    runs.push({ at: p, targets });
+  }
+  const wanted = FRAME_ORDER.map((c) => parseInt(c.addr.split(':')[1], 16));
+  const matching = runs.filter((r) => r.targets.every((t, i) => t === wanted[i]));
+  check('FRAME_ORDER lists 14 calls', FRAME_ORDER.length === 14);
+  check('at least one run of 14 consecutive near calls in GAMEU.EXE has exactly FRAME_ORDER\'s targets, in order', matching.length >= 1, `${matching.length} of ${runs.length} candidate runs`);
+  check('no 14-call run in GAMEU.EXE disagrees with FRAME_ORDER', matching.length === runs.length, `${runs.length - matching.length} disagree`);
+  note('contiguous 14-call runs in the EXE', `${matching.length} (the demo starter's loop); docs/engine.md says boot and warp have their own copies, but this search did not find them as contiguous runs and that was not investigated`);
+  return results;
+}
+
 export async function runAllChecks(ctx) {
-  const groups = [checkRncCorpus, checkPap, checkCollisionTable, checkPalettes, checkSoundBanks, checkLevelScripts, checkDemoTape];
+  const groups = [checkRncCorpus, checkPap, checkCollisionTable, checkPalettes, checkSoundBanks, checkLevelScripts, checkDemoTape, checkFrameOrder];
   const results = [];
   for (const g of groups) results.push(...await g(ctx));
   return { results };

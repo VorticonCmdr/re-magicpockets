@@ -323,6 +323,18 @@ async function startSession(cache) {
 }
 
 picker.addEventListener('change', () => {
+    if (new URLSearchParams(location.search).has('debug')) {
+      window.__mp = {
+        loop,
+        stepTicks: (n = 1) => { loop.step(n); return window.__mp.snap(); },
+        snap: () => ({
+          frame: loop.frameCount,
+          rng: loop.rng.state,
+          player: { x: player.x, y: player.y, vx: player.vx, vy: player.vy, onGround: player.onGround, score: player.score },
+          camera: { x: camera.x, y: camera.y },
+        }),
+      };
+    }
   const source = sourceFromFileList(picker.files);
   startSession(new AssetCache(source));
 });
