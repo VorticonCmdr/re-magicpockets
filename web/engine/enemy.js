@@ -251,6 +251,7 @@ function thinkByWorld(m, si, ctx) {
     if (cls === 0x14) { thinkClass14(m, si, ctx); return; }
     if (cls === 0x20) { thinkClass20(m, si, ctx); return; }
     if (cls === 0x23) { if (m.u8(si + 1) === 0) aiDecide(m, si, ctx); return; }
+    if (cls === 0x12) { thinkClass12(m, si, ctx); return; } // 6EC5
   }
   if (w >= 1 && w <= 4) ctx.unported.add(`think world ${w} class 0x${cls.toString(16)}`);
 }
@@ -290,7 +291,7 @@ export function behaviorKind2(m, si, ctx) {
 export function behaviorKind5(m, si, ctx) {
   const cls = m.u16(si + 2);
   if (cls === 0x17) return;
-  if (m.u8(si + 0x40) === 0xf6) { ctx.unported.add(`kind 5 tracking entity class 0x${cls.toString(16)}`); return; }
+  if (m.u8(si + 0x40) === 0xf6) { followParent(m, si, ctx); return; } // D04F
   terrainCollision(m, findByClass(m, 1), si, ctx); // D584
   if (cls !== 0xe) return;
   const f = m.s16(si + 0xa);
@@ -332,4 +333,134 @@ export function behaviorKind7(m, si, ctx) {
   if (ax < 0) return;
   if (m.u8(0x8b98) === 0x41) ax += 1;
   advanceAnim(m, si, ax);
+}
+
+const moveDownBy = (m, si, ax) => { if ((m.u16(si + 0x24) & 2) === 0) m.w16(si + 8, m.u16(si + 8) + ax); }; // D5FD
+const moveUpBy = (m, si, ax) => { if ((m.u16(si + 0x24) & 1) === 0) m.w16(si + 8, m.u16(si + 8) - ax); }; // D609
+
+/** 1000:CC93 kind 4 (small scenery and hazards); only the classes the demo uses are ported. */
+export function behaviorKind4(m, si, ctx) {
+  const cls = m.u16(si + 2);
+  const c0c = m.u8(0x8c0c);
+  const common = () => { // CCE6
+    terrainCollision(m, findByClass(m, 1), si, ctx); // D584
+    thinkByWorld(m, si, ctx); // 5E22
+  };
+  if (cls === 0x2b) { // CCF6
+    const al = m.u8(si + 0x3d);
+    if (al & 0x80) return; // CCEC is the RET after CCE6's two calls
+    advanceAnim(m, si, al);
+    return;
+  }
+  if (c0c === 8 || c0c === 0xe || c0c === 0x14) { ctx.unported.add(`kind 4 global event ${c0c}`); return; }
+  if (cls !== 0x12) {
+    if ([0x48, 0x49, 0x54, 0x5d, 0x4e, 0x4f].includes(cls)) { ctx.unported.add(`kind 4 class 0x${cls.toString(16)}`); return; }
+    common();
+    return;
+  }
+  if (m.u8(si + 1) === 0x36) { common(); return; } // CD03
+  moveHorizontalByFlags(m, si, 2);
+  const st = m.u8(si + 0x40);
+  if (st === 0xd) { // CD32: rising
+    m.w8(si + 0x26, 0xff);
+    m.w8(si + 0x27, m.u8(si + 0x27) - m.u8(si + 0x28));
+    const al = m.s8(si + 0x27);
+    if (al < 0) { m.w8(si + 0x40, 0); m.w16(si + 0x27, 0); m.w16(si + 0x28, 0); }
+    else { moveDownBy(m, si, al); m.w8(si + 0x28, m.u8(si + 0x28) + 1); }
+  } else if (st === 0xb) { // CD5D: falling back
+    moveUpBy(m, si, m.s8(si + 0x28));
+    m.w8(si + 0x28, m.u8(si + 0x28) - 1);
+    if (m.u8(si + 0x28) === 0) {
+      m.w8(si + 0x40, 0); m.w8(si + 0x26, 1); m.w16(si + 0x27, 0); m.w16(si + 0x28, 0);
+    }
+  } else { // CD1B: hovering
+    m.w8(si + 0x26, 0xff);
+    if (m.u8(si + 0x27) !== 0xf) m.w8(si + 0x27, m.u8(si + 0x27) + 1);
+    moveDownBy(m, si, m.s8(si + 0x27));
+  }
+  if (m.u8(si + 1) === 0) advanceAnim(m, si, m.u8(si + 0x3d)); // CD7C
+  common();
+}
+
+/** 1000:D04F: a kind 5 entity in state 0xF6 rides the entity at [+0x2C] (the player, for carried items). */
+function followParent(m, si, ctx) {
+  const cls = m.u16(si + 2);
+  const bx = m.u16(si + 0x2c);
+  m.w16(si + 6, m.u16(bx + 6));
+  m.w16(si + 8, m.u16(bx + 8));
+  if (cls === 0x1a || cls === 0x41) { carriedItem(m, si, bx, ctx); return; } // D14A
+  if (cls === 0x40) { ctx.unported.add('D08D class 0x40 follower'); return; }
+}
+
+/** 1000:D14A: the item the player carries: stays in his hands, follows the walk cycle. */
+function carriedItem(m, si, bx, ctx) {
+  if (m.u16(bx + 2) !== 3) return; // D182
+  if (m.s8(0x8ba2) < 0 || m.u8(si + 1) === 0x33) return;
+  const drop = () => { // D1AB: the item is spent
+    m.w8(si + 0x40, 0x19); m.w8(si + 1, 0); m.w8(si + 0x3e, 0);
+    m.w8(0x8b98, 0); m.w8(0x8c04, 0); // + sound 1CCF(0x43)
+  };
+  const hold = () => { m.w16(si + 6, 0x90); m.w16(si + 8, 0xffe0); }; // D1C9
+  if (m.u8(bx + 1) === 0x2f) { hold(); return; }
+  const t = m.u8(0x8b98);
+  if (t !== 0x1a && t !== 0x41) { // D171: the carrying mode ended
+    m.w8(si + 0x40, 0); m.w8(si + 1, 0); m.w8(si + 0x3e, 0); m.w8(0x8c04, 0);
+    return;
+  }
+  const frame = m.u16(si + 0xa);
+  let follow = false; // D1DA
+  if (m.u8(si + 1) !== 0) { if (m.u16(si + 0x2a) === 0) { drop(); return; } follow = true; }
+  else if (frame === 0xe4 || frame === 0xe5) follow = true;
+  else if (frame === 0xe2 || frame === 0xe3) { hold(); return; }
+  else if (m.u16(si + 0x2a) !== 0) follow = true;
+  else { drop(); return; }
+  if (!follow) return;
+  let ax = m.s16(bx + 0xa);
+  if (ax > 0x6a) ax = 0x1f;
+  const di = 0xf457 + 2 * (ax - 0x1f);
+  m.w8(si + 8, m.u8(bx + 8) + m.u8(di + 1)); // ADD AL only: the high byte of Y keeps the parent's
+  m.w8(si + 9, m.u8(bx + 9));
+  let cx = m.u8(di);
+  m.w16(si + 0x14, m.u16(bx + 0x14));
+  m.w16(si + 0xa, m.u16(si + 0xa) & 0xfffe);
+  const dx = m.u16(si + 0xa);
+  if (m.u16(si + 0x14) !== 8) { m.w16(si + 0xa, m.u16(si + 0xa) | 1); cx = -cx; }
+  m.w16(si + 6, m.u16(si + 6) + cx);
+  const faceRight = m.u16(si + 0x14) === 4;
+  const stepX = (v) => m.w16(si + 6, m.u16(si + 6) + (faceRight ? v : -v));
+  if (dx === 0xe4) { stepX(2); m.w16(si + 8, m.u16(si + 8) - 0xc); return; } // D2B8
+  if (dx === 0xe6) { stepX(2); return; } // D2A6
+  if (dx === 0xe8) { stepX(2); return; } // D27F
+  if (dx === 0xea) { m.w8(0x8b96, 1); stepX(5); return; } // D28F
+  if (dx === 0xe2) return;
+  m.w8(0x8c04, 0x1d); stepX(2); // D268
+}
+
+/** 1000:6EC5 (world 1, class 0x12): the hovering enemy rolls to dive (state 0x36) or to bob (0xB/0xD). */
+function thinkClass12(m, si, ctx) {
+  const frameTarget = 0x86;
+  m.w16(0x8c25, frameTarget);
+  if (m.u8(0x8bc9) !== 0 && m.u16(0x8bc7) === 0) {
+    rollRandom(m, si, ctx);
+    if (m.u16(0x8be5) !== 0) {
+      if (m.u8(si + 1) !== 0x36) { m.w8(si + 1, 0x36); m.w16(si + 0xc, 0xc80e); }
+      return;
+    }
+  }
+  if (m.u8(si + 0x40) === 0) { // 7014
+    const set = m.u8(si + 0x39);
+    if (set === 5 || set === 0xa || set === 0xf) { ctx.unported.add(`think class 0x12 set ${set}`); return; }
+    if (m.u16(si + 0xa) !== frameTarget) return;
+    rollRandom(m, si, ctx);
+    if (m.u16(0x8be5) !== 0) {
+      m.w8(si + 0x40, 0xb); m.w8(si + 0x26, 1);
+      const al = m.u8(si + 0x36);
+      m.w8(si + 0x28, al);
+      m.w8(si + 0x3d, m.u8(0xecfe + al));
+      return;
+    }
+  }
+  const st = m.u8(si + 0x40); // 7064
+  if (st === 0xd) m.w8(si + 0x3d, 0);
+  else if (st !== 0xb) m.w8(si + 0x3d, 2);
 }

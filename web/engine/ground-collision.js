@@ -450,7 +450,7 @@ function sideEnemy(m, bx, ctx, di) {
   if (face === 0) return;
   const probe = face === 8 ? R.CC : R.CB;
   if (m.u16(bx + 4) === 7) { sideProjectile(m, bx, di, face, probe, ctx); return; }
-  if (m.u16(bx + 4) === 5) { // E940 / E9CA: turn around at a wall
+  if (m.u16(bx + 4) === 5 || m.u16(bx + 4) === 4) { // E940 / E9CA: turn around at a wall
     if (m.u8(probe) === 0) return;
     if (m.u16(bx + 2) === 6) return;
     alignToWall(m, bx);
@@ -559,7 +559,19 @@ function floorProjectile(m, bx, ctx) {
     if (m.s8(bx + 0x26) > 3) return; // ED19: only the bounce sound
   }
   // EE60 -> F08F: the shot has run out of bounce
-  if (cls === 0x44 || cls === 0x27 || cls === 0x28 || cls === 0x5f || cls === 0x16) { ctx.unported.add(`EE60 class 0x${cls.toString(16)}`); return; }
+  const settle = (state, script, dying) => { // the shot becomes a fixed scripted object
+    if (m.u8(bx + 1) === state) return;
+    if (dying) m.w8(bx + 0x40, 0x65);
+    m.w8(bx + 1, state); m.w16(bx + 0xc, script);
+  };
+  if (cls === 0x44) { // EEA6
+    if (m.u8(bx + 1) === 0xb3) return;
+    m.w8(bx + 1, 0xb3); m.w16(bx + 0xc, 0xd27d); m.w8(bx + 0x3d, 0xff); m.w16(bx + 0x26, 0); m.w16(bx + 0xa, 0x6c);
+    return;
+  }
+  if (cls === 0x27) { settle(0xca, 0xd4d6, true); return; } // EED8
+  if (cls === 0x28 || cls === 0x5f) { settle(0xad, 0xd1fe, true); return; } // EEC4
+  if (cls === 0x16) { settle(0xae, 0xd20b, true); return; } // EEEC
   if (cls === 0xa) {
     if (m.s8(bx + 1) < 0) return;
     m.w8(bx + 1, 0x93); m.w16(bx + 0xc, 0xd006); m.w8(bx + 0x40, 0x65);
@@ -575,7 +587,17 @@ function floorProjectile(m, bx, ctx) {
   } else kill();
 }
 
+/** 1000:E8BA/E8BD: kind 4 floor contact; the hovering class 0x12 bounces back up. */
+function floorKind4(m, bx) {
+  if (m.u8(R.CA) === 0) return; // E703 lists no kind 4: nothing happens without a floor
+  if (m.u8(R.C6) !== 0) alignToFloor(m, bx); // E8BA: FAF5
+  m.w16(bx + 0x24, m.u16(bx + 0x24) | 2);
+  if (m.u16(bx + 2) !== 0x12) return;
+  m.w8(bx + 0x28, m.u8(bx + 0x36)); m.w8(bx + 0x26, 1); m.w8(bx + 0x40, 0xb);
+}
+
 function floorEnemy(m, bx, ctx) {
+  if (m.u16(bx + 4) === 4) { floorKind4(m, bx); return; }
   if (m.u16(bx + 4) === 7) { floorProjectile(m, bx, ctx); return; }
   if (m.u16(bx + 4) === 5 || m.u16(bx + 4) === 6) { floorProp(m, bx, ctx); return; }
   const cls = m.u16(bx + 2);
@@ -651,7 +673,7 @@ function verticalEnemy(m, bx, ctx) {
 /** The enemy half of 1000:E14F (world 1-2, kinds other than the player). */
 function resolveEnemy(m, bx, di, ctx) {
   const kind = m.u16(bx + 4);
-  if (kind !== 2 && kind !== 5 && kind !== 7) { ctx.unported.add(`E14F kind ${kind}`); return; }
+  if (kind !== 2 && kind !== 4 && kind !== 5 && kind !== 7) { ctx.unported.add(`E14F kind ${kind}`); return; }
   const vy = m.s8(bx + 0x26);
   let dl, dh;
   if (vy > 0) { scanLeft(m, bx, di); dl = m.s8(R.C9); } else { scanFloor(m, bx, di); dl = m.s8(R.CA); }
