@@ -153,7 +153,21 @@ function aiOpcodes(m, si, ctx) {
       if (r === 'end') return;
       continue;
     }
-    const names = { 0x72: 'r', 0x74: 't' };
+    if (op === 0x72) { // 643C: a gap ahead decides a turn
+      let d = m.u16(0x8bd7);
+      d = (m.u16(si + 0x14) === 4 ? d - 0x80 : d + 0x80) & 0xffff; // 7319
+      if (tileOf(m, m.u8((d - 1) & 0xffff)) !== 0) continue;
+      rollRandom(m, si, ctx);
+      if (m.u16(0x8be5) === 0) continue;
+      const set = m.u8(si + 0x39);
+      if (set === 0xa) { aiTurn(m, si, di, ctx); return; }
+      if (set !== 5) return; // 69C9
+      rollRandom(m, si, ctx);
+      if (m.u16(0x8be5) === 0) continue;
+      if ((m.u16(0x8c2b) & 2) !== 0) return;
+      continue;
+    }
+    const names = { 0x74: 't' };
     if (names[op]) ctx.unported.add(`AI opcode '${names[op]}'`); // any other byte (0x6F, ...) ends the decision
     return;
   }

@@ -135,7 +135,17 @@ export function fireAndCharge(m, si, bx, ctx) {
     m.w8(0x8c04, 0);
     return m.u16(bx + 0xa) === 0x40;
   }
-  if (c04 === 0x1d || c04 === 0x40 || c04 === 0x1b || c04 === 0x27) { ctx.unported.add(`4269 special mode ${c04}`); return false; }
+  if (c04 === 0x1d) { // 4539: throw the item the player carries
+    m.w16(0x8bf9, ax);
+    let item = 0x9398;
+    for (let g = 0; g < 200; g++) {
+      item = findNextOfClass(m, item, 0x1a);
+      if (item === 0 || m.u8(item + 0x40) === 0xf6) break;
+    }
+    if (item !== 0 && m.u8(item + 1) === 0) { m.w8(item + 1, 0x42); m.w16(item + 0xc, 0xc8c5); }
+    return m.u16(bx + 0xa) === 0x40;
+  }
+  if (c04 === 0x40 || c04 === 0x1b || c04 === 0x27) { ctx.unported.add(`4269 special mode ${c04}`); return false; }
   weaponId(m, bx, ax, ctx);
   checkTimerEvent(m, bx);
   return m.u16(bx + 0xa) === 0x40;
@@ -160,4 +170,10 @@ export function pushEntityEvent(m, entity) {
   pushWord(m, di, 3); di -= 2;
   m.w16(di, 0xeeee); di -= 2;
   m.w16(0x8bb5, di);
+}
+
+/** 1000:C192: the next record after `from` whose class is `cls` (0 when there is none). */
+function findNextOfClass(m, from, cls) {
+  for (let bx = from + 0x42; bx < 0xb918; bx += 0x42) if (m.u16(bx + 2) === cls) return bx;
+  return 0;
 }

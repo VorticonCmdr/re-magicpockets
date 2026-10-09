@@ -169,6 +169,15 @@ function spawn(m, slot, type, tag, data, ctx) {
     m.w8(si + 0x40, 0xf6);
     return finishSpawn(m, si, slot, bx, tpl);
   }
+  if (type === 0x1d) { // C5D7: a shot bound to the entity that fired it
+    m.w16(si + 2, type);
+    const parent = m.u16(bx); bx += 2;
+    m.w16(si + 6, m.u16(parent + 6)); m.w16(si + 8, m.u16(parent + 8)); m.w16(si + 0x14, m.u16(parent + 0x14));
+    m.w16(si + 0x2c, parent);
+    m.w8(si + 0x40, 0xf6);
+    m.w8(si + 0x3f, m.u16(0x8bf9) & 0xff);
+    return finishSpawn(m, si, slot, bx, tpl);
+  }
   if (type === 0x44) { // C66C: a falling pickup with a random initial speed
     m.w16(si + 2, type);
     m.w16(si + 6, be16(m, bx)); bx += 2;

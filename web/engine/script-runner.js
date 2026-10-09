@@ -13,7 +13,7 @@
 
 import { findByClass } from './ds-memory.js';
 import { resetExtendedFields } from './entity-behavior.js';
-import { pushEvent4, pushEvent5, pushSpawnEvent, pushEntityEvent } from './fire.js';
+import { pushEvent3, pushEvent4, pushEvent5, pushSpawnEvent, pushEntityEvent } from './fire.js';
 import { setupLineMotion, insertByGroup } from './spawn.js';
 
 const ABORT = Symbol('abort');
@@ -590,7 +590,22 @@ function spawnOtherEffect(m, si, di, type, ctx) {
     pushSpawnEvent(m);
     return di + 2;
   }
-  const special = [0xe, 0x1b, 0x16, 0x53, 0x28, 0x5f, 0x30, 0x21, 0x4d, 0x2b];
+  if (type === 0x2b) { // 3454: tell the level where the world entity stands relative to the goal
+    if (m.u8(0x8b97) > 4) di += 2;
+    m.w16(0x8c29, m.u16(0x8b8b));
+    const swap = (v) => ((v & 0xff) << 8) | (v >> 8 & 0xff);
+    m.w16(0x8c27, swap(m.u16(0x8c65)));
+    m.w16(0x8c25, swap(m.u16(0x8c67)));
+    const world = findByClass(m, 1);
+    m.w16(0x8c27, m.u16(0x8c27) - m.u16(world + 6));
+    m.w16(0x8c25, m.u16(0x8c25) - m.u16(world + 8));
+    m.w16(0x8c27, ((-m.u16(0x8c27)) & 0xffff) + 0x90);
+    m.w16(0x8c25, ((-m.u16(0x8c25)) & 0xffff) + 0x50);
+    m.w16(0x8c29, 0x2b);
+    pushEvent3(m);
+    return di;
+  }
+  const special = [0xe, 0x1b, 0x16, 0x53, 0x28, 0x5f, 0x30, 0x21, 0x4d];
   if (special.includes(type)) { ctx.unported.add(`opcode 13 type 0x${type.toString(16)}`); return ABORT; }
   // 3406: the generic effect: two signed offsets from the entity, facing as the entity
   m.w16(0x8c27, (sb(di) + m.u16(si + 6)) & 0xffff);

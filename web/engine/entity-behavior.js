@@ -12,7 +12,7 @@
 import { VISIBLE_LIST, ENTITY_ARRAY, findByClass } from './ds-memory.js';
 import { runScript } from './script-runner.js';
 import { terrainCollision, overlapTest } from './ground-collision.js';
-import { fireAndCharge } from './fire.js';
+import { fireAndCharge, pushEvent3, pushEvent5 } from './fire.js';
 import { behaviorKind2, behaviorKind4, behaviorKind5, behaviorKind6, behaviorKind7 } from './enemy.js';
 import { Rng } from './rng.js';
 
@@ -161,13 +161,42 @@ function downPressed(m, si, bx, ctx) {
     if (ax === 0x24) { unp('class 0x24'); return; }
     if (ax === 0xd || ax === 0x33) { crateGrab(m, si, bx); return; }
     if (t !== 0x41 && ax === 0x1a) { takeItem(m, si, bx, item); return; } // 4014
-    if (c04 === 0x27) { unp('c04 0x27'); return; }
+    if (c04 === 0x27) { // 3F0F
+      m.w8(0x8c04, 0); m.w16(0x8c25, 0x50); m.w16(0x8c27, 0x90); m.w16(0x8c29, 0x2a);
+      pushEvent3(m);
+      return;
+    }
   }
-  if (c04 === 0x45) { unp('c04 0x45'); return; }
-  if (ax === 0x2a || ax === 0x45) { unp(`class 0x${ax.toString(16)}`); return; }
+  if (c04 === 0x45) { // 3F72
+    m.w8(0x8c04, 0);
+    m.w16(0x8c21, 0x5f); m.w16(0x8c23, 0); m.w16(0x8c25, 0x50); m.w16(0x8c27, 0x90); m.w16(0x8c29, 0x45);
+    pushEvent5(m);
+    return;
+  }
+  if (ax === 0x2a) { // 3EF8
+    if (m.u16(0x8bef) === 0) m.w16(0x8bef, 0x3e8);
+    m.w8(0x8c04, 0x27); m.w8(item + 0x40, 0x19);
+    return;
+  }
+  if (ax === 0x45) { // 3F29
+    const st = m.u8(item + 1);
+    if (st === 0xf) return;
+    if (st !== 0x5f) { m.w8(item + 0x3e, 0); m.w8(item + 1, 0x5f); m.w16(item + 0xc, 0xcb2a); m.w16(0x8c5d, 0); return; }
+    if (m.u16(item + 0xa) !== 0xa) return;
+    m.w16(0x8c5d, m.u16(0x8c5d) + 1); m.w8(0x8c04, 0x45); m.w8(item + 0x40, 0x19);
+    return;
+  }
   if (t === 0x1a) { unp('target 0x1a'); return; }
   if (ax === 0x41) { takeItem(m, si, bx, item); return; } // 4014
-  if (ax === 0x15 || ax === 0x40 || ax === 0x43) unp(`class 0x${ax.toString(16)}`);
+  if (ax === 0x15) { // 3FB3
+    if (m.u8(bx + 1) !== 0) return;
+    m.w8(0x8b94, 0); m.w8(0x8b97, 0); m.w8(0x8c04, 0x15);
+    m.w8(bx + 1, 0x34); m.w16(bx + 0xc, 0xc7ef);
+    m.w8(item + 0x40, 0x19);
+    m.w8(findByClass(m, 0x1c) + 0x3e, 0x1d);
+    return;
+  }
+  if (ax === 0x40 || ax === 0x43) unp(`class 0x${ax.toString(16)}`);
 }
 
 /** 1000:3CE8 Entity_HandleCollisionOrStateDispatch (SI = the world entity). */

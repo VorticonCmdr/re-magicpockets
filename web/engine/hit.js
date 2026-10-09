@@ -55,7 +55,7 @@ function playerTouchesProp(m, si, bx, ctx) {
   const cls = m.u16(bx + 2);
   if (cls === 0xe) return crate(m, si, bx, ctx);
   if (cls === 0x26) return bonusItem(m, bx); // 5B26
-  if (cls === 0x1b) return powerUp(m, bx, ctx);
+  if (cls === 0x1b) return powerUp(m, si, bx, ctx);
   if (cls === 0x1c) return levelGoal(m, si, bx); // 5851
   if (cls === 6 || cls === 0x56 || cls === 0x2e) return false;
   if (!PICKUP_STAY.includes(cls) && (m.u8(bx + 0x40) === 0xf6 || m.u8(bx + 0x3e) === 0)) return true; // 5850
@@ -128,7 +128,21 @@ export function weaponHitsEnemy(m, si, bx, ctx) {
   if (target === 0x2c || target === 0x42) return true;
   const cls = m.u16(si + 2);
   if (cls === 0x3f || cls === 0x14 || m.u16(si + 4) !== 7) return false;
-  if (cls === 0x1d || cls === 0x27 || cls === 0x44) return false;
+  const score = () => { // 5003
+    if (target === 0x2b) return false; // 5033
+    m.w16(0x8b75, m.u16(0x8b75) + m.u8(bx + 0x36) + 1);
+    return die(m, bx, ctx);
+  };
+  if (cls === 0x44) return score();
+  if (cls === 0x27) { kill(m, si); return score(); } // 4FFF
+  if (cls === 0x1d) { // 506F: the shot's own strength is spent on the enemy
+    if (target === 0x2b) return false;
+    const al = (m.u8(si + 0x3f) + 1) & 0xff;
+    const hp = byte(m.u8(bx + 0x3f) - al);
+    m.w8(bx + 0x3f, hp);
+    if ((hp & 0x80) === 0) return hurt(m, bx, si, ctx);
+    return score();
+  }
   const world = m.u16(0x8b89) || m.u16(0x8b8b);
   const base = { 1: 9, 2: 0x2f, 3: 0x34, 4: 0x39 }[world];
   if (base === undefined) return true;
@@ -343,7 +357,7 @@ function particles(m) {
 }
 
 /** 1000:5BAD: the player touches a class-0x1B power-up; its frame says which one (sounds skipped). */
-function powerUp(m, bx, ctx) {
+function powerUp(m, si, bx, ctx) {
   if (m.u8(bx + 0x3e) === 0) return true;
   const frame = m.u16(bx + 0xa);
   if (frame === 0x16) { // 5C23
@@ -378,6 +392,7 @@ function powerUp(m, bx, ctx) {
     m.w8(bx + 0x40, 0x19);
     return true;
   }
+  if (frame === 0x20) { m.w16(bx + 0xa, m.u16(0x8b6b) & 0xf); return crate(m, si, bx, ctx); } // 5D5E -> 58D5
   if (frame === 0x1d) { // 5C4C
     if (m.u8(bx + 1) !== 0x28) { m.w8(bx + 1, 0x28); m.w16(bx + 0xc, 0xc6e5); }
     return true;
