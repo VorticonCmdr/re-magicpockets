@@ -13,6 +13,7 @@ import { buildBackgroundCanvas } from '../render/canvas.js';
 import { prepare, loadRow, expandRows } from '../verify/conformance-lib.js';
 import { stepIteration } from '../engine/iteration.js';
 import { Clock } from '../engine/clock.js';
+import { INPUT_BITS } from '../core/demo-tape.js';
 import { findByClass } from '../engine/ds-memory.js';
 
 const VIEW_W = 320, VIEW_H = 192;
@@ -58,7 +59,18 @@ async function main() {
   const sim = { unported: new Set(), events: [] };
   const restart = () => { m = loadRow(env, rows[0]); ticks = 0; };
   restart();
-  step = () => { stepIteration(m, sim, null); ticks++; };
+  // ?play (or the button): the keyboard replaces the demo tape. Call #7 then just copies the key
+  // bytes [8B5D]/[8B58] (what the original's keyboard ISR writes) into the input words.
+  let playing = new URLSearchParams(location.search).has('play');
+  const held = new Set();
+  const KEYS = { ArrowUp: 'up', KeyW: 'up', ArrowDown: 'down', KeyS: 'down', ArrowLeft: 'left', KeyA: 'left', ArrowRight: 'right', KeyD: 'right', Space: 'fire', ControlLeft: 'fire', KeyZ: 'fire' };
+  addEventListener('keydown', (e) => { if (KEYS[e.code]) { held.add(KEYS[e.code]); e.preventDefault(); } });
+  addEventListener('keyup', (e) => { if (KEYS[e.code]) held.delete(KEYS[e.code]); });
+  const keyState = () => [...held].reduce((v, k) => v | INPUT_BITS[k], 0);
+  step = () => {
+    if (playing) { m.w8(0x8baa, 0); m.w8(0x8b5d, keyState()); m.w8(0x8b58, keyState()); }
+    stepIteration(m, sim, null); ticks++;
+  };
 
   const s16 = (o) => m.s16(o);
   const draw = () => {
@@ -81,7 +93,9 @@ async function main() {
     }
     setStatus(`iteration ${ticks}  score ${m.u16(0x8b75)}  cam (${camX}, ${camY})  unported: ${[...sim.unported].join(', ') || 'none'}`);
   };
+  if (playing) document.getElementById('play').textContent = 'watch demo';
   const clock = new Clock(step, { onRender: draw });
+  document.getElementById('play').addEventListener('click', () => { playing = !playing; if (!playing) restart(); document.getElementById('play').textContent = playing ? 'watch demo' : 'play'; });
   document.getElementById('pause').addEventListener('click', () => { if (clock.running) clock.stop(); else clock.start(); });
   document.getElementById('restart').addEventListener('click', () => { restart(); sim.unported.clear(); draw(); });
   window.__mpDemo = { m: () => m, step, draw, clock };
