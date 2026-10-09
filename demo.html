@@ -1,0 +1,26 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Magic Pockets · Attract demo (ported engine)</title>
+  <style>
+    body { margin: 0; background: #111; color: #ddd; font: 13px/1.4 system-ui, sans-serif; display: grid; place-items: center; min-height: 100vh; }
+    main { padding: 16px; max-width: 980px; }
+    canvas { width: 960px; max-width: 100%; image-rendering: pixelated; background: #000; display: block; }
+    #status { margin-top: 8px; font-family: ui-monospace, monospace; white-space: pre-wrap; }
+    .error { color: #ff8080; }
+    button, input { margin: 8px 8px 0 0; }
+  </style>
+</head>
+<body>
+  <main>
+    <canvas id="view" width="320" height="192"></canvas>
+    <div id="status">loading…</div>
+    <button id="pause" type="button">pause</button>
+    <button id="restart" type="button">restart</button>
+    <label>GAMEU.EXE (if not served from /game/): <input id="exe" type="file"></label>
+  </main>
+  <script type="module" src="/web/demo/main.js"></script>
+</body>
+</html>
