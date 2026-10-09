@@ -13,10 +13,12 @@ export const ENTITY_BYTES = 66;
 export function parseEntityLog(text) {
   const rows = [];
   for (const line of text.split('\n')) {
-    const m = /ROW (\d+) (\d+),(\d+) G:([0-9a-f]+) E:([0-9a-f=;]*)/.exec(line);
+    const m = /ROW (\d+) (\d+),(\d+) G:([0-9a-f]+)(?: P:([0-9a-f]+) L:([0-9a-f]+) Q:([0-9a-f]+))? E:([0-9a-f=;]*)/.exec(line);
     if (!m) continue;
-    const e = m[5] ? m[5].split(';').map((s) => { const [p, h] = s.split('='); return { ptr: parseInt(p, 16), hex: h }; }) : [];
-    rows.push({ done: Number(m[1]), rec: Number(m[2]), rem: Number(m[3]), g: m[4], e });
+    const e = m[8] ? m[8].split(';').map((s) => { const [p, h] = s.split('='); return { ptr: parseInt(p, 16), hex: h }; }) : [];
+    const row = { done: Number(m[1]), rec: Number(m[2]), rem: Number(m[3]), g: m[4], e };
+    if (m[5]) { row.p = m[5]; row.l = m[6]; row.q = m[7]; }
+    rows.push(row);
   }
   return rows;
 }

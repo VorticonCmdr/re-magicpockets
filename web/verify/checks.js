@@ -281,6 +281,16 @@ export async function checkConformance(ctx) {
   const all = runConformance(env, cap.rows, { ignoreScratch: true });
   check('at least 654 of 699 transitions reproduce all 8 captured entities byte for byte', all.entExact >= 654, `${all.entExact}/${all.total}`);
   check('at least 592 of 699 transitions reproduce all 8 entities and every non-scratch global', all.exact >= 592, `${all.exact}/${all.total}`);
+  let cap14 = null;
+  try { cap14 = JSON.parse(new TextDecoder().decode(await ctx.fetchRaw('tools/attract-capture/entities14.capture.json'))); } catch { /* absent */ }
+  if (cap14) {
+    // 400 iterations with up to 14 entities, the pointer array and spawn queue. Only 12 entities
+    // are compared: entities beyond the 14-record cap shift into view when an earlier one dies.
+    check('second capture holds 400 consecutive iterations with 14-entity records', cap14.rows.length === 400 && cap14.rows.every((r, i) => r.done === i));
+    const r14 = runConformance(env, cap14.rows, { ents: 12, ignoreScratch: true });
+    check('at least 377 of 399 transitions of the second capture reproduce 12 entities byte for byte', r14.entExact >= 377, `${r14.entExact}/${r14.total}`);
+    check('at least 342 of 399 transitions of the second capture also reproduce every non-scratch global', r14.exact >= 342, `${r14.exact}/${r14.total}`);
+  }
   const top = [...all.unportedHist].sort((a, b) => b[1] - a[1]).slice(0, 6).map(([k, n]) => `${k} x${n}`).join(', ');
   note('unported branches still hit', top || 'none');
   return results;

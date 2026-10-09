@@ -59,18 +59,32 @@ export function runConformance(env, rows, o = {}) {
     const a = rows[k], b = rows[k + 1];
     const m = loadRow(env, a);
     const ctx = { unported: new Set(), events: [] };
-    stepIteration(m, ctx, o.only ? new Set(a.e.slice(0, o.only).map((e) => e.ptr)) : null);
+    const only = o.only ? new Set(a.e.slice(0, o.only).map((e) => e.ptr)) : null;
+    const key = (mm) => (mm.u16(0x8ba6) << 8 | mm.u8(0x8ba8)) & 0xffffff;
+    const want = (0x8200 + 2 * b.rec) << 8 | b.rem;
+    stepIteration(m, ctx, only);
+    // The tape stalls while [8BA1] == 0x45 (1000:0159), so a captured row (the last poll before the
+    // tape position changes) can span several main-loop iterations: keep stepping while the
+    // position stays on this row's, and back out of the step that would leave it.
+    let mm = m;
+    for (let extra = 0; extra < 400 && key(mm) === want; extra++) {
+      const next = mm.clone();
+      stepIteration(next, ctx, only);
+      if (key(next) !== want) break;
+      mm = next;
+    }
+    const mFinal = mm;
     for (const u of ctx.unported) unportedHist.set(u, (unportedHist.get(u) || 0) + 1);
     let entBad = 0, globBad = 0;
     const lines = [];
     b.e.slice(0, cmpN).forEach((e, i) => {
-      const want = hexBytes(e.hex), got = m.get(e.ptr, ENTITY_SIZE);
+      const want = hexBytes(e.hex), got = mFinal.get(e.ptr, ENTITY_SIZE);
       for (let off = 0; off < ENTITY_SIZE; off++) if (want[off] !== got[off]) {
         entBad++; const key = `e${i} +0x${off.toString(16)}`; entHist.set(key, (entHist.get(key) || 0) + 1);
         lines.push(`${key} want ${want[off]} got ${got[off]}`);
       }
     });
-    const gwant = hexBytes(b.g), ggot = m.get(GLOBALS_BASE, gwant.length), gbefore = hexBytes(a.g);
+    const gwant = hexBytes(b.g), ggot = mFinal.get(GLOBALS_BASE, gwant.length), gbefore = hexBytes(a.g);
     for (let off = 0; off < gwant.length; off++) if (gwant[off] !== ggot[off] && !(o.ignoreScratch && isScratch(GLOBALS_BASE + off))) {
       globBad++; const key = `0x${(GLOBALS_BASE + off).toString(16)}`; globHist.set(key, (globHist.get(key) || 0) + 1);
       lines.push(`G ${key} want ${gwant[off]} got ${ggot[off]} (before ${gbefore[off]})`);

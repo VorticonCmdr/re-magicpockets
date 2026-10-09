@@ -196,6 +196,17 @@ function handler(m, si, di, op, ctx) {
       m.w16(si + off, m.u16(si + off) + delta);
       return di + 2;
     }
+    case 7: { // 3BBC SetPaletteBank: bank index -> 16-word palette at 8AE7 (the vsync wait and the hardware upload are not state)
+      let ax = m.u8(di);
+      m.w8(0x8c0d, ax);
+      if (ax === 7) {
+        const world = m.u16(0x8b89);
+        ax = world === 1 ? 7 : world === 2 ? 0x13 : world === 3 ? 0x14 : world === 4 ? 0x15 : 7;
+      }
+      const src = m.u16(0xde56 + 2 * ax);
+      for (let i = 0; i < 16; i++) m.w16(0x8ae7 + 2 * i, m.u16(src + 2 * i));
+      return di + 1;
+    }
     case 67: m.w8(si + 0x3d, m.u8(di)); return di + 1; // SetAnimLockFlag
     case 71: m.w8(0x8c0c, m.u8(di)); return di + 1; // SetGlobalEventTrigger
     case 76: m.w8(0x8c0e, 0); return di; // clears [8C0E]
