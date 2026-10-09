@@ -167,9 +167,12 @@ function aiOpcodes(m, si, ctx) {
       if ((m.u16(0x8c2b) & 2) !== 0) return;
       continue;
     }
-    const names = { 0x74: 't' };
-    if (names[op]) ctx.unported.add(`AI opcode '${names[op]}'`); // any other byte (0x6F, ...) ends the decision
-    return;
+    if (op === 0x74) { // 66BC: look for a ledge in the rows ahead and jump to it
+      const r = aiOpT(m, si, ctx);
+      if (r === 'end') return;
+      continue;
+    }
+    return; // any other byte (0x6F, ...) ends the decision
   }
 }
 
@@ -531,6 +534,65 @@ function startJump(m, si, cx, ctx) {
   else if (cls === 0x23) set(0x99, 0xd08d);
   else if (cls === 0x20) set(0x97, 0xd062);
   return 'end';
+}
+
+/** 1000:68EC: start a jump described by `dx` (direction/steps) and `cx` (table index at 0xED30). */
+function startAimedJump(m, si, dx, cx, ctx) {
+  dx &= 0xff; cx &= 0xff;
+  m.w16(0x8c27, dx);
+  const speed = m.u8(0xed30 + cx);
+  m.w8(si + 0x26, speed);
+  m.w16(0x8c29, speed);
+  let v = speed === 0 ? 0 : (Math.floor((0x20 * dx) / speed) >> 1) & 0xff;
+  if (dx === 2) v = (-v) & 0xff;
+  m.w8(si + 0x27, v);
+  const cls = m.u16(si + 2);
+  const set = (state, script) => { m.w8(si + 1, state); m.w16(si + 0xc, script); };
+  if (cls === 0x2c) { set(0x15, 0xc625); return 'end'; }
+  const world = m.u16(0x8b89) || m.u16(0x8b8b);
+  if (world !== 1) { ctx.unported.add(`AI jump 68EC world ${world}`); return 'end'; }
+  if (cls === 0x14) return 'next';
+  if (cls === 0x13) set(0x83, 0xced5);
+  else if (cls === 0x23) set(0x99, 0xd08d);
+  else if (cls === 0x20) set(0x97, 0xd062);
+  return 'end';
+}
+
+/** AI opcode 't' (1000:66BC). */
+function aiOpT(m, si, ctx) {
+  const reach = m.u8(si + 0x37);
+  let di = (m.u16(0x8bd7) - 1) & 0xffff;
+  m.w16(0x8c25, reach);
+  for (;;) {
+    const row = di;
+    const scan = tileScan(m, 'left', row, 1, reach);
+    if (scan.dh === 0) { // 6728: try the next row
+      di = (m.u16(si + 0x14) === 4 ? row - 0x80 : row + 0x80) & 0xffff;
+      const n = (m.u16(0x8c25) - 1) & 0xffff;
+      m.w16(0x8c25, n);
+      if (n === 0) return 'next';
+      continue;
+    }
+    const cl0 = scan.cx & 0xff;
+    const r25 = m.u16(0x8c25);
+    if ((r25 & 0xff) === reach) { // 675A: the hero's own row
+      if (m.u16(si + 2) !== 0x4b) return 'next';
+      rollRandom(m, si, ctx);
+      if (m.u16(0x8be5) === 0) return 'next';
+      const c = (reach - cl0) & 0xff;
+      m.w16(0x8c29, c);
+      return startAimedJump(m, si, 2, c, ctx);
+    }
+    if (m.u8(m.u16(0xef23) + m.u8((scan.di - 1) & 0xffff)) !== 0) return 'next';
+    rollRandom(m, si, ctx);
+    if (m.u16(0x8be5) === 0) return 'next';
+    let dl = (reach - (r25 & 0xff)) & 0xff;
+    let cl = (reach - cl0) & 0xff;
+    if (dl === 0 || cl === 0) return 'next';
+    const al = m.s8(si + 0x36);
+    if (al < ((cl << 24) >> 24) || al < ((dl << 24) >> 24)) return 'next';
+    return startAimedJump(m, si, (dl + 1) & 0xff, (cl + 1) & 0xff, ctx);
+  }
 }
 
 /** AI opcode 'q' (1000:63CE). */
