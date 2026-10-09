@@ -197,7 +197,7 @@ function handler(m, si, di, op, ctx) {
     case 71: m.w8(0x8c0c, m.u8(di)); return di + 1; // SetGlobalEventTrigger
     case 76: m.w8(0x8c0e, 0); return di; // clears [8C0E]
     default:
-      ctx.unported.add(`opcode ${op}`);
+      ctx.unported.add(`opcode ${op} operand 0x${m.u8(di).toString(16)}`);
       return ABORT;
   }
 }

@@ -98,12 +98,22 @@ function walk(m, si, bx, ax) {
   advanceAnim(m, bx, m.s8(0x8b99)); // 1000:D5D6: the player's walk cycle
 }
 
+/** 1000:DB67: steering while the world entity is mid-jump or mid-fall. */
+function airSteer(m, si, bx) {
+  const ax = (m.s8(G.EXTRA_FLAGS) | m.u16(si + 0x24) | m.u16(bx + 0x24)) ^ 0xff;
+  const al = ax & m.u8(G.INPUT);
+  const airborne = m.u8(si + 1) === 0x10 || m.u8(si + 1) === 0x11;
+  if (al & 4) { m.w16(bx + 0x14, 4); if (airborne) m.w16(si + 6, m.u16(si + 6) + 4); } else if (al & 8) { m.w16(bx + 0x14, 8); if (airborne) m.w16(si + 6, m.u16(si + 6) - 4); }
+  advanceAnim(m, bx, 0);
+}
+
 /** 1000:3CE8 Entity_HandleCollisionOrStateDispatch (SI = the world entity). */
 function handleCollisionOrStateDispatch(m, si, ctx) {
   if (m.u8(G.NO_INPUT) !== 0) return;
   const bx = findByClass(m, 3);
   const t = m.u8(G.TARGET);
-  if (t === 0x15 || t === 1 || t === 0x21 || t === 0x43 || t === 0x41) { ctx.unported.add(`3CE8 target ${t}`); return; }
+  if (t === 1) { airSteer(m, si, bx); return; }
+  if (t === 0x15 || t === 0x21 || t === 0x43 || t === 0x41) { ctx.unported.add(`3CE8 target ${t}`); return; }
   if (t === 3 || t === 0xff) return;
   if (m.u8(bx + 1) === 0x63) return;
   if (fireAndCharge(m, si, bx, ctx)) return;

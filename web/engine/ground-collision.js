@@ -163,26 +163,182 @@ function fall(m, si, bx, ctx) {
   if (t !== 0x15) m.w16(bx + 0xa, 0x4f);
 }
 
-/** 1000:F489: the player has ground underneath. Only the standing (world state 0) case is ported. */
+/** 1000:F6D3: round the world entity's Y up to the next 16-px boundary. */
+function snapWorldY(m, si) {
+  const y = m.u16(si + 8);
+  m.w16(si + 8, y & 0xfff0);
+  if ((y & 0xf) !== 0) m.w16(si + 8, m.u16(si + 8) + 0x10);
+}
+
+/** 1000:F489: the player has ground underneath (landing). */
 function land(m, si, bx, ctx) {
   const t = m.u8(0x8b98);
-  if (t === 0x21 || t === 0x41 || t === 3) { ctx.unported.add(`F489 target ${t}`); return; }
-  if (t !== 0xff) {
-    if (m.u8(si + 1) === 0xaf) return; // F4D7
-    if (m.u8(bx + 1) === 0x35) { ctx.unported.add('F489 player state 0x35'); return; }
-    if (m.u8(si + 1) === 0) { // F54B
+  if (t === 0x21 || t === 0x41) { snapWorldY(m, si); m.w16(bx + 0x24, m.u16(bx + 0x24) | 2); return; }
+  if (t === 3) { // F6E4
+    if (m.u16(R.C7) !== 0 && m.u8(R.CA) === 1) m.w8(si + 1, 0);
+    return;
+  }
+  if (t === 0xff) return;
+  if (m.u8(si + 1) === 0xaf) return;
+  let landing = m.u8(bx + 1) === 0x35; // F4F6 directly
+  if (!landing) {
+    const ws = m.u8(si + 1);
+    if (ws === 0) { // F54B
       if (m.u16(0x8b89) !== 2) return;
       ctx.unported.add('F489 world 2 standing');
       return;
     }
+    const vy = m.s8(si + 0x26);
+    if (ws === 0x11 ? vy > -10 : vy >= 0) return; // not falling fast enough to land
+    if (t === 1) { landTarget1(m, si, bx, ctx); return; }
+    if (t === 0x15 || t === 0x43) { ctx.unported.add(`F489 landing target ${t}`); return; }
+    landing = true;
   }
-  ctx.unported.add('F489 landing/other');
+  // F4F6
+  if (m.u8(R.E7) !== 0) { // F552: only the signed-tile-byte checks (tiles are 1..120 here) are inert
+    ctx.unported.add('F552 side-contact landing');
+    return;
+  }
+  m.w16(bx + 0x24, m.u16(bx + 0x24) | 2);
+  snapWorldY(m, si);
+  if (m.u16(0x8b89) === 3) ctx.unported.add('F6F7 world 3');
+  m.w16(si + 0x26, 0);
+  m.w8(si + 1, 0);
+  m.w8(bx + 0x3e, 0);
+  if ((m.u8(0x8b67) & 0xf) !== 0) {
+    m.w16(bx + 0x10, 0x41); m.w16(bx + 0x12, 0x48); m.w16(bx + 0xa, 0x40);
+    m.w16(0x8c38, 0);
+    m.w8(bx + 1, 0);
+    m.w16(bx + 0x24, 0);
+    ctx.events.push({ op: 'sound', id: 0x4e });
+    return;
+  }
+  m.w16(bx + 0xc, 0xc62d);
+  m.w8(bx + 1, 0x16);
+}
+
+/** 1000:F619 (falling target): land with a bounce. */
+function landTarget1(m, si, bx, ctx) {
+  const rest = () => { // F661
+    if (m.u8(R.E7) === 1) return;
+    m.w16(bx + 0x24, m.u16(bx + 0x24) | 2);
+    snapWorldY(m, si);
+    if (m.u16(0x8b89) === 3) ctx.unported.add('F6F7 world 3');
+    bounce(m, si, bx, ctx);
+  };
+  if (m.u8(R.CA) === 0 || m.u16(R.CB) === 0) { if (m.u8(R.E7) === 0) rest(); return; } // F659
+  const e7 = m.u8(R.E7);
+  if (e7 === 0) { rest(); return; }
+  if (e7 === 2) { // F64B
+    if (m.u8(R.C9) !== 0) return;
+    if (m.u8(si + 0x26) === 0xf0) rest();
+    return;
+  }
+  if (m.u8(R.C9) === 0 || m.u8(R.CB) !== 0 || m.u8(R.CC) !== 0) { rest(); return; }
+}
+
+/** 1000:F5AE: the landing sound, then the bounce or the stop. */
+function bounce(m, si, bx, ctx) {
+  ctx.events.push({ op: 'sound', id: 9 });
+  const settle = () => { // F5DF
+    m.w16(si + 0x26, 0); m.w8(si + 1, 0); m.w8(si + 0x3e, 0);
+    if (m.u8(0x8b98) === 1) {
+      m.w8(0x8b98, 0);
+      m.w16(bx + 0x10, 0x41); m.w16(bx + 0x12, 0x48); m.w16(bx + 0xa, 0x40);
+    }
+  };
+  if ((m.u8(0x8b67) & 2) !== 0) { settle(); return; }
+  let al = m.s8(si + 0x26);
+  if (al === 0) { settle(); return; }
+  if (al > 0) { if (m.u16(0x8b89) !== 2) return; ctx.unported.add('F489 world 2 standing'); return; } // F54B
+  if (m.u8(si + 1) === 0x11) m.w8(si + 1, 0x10);
+  al = (-al) >> 1; // neg al; sar al,1
+  m.w8(si + 0x26, al & 0xff);
+  if (m.s8(si + 0x26) <= 3) { settle(); return; }
+  if (m.u16(0x8b89) !== 2) return; // F54B
+  ctx.unported.add('F489 world 2 standing');
+}
+
+/** 1000:F960: snap the world entity to the tile column it ran into and set the blocked bit. */
+function snapLateral(m, si, bx) {
+  if (m.u16(R.C7) === 0) { m.w16(bx + 0x24, m.u16(bx + 0x24) | m.u16(bx + 0x14)); return; } // FA3E
+  const ax = m.u16(bx + 6) & 0x1f;
+  let cx = (-m.u16(si + 6)) & 0xffff;
+  cx = (cx & 0xffe0) | ax;
+  cx = (-cx) & 0xffff;
+  const old = m.u16(si + 6);
+  m.w16(si + 6, cx);
+  const diff = (old - cx) & 0xffff;
+  if (diff & 0x8000) { if (m.u16(bx + 0x14) !== 8) m.w16(R.D7, m.u16(R.D7) - 0x80); } // F999
+  else if (m.u16(bx + 0x14) !== 4) m.w16(R.D7, m.u16(R.D7) + 0x80); // F98B
+  const e7 = m.u8(R.E7);
+  if (e7 !== 2 && e7 !== 0) { // F9B3: re-read the tiles beside the new position
+    const ef = m.u16(EF23);
+    let di = m.u16(R.D7);
+    if (m.u16(bx + 0x14) === 4) {
+      m.w8(R.E7, m.u8(ef + m.u8(di + 0x7f)));
+      if (m.u8(ef + m.u8(di)) !== 0 && m.u8(R.CA) === 1) m.w8(R.CA, 0);
+      if (m.u8(ef + m.u8(di)) === 0) return finishSnap(m, si, bx);
+    }
+    di = m.u16(R.D7);
+    m.w8(R.E7, m.u8(ef + m.u8(di - 1)));
+    if (m.u8(ef + m.u8(di + 0x80)) !== 0 && m.u8(R.CA) === 1) m.w8(R.CA, 0);
+  }
+  finishSnap(m, si, bx);
+}
+
+function finishSnap(m, si, bx) { // FA17
+  if (m.u16(bx + 0x14) === 4) {
+    m.w8(R.C7, 0);
+    m.w16(bx + 0x24, m.u16(bx + 0x24) | 4);
+    if ((m.u16(si + 6) & 0x1f) === 0) m.w16(bx + 6, m.u16(bx + 6) + 0x20);
+    return;
+  }
+  m.w8(R.C8, 0);
+  m.w16(bx + 0x24, m.u16(bx + 0x24) | 8);
+}
+
+/** 1000:F842: the player ran into something at the side (called from E8D7/E961 when a side probe hit). */
+function lateral(m, si, bx, ctx) {
+  const t = m.u8(0x8b98);
+  if (t === 0x15) { m.w8(0x8b97, 0); snapLateral(m, si, bx); return; } // F925
+  if (t === 0x21) { snapLateral(m, si, bx); return; }
+  if (t === 0x41) { m.w16(bx + 0x24, m.u16(bx + 0x24) | m.u16(bx + 0x14)); return; } // F942
+  if (t === 3) { snapLateral(m, si, bx); m.w16(bx + 0x24, m.u16(bx + 0x24) | 0xc); return; } // F92C
+  if (t === 1) { // F906
+    snapLateral(m, si, bx);
+    if (m.u8(R.E7) === 0) return;
+    m.w16(bx + 0x24, m.u16(bx + 0x24) | m.u16(bx + 0x14));
+    if ((m.u8(0x8b67) & m.u16(bx + 0x14)) !== 0) return;
+    m.w16(bx + 0x14, m.u16(bx + 0x14) ^ 0xc);
+    return;
+  }
+  if (m.u8(si + 1) === 0x11) { ctx.unported.add('F842 world state 0x11 (F949)'); return; }
+  const facing4 = m.u16(bx + 0x14) === 4;
+  const sideProbe = m.u8(facing4 ? R.CB : R.CC);
+  const to8a1 = () => {
+    m.w16(bx + 0x24, m.u16(bx + 0x24) | m.u16(bx + 0x14)); // F8A1
+    if (m.u8(si + 1) === 0) { if (m.u16(R.C7) !== 0) snapLateral(m, si, bx); return; } // F8CE
+    if (m.u8(R.C9) === 0) { snapLateral(m, si, bx); return; }
+    m.w16(bx + 0x24, m.u16(bx + 0x24) | 0x80);
+    if (m.u8(R.E7) === 2) return;
+    if (m.u16(R.C5) === 0xffff) snapLateral(m, si, bx);
+  };
+  if (m.u8(R.E7) === 0) { // F884
+    if (sideProbe !== 1) { to8a1(); return; }
+    if (m.s8(R.C6) < 0) return; // F89A
+    to8a1();
+    return;
+  }
+  if (m.u8(R.E7) !== 1) { to8a1(); return; } // F8D9
+  if (sideProbe !== 2 || m.u8(R.CA) === 0) { to8a1(); return; }
+  snapLateral(m, si, bx);
 }
 
 /** 1000:E8D7 / E961 for the player: a side probe hit sends it to F842. */
 function resolveSide(m, si, bx, probeAddr, ctx) {
   if (m.u8(probeAddr) === 0) return;
-  ctx.unported.add('F842 lateral response');
+  lateral(m, si, bx, ctx);
 }
 
 /** 1000:E14F Entity_ResolveGroundCollision, player (class 3) branch only. */

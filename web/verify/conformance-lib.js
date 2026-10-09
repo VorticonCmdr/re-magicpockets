@@ -9,8 +9,11 @@ import { stepIteration } from '../engine/iteration.js';
 import { rebuildVisibleList } from '../engine/entity-behavior.js';
 
 export const GLOBALS_BASE = 0x8b50;
-// Probe results, scratch words, the list cursor and the sound timer: byproducts, not game state.
-export const SCRATCH = [[0x8bc5, 0x8bec], [0x8c1b, 0x8c2a], [0x8b87, 0x8b88], [0x8bad, 0x8bad], [0x8bd5, 0x8be4]];
+// Probe results, scratch words, list cursors, the render row counter and the timer ISR's seconds
+// counter ([8BAD]/[8BAE], advanced by the 50 Hz interrupt, not by the main loop): byproducts and
+// asynchronous state, not game state.
+export const SCRATCH = [[0x8bc5, 0x8bec], [0x8c1b, 0x8c2a], [0x8b87, 0x8b88], [0x8bad, 0x8bae], [0x8bd5, 0x8be4],
+  [0x8b9c, 0x8b9d], [0x8c77, 0x8c7c]];
 const isScratch = (a) => SCRATCH.some(([lo, hi]) => a >= lo && a <= hi);
 const hexBytes = (h) => Uint8Array.from(h.match(/../g), (x) => parseInt(x, 16));
 
