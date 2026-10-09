@@ -50,7 +50,17 @@ export function loadRow(env, row) {
   if (row.q) m.put(0x9270, hexBytes(row.q)); // the spawn queue region (0x9270..0x939B), when captured
   for (let o = ENTITY_ARRAY; o < ENTITY_ARRAY_END; o += 2) m.w16(o, 0);
   row.e.forEach((e, i) => { m.w16(ENTITY_ARRAY + 2 * i, e.ptr); m.put(e.ptr, hexBytes(e.hex)); });
-  for (const e of row.x || []) m.put(e.ptr, hexBytes(e.hex)); // live records outside the pointer array
+  // Live records outside the pointer array: the hero-front entities that the spawn groups 1 and 2
+  // insert at the end of the array (0x91BA, 0x91B8, ... downwards, in spawn order). The capture does
+  // not hold that part of the array, so it is rebuilt from the records by address; class-0x11
+  // records are the leaked half-spawns of the marker type (C523) and dead records keep stale bytes;
+  // neither is in the array.
+  let front = 0x91ba;
+  for (const e of row.x || []) {
+    m.put(e.ptr, hexBytes(e.hex));
+    const cls = hexBytes(e.hex)[2] | (hexBytes(e.hex)[3] << 8);
+    if (cls !== 0 && cls !== 0x11) { m.w16(front, e.ptr); front -= 2; }
+  }
   // The captured row has no copy of the 0x91BE list; rebuild it from positions without scrolling.
   const dx = m.u16(0x8bb7), dy = m.u16(0x8bb9);
   m.w16(0x8bb7, 0); m.w16(0x8bb9, 0);
@@ -135,4 +145,40 @@ export function midConsumeParticles(row) {
     si += 4 + 2 * tag; // marker, tag and type, then tag-1 data words
   }
   return n;
+}
+
+/**
+ * Free run: load the first captured row once, then let the engine advance on its own state, row by
+ * row (as many iterations per row as the demo tape needs), comparing every entity record and the
+ * non-scratch globals with each captured row. Rows listed in `skip` are advanced but not compared
+ * (half-finished-consumer samples). Returns how many consecutive rows matched from `from` and the
+ * first mismatching row with its differing fields.
+ */
+export function runFreeRun(env, rows, o = {}) {
+  rows = expandRows(rows);
+  const from = o.from ?? 0, to = Math.min(o.to ?? rows.length - 1, rows.length - 1);
+  let m = loadRow(env, rows[from]);
+  const key = (mm) => (mm.u16(0x8ba6) << 8 | mm.u8(0x8ba8)) & 0xffffff;
+  for (let k = from; k < to; k++) {
+    const b = rows[k + 1];
+    const ctx = { unported: new Set(), events: [] };
+    const want = (0x8200 + 2 * b.rec) << 8 | b.rem;
+    stepIteration(m, ctx, null);
+    for (let extra = 0; extra < 400 && key(m) === want; extra++) {
+      const next = m.clone();
+      stepIteration(next, ctx, null);
+      if (key(next) !== want) break;
+      m = next;
+    }
+    if (o.skip?.has(b.done)) continue;
+    const diffs = [];
+    b.e.forEach((e, i) => {
+      const w = hexBytes(e.hex), got = m.get(e.ptr, ENTITY_SIZE);
+      for (let off = 0; off < ENTITY_SIZE; off++) if (w[off] !== got[off]) diffs.push(`e${i} +0x${off.toString(16)} want ${w[off]} got ${got[off]}`);
+    });
+    const gw = hexBytes(b.g), gg = m.get(GLOBALS_BASE, gw.length);
+    for (let off = 0; off < gw.length; off++) if (gw[off] !== gg[off] && !isScratch(GLOBALS_BASE + off)) diffs.push(`G 0x${(GLOBALS_BASE + off).toString(16)} want ${gw[off]} got ${gg[off]}`);
+    if (diffs.length) return { matched: k - from, firstBad: b.done, diffs: diffs.slice(0, 12), unported: [...ctx.unported] };
+  }
+  return { matched: to - from, firstBad: null, diffs: [], unported: [] };
 }

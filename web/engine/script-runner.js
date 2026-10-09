@@ -14,6 +14,7 @@
 import { findByClass } from './ds-memory.js';
 import { resetExtendedFields } from './entity-behavior.js';
 import { pushEvent4, pushEvent5, pushSpawnEvent, pushEntityEvent } from './fire.js';
+import { setupLineMotion } from './spawn.js';
 
 const ABORT = Symbol('abort');
 
@@ -238,6 +239,33 @@ function handler(m, si, di, op, ctx) {
       if (s16(ty) < s16(m.u16(si + 8))) m.w16(si + 8, m.u16(si + 8) - sy);
       else if (s16(ty) > s16(m.u16(si + 8))) m.w16(si + 8, m.u16(si + 8) + sy);
       return di;
+    }
+    case 62: { // 2AC5: the player loses a life (the HUD icon steps down)
+      const icon = findByClass(m, 0x18);
+      if (m.u16(icon + 0xa) === 0x7b) { ctx.unported.add('4A8D game over'); return ABORT; }
+      m.w16(icon + 0xa, m.u16(icon + 0xa) - 1);
+      m.w8(0x8bb4, m.u8(0x8bb4) + 1);
+      return di;
+    }
+    case 43: { // 3031: walk along a line (Bresenham-style) towards an offset in 16-pixel cells
+      const cl = m.u8(di); di += 1;
+      m.w16(0x8c1f, sx8(m.u8(di)) & 0xffff); di += 1;
+      m.w16(0x8c21, sx8(m.u8(di)) & 0xffff); di += 1;
+      if (m.u16(si + 0x26) === 0) setupLineMotion(m, si, cl);
+      const s16 = (v) => ((v & 0xffff) >= 0x8000 ? (v & 0xffff) - 0x10000 : v & 0xffff);
+      for (let cx = m.u8(si + 0x3c); cx > 0; cx--) {
+        let ax = (m.u16(si + 0x34) + m.u16(si + 0x28)) & 0xffff, dx, dy;
+        if (s16(ax) < s16(m.u16(si + 0x32))) { m.w16(si + 0x28, ax); dx = m.u16(si + 0x2a); dy = m.u16(si + 0x2c); }
+        else { ax = (ax - m.u16(si + 0x32)) & 0xffff; m.w16(si + 0x28, ax); dx = m.u16(si + 0x2e); dy = m.u16(si + 0x30); }
+        m.w16(si + 6, m.u16(si + 6) + dx); m.w16(si + 8, m.u16(si + 8) + dy);
+        m.w16(si + 0x26, m.u16(si + 0x26) - 1);
+        if (m.u16(si + 0x26) === 0) { // 3086: arrived
+          for (const o of [0x26, 0x28, 0x2a, 0x2c, 0x2e, 0x30, 0x32, 0x34]) m.w16(si + o, 0);
+          m.w8(si + 0x3c, 0);
+          return di;
+        }
+      }
+      return ABORT;
     }
     case 49: { // 2DA7: operand != 0 turns this entity into another class (C8C0)
       const cls = m.u8(di); di += 1;
@@ -525,7 +553,22 @@ function spawnOtherEffect(m, si, di, type, ctx) {
     pushSpawnEvent(m);
     return di + 4;
   }
-  const special = [0xe, 0x1b, 0x16, 0x53, 0x28, 0x5f, 0xf, 0x1f, 0x30, 0x21, 0x4d, 0x2b];
+  if (type === 0x1f) { // 3521: positioned by two signed offsets, with two unsigned parameters
+    m.w16(0x8c27, (sb(di) + m.u16(si + 6)) & 0xffff);
+    m.w16(0x8c25, (sb(di + 1) + m.u16(si + 8)) & 0xffff);
+    m.w16(0x8c1f, m.u8(di + 2)); m.w16(0x8c21, m.u8(di + 3));
+    m.w16(0x8c23, 0);
+    pushSpawnEvent(m);
+    return di + 4;
+  }
+  if (type === 0xf) { // 3550: a debris event at the entity, two parameters
+    m.w16(0x8c27, m.u16(si + 6)); m.w16(0x8c25, m.u16(si + 8));
+    m.w16(0x8c1f, 0x46);
+    m.w16(0x8c23, m.u8(di)); m.w16(0x8c21, m.u8(di + 1));
+    pushSpawnEvent(m);
+    return di + 2;
+  }
+  const special = [0xe, 0x1b, 0x16, 0x53, 0x28, 0x5f, 0x30, 0x21, 0x4d, 0x2b];
   if (special.includes(type)) { ctx.unported.add(`opcode 13 type 0x${type.toString(16)}`); return ABORT; }
   // 3406: the generic effect: two signed offsets from the entity, facing as the entity
   m.w16(0x8c27, (sb(di) + m.u16(si + 6)) & 0xffff);

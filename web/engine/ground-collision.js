@@ -324,7 +324,12 @@ function lateral(m, si, bx, ctx) {
     m.w16(bx + 0x14, m.u16(bx + 0x14) ^ 0xc);
     return;
   }
-  if (m.u8(si + 1) === 0x11) { ctx.unported.add('F842 world state 0x11 (F949)'); return; }
+  if (m.u8(si + 1) === 0x11) { // F949: mid-air against a wall
+    if (m.s8(R.CB) >= 2 || m.s8(R.CC) >= 2) { snapLateral(m, si, bx); return; }
+    if (m.s8(R.CA) >= 2) { m.w16(bx + 0x24, m.u16(bx + 0x24) | m.u16(bx + 0x14)); return; } // F942
+    snapLateral(m, si, bx);
+    return;
+  }
   const facing4 = m.u16(bx + 0x14) === 4;
   const sideProbe = m.u8(facing4 ? R.CB : R.CC);
   const to8a1 = () => {

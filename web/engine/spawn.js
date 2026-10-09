@@ -91,7 +91,7 @@ function finishSpawn(m, si, slot, bx, tpl) {
 }
 
 /** 1000:30B3: set up the direction/step fields of an entity that walks a line to (8C1F, 8C21) cells away. */
-function setupLineMotion(m, si, cl) {
+export function setupLineMotion(m, si, cl) {
   m.w8(si + 0x3c, (cl + 1) & 0xff);
   const s16 = (v) => ((v & 0xffff) >= 0x8000 ? (v & 0xffff) - 0x10000 : v & 0xffff);
   let fx = (s16(m.u16(0x8c1f)) * 16 + m.u16(si + 6)) & 0xffff; m.w16(0x8c1f, fx);

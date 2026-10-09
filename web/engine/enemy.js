@@ -138,7 +138,17 @@ function aiOpcodes(m, si, ctx) {
       if (cls === 0x2c || set === 5 || (cls === 0x14 && set === 0)) { ctx.unported.add(`AI opcode 's' class 0x${cls.toString(16)} set ${set}`); return; }
       continue; // 6555 -> 6320
     }
-    const names = { 0x70: 'p', 0x71: 'q', 0x72: 'r', 0x74: 't' };
+    if (op === 0x70) { // 6379: look down for a ledge to jump to
+      const r = aiOpP(m, si, ctx);
+      if (r === 'end') return;
+      continue;
+    }
+    if (op === 0x71) { // 63CE: look along the floor for a gap to jump over
+      const r = aiOpQ(m, si, ctx);
+      if (r === 'end') return;
+      continue;
+    }
+    const names = { 0x72: 'r', 0x74: 't' };
     if (names[op]) ctx.unported.add(`AI opcode '${names[op]}'`); // any other byte (0x6F, ...) ends the decision
     return;
   }
@@ -463,4 +473,80 @@ function thinkClass12(m, si, ctx) {
   const st = m.u8(si + 0x40); // 7064
   if (st === 0xd) m.w8(si + 0x3d, 0);
   else if (st !== 0xb) m.w8(si + 0x3d, 2);
+}
+
+const tileOf = (m, v) => m.u8(m.u16(0xef23) + (((v & 0xff) << 24) >> 24)); // the world table is indexed by a signed byte
+
+/**
+ * 1000:728B/72B6 (vertical: face 4 looks up, else down), 72D9 (left) and 72F9 (right): walk the map
+ * from `di` until the tile class equals `dl` or `cx` runs out. Returns the class, the cursor and the
+ * remaining count the original leaves in DH, DI and CX.
+ */
+function tileScan(m, kind, di, dl, cx) {
+  cx &= 0xff;
+  let dh;
+  for (;;) {
+    if (kind === 'up') di = (di - 0x80) & 0xffff;
+    else if (kind === 'down') di = (di + 0x80) & 0xffff;
+    const al = m.u8(di);
+    if (kind === 'left') di = (di - 1) & 0xffff; else if (kind === 'right') di = (di + 1) & 0xffff;
+    dh = tileOf(m, al);
+    if (dh === dl) break;
+    cx = (cx - 1) & 0xffff;
+    if (cx & 0x8000) break;
+  }
+  return { dh, di, cx };
+}
+
+/** 1000:682F: start a jump of height class `cx` (the vertical speed comes from a table at 0xED3A). */
+function startJump(m, si, cx, ctx) {
+  m.w8(si + 0x26, m.u8(0xed3a + (cx & 0xff)));
+  m.w8(si + 0x27, 4);
+  const cls = m.u16(si + 2);
+  const set = (state, script) => { m.w8(si + 1, state); m.w16(si + 0xc, script); };
+  if (cls === 0x2c) { set(0x15, 0xc625); return 'end'; }
+  const world = m.u16(0x8b89) || m.u16(0x8b8b);
+  if (world !== 1) { ctx.unported.add(`AI jump 682F world ${world}`); return 'end'; }
+  if (cls === 0x14) return 'next'; // 686B: back into the opcode loop
+  if (cls === 0x13) set(0x83, 0xced5);
+  else if (cls === 0x23) set(0x99, 0xd08d);
+  else if (cls === 0x20) set(0x97, 0xd062);
+  return 'end';
+}
+
+/** AI opcode 'q' (1000:63CE). */
+function aiOpQ(m, si, ctx) {
+  const set = m.u8(si + 0x39), f = m.u16(0x8c2b);
+  if (set === 5 && (f & 1) === 0 && (f & m.u16(si + 0x14)) === 0) return 'next';
+  let di = m.u16(0x8bd7);
+  di = (m.u16(si + 0x14) === 4 ? di - 0x80 : di + 0x80) & 0xffff; // 7319
+  di = (di - 2) & 0xffff;
+  const reach = m.u8(si + 0x37);
+  const a = tileScan(m, 'left', di, 0, (reach - 1) & 0xff);
+  if (a.dh !== 0) return 'next';
+  let cl = (reach - (a.cx & 0xff)) & 0xff;
+  const b = tileScan(m, 'left', (m.u16(0x8bd7) - 1) & 0xffff, 1, (cl + 1) & 0xff);
+  if (b.dh !== 0) return 'next';
+  rollRandom(m, si, ctx);
+  if (m.u16(0x8be5) === 0) return 'next';
+  const al = m.s8(si + 0x36);
+  if (al === 0) return 'next';
+  const cx = al >= ((cl << 24) >> 24) ? cl : al & 0xff;
+  return startJump(m, si, cx, ctx);
+}
+
+/** AI opcode 'p' (1000:6379). */
+function aiOpP(m, si, ctx) {
+  const set = m.u8(si + 0x39);
+  if (set === 5 && (m.u16(0x8c2b) & 2) !== 0) return 'next';
+  const reach = m.u8(si + 0x37);
+  const a = tileScan(m, m.u16(si + 0x14) === 4 ? 'up' : 'down', m.u16(0x8bd7), 1, reach);
+  if (a.dh === 0) return 'next';
+  rollRandom(m, si, ctx);
+  if (m.u16(0x8be5) === 0) return 'next';
+  const dl = (reach - (a.cx & 0xff)) & 0xff;
+  if (tileOf(m, m.u8((a.di - 1) & 0xffff)) !== 0) return 'next';
+  if (m.u8(si + 0x36) === 0) return 'next';
+  startAction(m, si, dl, ctx);
+  return 'end';
 }

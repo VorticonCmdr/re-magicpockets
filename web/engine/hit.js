@@ -9,10 +9,12 @@
 import { pushSpawnEvent, pushEvent3, pushEvent5, pushEntityEvent } from './fire.js';
 import { findByClass } from './ds-memory.js';
 import { changeClass } from './script-runner.js';
+import { crateGrab } from './entity-behavior.js';
 
 /** @returns {boolean} true when the original `pop ax; ret` abandons the whole interaction scan */
 export function pairEvent(m, si, bx, cl, ctx) {
   const tag = `45F8 pair ${cl} class 0x${m.u16(si + 2).toString(16)}/0x${m.u16(bx + 2).toString(16)} kinds ${m.u16(si + 4)}/${m.u16(bx + 4)}`;
+  if (cl === 1) { if (!enemyTouchesPlayer(m, si, bx, ctx)) ctx.unported.add(tag); return false; }
   if (cl === 5) { if (!playerTouchesProjectile(m, si, bx, ctx)) ctx.unported.add(tag); return false; }
   if (cl === 7) { if (!playerTouchesProp(m, si, bx, ctx)) ctx.unported.add(tag); return false; }
   if (cl === 4) { if (!weaponHitsEnemy(m, si, bx, ctx)) ctx.unported.add(tag); return false; }
@@ -41,7 +43,9 @@ function crateTouched(m, si, bx) {
   if (m.u8(bx + 0x26) !== 0 || m.u8(si + 0x26) !== 0) return true;
   if (m.u8(0x8b98) !== 0) return true; // 1 and every other non-zero value return alike
   if (m.u8(si + 1) !== 0) return true;
-  return false; // 4D1C (the crate is pushed into the world entity) is not ported
+  const world = findByClass(m, 1); // 4D1C: the crate is grabbed by the world entity's script
+  if (m.u8(world + 1) === 0) crateGrab(m, world, findByClass(m, 3));
+  return true;
 }
 
 const PICKUP_STAY = [0x15, 0x40, 0x41, 0x43, 0x1a, 0x24, 0x2a, 0x45, 0x22, 0x29];
@@ -50,8 +54,9 @@ const PICKUP_STAY = [0x15, 0x40, 0x41, 0x43, 0x1a, 0x24, 0x2a, 0x45, 0x22, 0x29]
 function playerTouchesProp(m, si, bx, ctx) {
   const cls = m.u16(bx + 2);
   if (cls === 0xe) return crate(m, si, bx, ctx);
+  if (cls === 0x26) return bonusItem(m, bx); // 5B26
   if (cls === 0x1b) return powerUp(m, bx, ctx);
-  if (cls === 0x1c || cls === 6 || cls === 0x26 || cls === 0x56 || cls === 0x2e) return false;
+  if (cls === 0x1c || cls === 6 || cls === 0x56 || cls === 0x2e) return false;
   if (!PICKUP_STAY.includes(cls) && (m.u8(bx + 0x40) === 0xf6 || m.u8(bx + 0x3e) === 0)) return true; // 5850
   m.w16(0x8c01, bx); // 584C: remember the prop the player stands against
   return true;
@@ -372,5 +377,68 @@ function powerUp(m, bx, ctx) {
     m.w8(bx + 0x40, 0x19);
     return true;
   }
+  if (frame === 0x15 || frame === 0x1c) { // 5CC6 / 5CAC: a life icon
+    const icon = findByClass(m, 0x18);
+    if (m.u16(icon + 0xa) === 0x7f) return maxed();
+    m.w16(icon + 0xa, frame === 0x15 ? m.u16(icon + 0xa) + 1 : 0x7f);
+    m.w8(bx + 0x40, 0x19);
+    return true;
+  }
+  if (frame === 0x17) { // 5CE3: the bonus meter reward
+    m.w8(bx + 0x40, 0x19);
+    const units = m.u8(0x8c05) % 10;
+    m.w8(0x8c05, 0);
+    m.w16(0x8c1f, units * 2);
+    if (m.u8(0x8bb2) !== 0) m.w16(0x8c1f, 0xfffe + (m.u16(0x8b8b) & 1));
+    m.w16(0x8c21, 0); m.w16(0x8c29, 0xe);
+    return burst5DBA(m, bx, ctx);
+  }
+  ctx.unported.add(`power-up frame 0x${frame.toString(16)}`);
   return false;
+}
+
+/** 1000:5DBA: scan the 10 tiles above the player and push a spawn event for each empty one (the reward shower). */
+function burst5DBA(m, bx, ctx) {
+  ctx.unported.add('5DBA reward shower');
+  return false;
+}
+
+/** 1000:4639: an enemy (bx, kind 2) overlaps the player (si). @returns {boolean} handled */
+function enemyTouchesPlayer(m, si, bx, ctx) {
+  if (m.u8(bx + 0x40) === 0x65) return true;
+  const cls = m.u16(bx + 2);
+  if (cls === 0x2c || cls === 0x2b || m.u8(0x8c04) === 0x40) return false;
+  if (cls === 0x53 && m.u16(bx + 0xa) === 0x104) return false;
+  if (m.u8(0x8b96) !== 0 || m.u16(si + 0xa) === 0x4c) return true;
+  const t = m.u8(0x8b98);
+  if (t === 0x15 || t === 0x43 || t === 0x21 || t === 0x41 || t === 0x1a) return false;
+  if (t === 0xff) return true;
+  if (t === 1 || t === 3) { // 4725: carrying a crate or in the hit state, the player kills what he touches
+    if (cls === 0x2b || cls === 0x42 || m.u16(bx + 4) === 6 || m.u8(bx + 0x40) === 0x19) return true;
+    m.w16(0x8b75, m.u16(0x8b75) + m.u8(bx + 0x36) + 1);
+    return die(m, bx, ctx);
+  }
+  // 46B6: the player is hurt; the world entity and the player enter their knock-back states
+  const world = findByClass(m, 1);
+  if ((m.u8(world + 1) !== 0 || m.u8(si + 1) !== 0) && m.u8(si + 1) !== 0x5d) return false; // 471B: 4A50 is not ported
+  m.w16(si + 0x14, m.u16(bx + 0x14));
+  if (m.u16(bx + 4) !== 6 && m.u16(bx + 2) !== 0x42) m.w16(si + 0x14, m.u16(si + 0x14) ^ 0xc);
+  m.w8(world + 1, 0x44); m.w16(world + 0xc, 0xc92c);
+  m.w8(0x8b96, 0x3c); m.w8(0x8b98, 3);
+  m.w8(si + 1, 0x45); m.w16(si + 0xc, 0xc94d);
+  m.w16(si + 0x30, 0); m.w16(world + 0x30, 0);
+  m.w8(world + 0x3e, 0); m.w8(si + 0x3e, 0);
+  m.w16(si + 0x10, 0x41); m.w16(si + 0x12, 0x48);
+  return true;
+}
+
+/** 1000:5B26: a floating-point bonus (frames 0xB8, 0xB9, 0xBA = 50, 100, 200 points). */
+function bonusItem(m, bx) {
+  if (m.u8(bx + 1) !== 0) return true;
+  const f = m.u16(bx + 0xa);
+  const award = (pts, state, script) => { m.w16(0x8b75, m.u16(0x8b75) + pts); m.w8(bx + 1, state); m.w16(bx + 0xc, script); };
+  if (f === 0xb8) award(0x32, 0x29, 0xc6ea);
+  else if (f === 0xb9) award(0x64, 0x21, 0xc6a0);
+  else if (f === 0xba) award(0xc8, 0x5e, 0xcb09);
+  return true;
 }

@@ -110,7 +110,7 @@ function airSteer(m, si, bx) {
 }
 
 /** 1000:3FE2: the player grabs the crate (class 0xD/0x33) he is standing against. */
-function crateGrab(m, si, bx) {
+export function crateGrab(m, si, bx) {
   m.w8(0x8b98, 1);
   m.w8(si + 1, 0x1c); m.w16(si + 0xc, 0xc655);
   m.w16(si + 0x14, m.u16(bx + 0x14));
