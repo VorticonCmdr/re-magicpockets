@@ -10,7 +10,7 @@
 -- iterations to stay under the script's 1,000,000-instruction budget.
 
 local DS = 0x5FD8
-local END_ITER = 700
+local END_ITER = 2400
 local rb, rw, wf, fmt, byte, mr = dosbox.mem_read_byte, dosbox.mem_read_word, dosbox.wait_frames, string.format, string.byte, dosbox.mem_read
 local F66 = ('%02x'):rep(66)
 local GLEN = 352

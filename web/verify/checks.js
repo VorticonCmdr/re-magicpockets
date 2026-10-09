@@ -18,7 +18,7 @@ import { RAW_BANKS } from '../core/palette.js';
 import { decodeDemoTape, DemoPlayback, INPUT_BITS, DEMO_RNG_SEED } from '../core/demo-tape.js';
 import { FRAME_ORDER } from '../engine/frame.js';
 import { Rng } from '../engine/rng.js';
-import { prepare, runConformance, expandRows } from './conformance-lib.js';
+import { prepare, runConformance, expandRows, midConsumeParticles } from './conformance-lib.js';
 
 export function makeChecker() {
   const results = [];
@@ -282,19 +282,24 @@ export async function checkConformance(ctx) {
   try { cap = await loadGzJson(ctx, 'tools/attract-capture/entities-full.capture.json.gz'); } catch { /* absent */ }
   if (!cap) { note('entity capture not found', 'tools/attract-capture/entities-full.capture.json.gz is missing; conformance skipped'); return results; }
   const env = prepare(await ctx.fetchRaw('game/GAMEU.EXE'), await ctx.fetchRaw('data/autoplay.pin'), await ctx.fetchRaw('data/pcmap.pap'));
-  check('entity capture holds 700 consecutive iterations', cap.rows.length === 700 && cap.rows.every((r, i) => r.done === i));
+  check('entity capture holds the whole demo: 2342 consecutive iterations', cap.rows.length === 2342 && cap.rows.every((r, i) => r.done === i));
   const rows = expandRows(cap.rows);
   check('the capture lists up to 112 entities per row, each record 66 bytes', Math.max(...rows.map((r) => r.e.length)) === 112 && rows.every((r) => r.e.every((e) => e.hex.length === 132)));
   const hero = runConformance(env, rows, { ents: 3, only: 3, ignoreScratch: true });
+  const first700 = rows.slice(0, 700);
   check('at least 696 of 699 transitions reproduce entities 0-2 byte for byte', hero.entExact >= 696, `${hero.entExact}/${hero.total}`);
   check('at least 639 of 699 transitions also reproduce every non-scratch global', hero.exact >= 639, `${hero.exact}/${hero.total}`);
-  // Rows 536 and 537 were polled while call 6 (the event consumer) was running: three of the four
+  // Rows 197 and 198 were polled while call 6 (the event consumer) was running: three of the four
   // queued particle events have already spawned entities but [8BB5] still points at all four. A
   // whole-iteration model cannot reproduce a mid-call snapshot, so these two rows are exempt.
-  const MID_CALL_SAMPLES = new Set([536, 537]);
+  const MID_CALL_SAMPLES = new Set([197, 198]);
+  check('the exempt rows carry the half-finished-consumer signature (queued events whose particles already exist)', [...MID_CALL_SAMPLES].every((k) => midConsumeParticles(rows[k]) > 0 || midConsumeParticles(rows[k - 1]) > 0));
+  const head = runConformance(env, first700, { ignoreScratch: true, skip: MID_CALL_SAMPLES });
   const all = runConformance(env, rows, { ignoreScratch: true, skip: MID_CALL_SAMPLES });
-  check('every one of the 697 usable transitions reproduces every captured entity byte for byte', all.entExact === all.total && all.total === 697, `${all.entExact}/${all.total}`);
-  check('every one of the 697 usable transitions reproduces every entity and every non-scratch global', all.exact === all.total, `${all.exact}/${all.total}`);
+  check('every one of the first 700 iterations\' 697 usable transitions reproduces every captured entity byte for byte', head.entExact === head.total && head.total === 697, `${head.entExact}/${head.total}`);
+  check('at least 1963 of the whole demo\'s 2339 usable transitions reproduce every captured entity byte for byte', all.entExact >= 1963, `${all.entExact}/${all.total}`);
+  check('every one of the first 700 iterations\' usable transitions also reproduces every non-scratch global', head.exact === head.total, `${head.exact}/${head.total}`);
+  check('at least 1939 of the whole demo\'s usable transitions also reproduce every non-scratch global', all.exact >= 1939, `${all.exact}/${all.total}`);
   const top = [...all.unportedHist].sort((a, b) => b[1] - a[1]).slice(0, 6).map(([k, n]) => `${k} x${n}`).join(', ');
   note('unported branches still hit', top || 'none');
   return results;

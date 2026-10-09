@@ -112,3 +112,27 @@ export function runConformance(env, rows, o = {}) {
   }
   return { total, entExact, exact, firstBad, entHist, globHist, unportedHist, shown };
 }
+
+/**
+ * A captured row polled while call 6 (the event consumer) was still running shows the signature
+ * of a half-finished consumer: events are still queued ([8BB5] below 0x9396) although entities
+ * for some of them (class 0xF particles at the event's x/y) already exist. Returns the number of
+ * such already-spawned particles (0 for an ordinary row).
+ */
+export function midConsumeParticles(row) {
+  if (!row.q) return 0;
+  const g = (a) => parseInt(row.g.substr((a - GLOBALS_BASE) * 2, 2), 16) | (parseInt(row.g.substr((a + 1 - GLOBALS_BASE) * 2, 2), 16) << 8);
+  const top = g(0x8bb5);
+  if (top === 0x9396) return 0;
+  const q = hexBytes(row.q);
+  const be = (a) => (q[a - 0x9270] << 8) | q[a - 0x9270 + 1];
+  const present = new Set();
+  for (const e of row.e) { const b = hexBytes(e.hex); if ((b[2] | (b[3] << 8)) === 0xf) present.add(`${b[6] | (b[7] << 8)},${b[8] | (b[9] << 8)}`); }
+  let n = 0;
+  for (let si = top + 2; si < 0x9396 && be(si) === 0xeeee;) {
+    const tag = be(si + 2), type = be(si + 4);
+    if (type === 0xf && present.has(`${be(si + 6)},${be(si + 8)}`)) n++;
+    si += 4 + 2 * tag; // marker, tag and type, then tag-1 data words
+  }
+  return n;
+}
