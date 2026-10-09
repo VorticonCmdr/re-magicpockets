@@ -1,67 +1,54 @@
-// Rng_NextValue (1000:11fc) -- the game's per-frame PRNG, advanced exactly once per frame (main
-// loop call #13, docs/engine.md). Direct instruction-level transliteration of the raw disassembly
-// (the Ghidra decompile mangles this one badly -- register-only 8-bit rotate/XOR/shift chain, not
-// worth reading as pseudo-C). See docs/engine.md's main-loop table for the call-site context.
+// Rng_NextValue (1000:11fc) -- the game's PRNG, advanced once per main-loop iteration (call #13,
+// docs/engine.md) and occasionally from other call sites. Instruction-level transliteration of
+// the disassembly (register-only 8-bit rotate/XOR/shift chain).
 //
-// CAVEAT: the very first RCR AL,1 (1000:1207) consumes the CPU carry flag *as left by whatever
-// instruction ran immediately before this function was called* -- the disassembly never sets it
-// explicitly first. True bit-for-bit parity with the original's frame-by-frame RNG stream would
-// require tracking CPU flags across the entire main loop, which is out of scope (this project's
-// non-goals already exclude demo/replay-file compatibility, the only thing that would need exact
-// parity). This port assumes carry-in = 0 at the start of every call, which still produces a
-// full, well-mixed 16-bit LFSR-style stream -- just not one guaranteed identical to a real trace.
+// Two properties are `[PROVEN]` against a live DOSBox capture of the attract demo (1154
+// consecutive iterations, tools/attract-capture/, 2026-10-09):
+//   1. Every x86 XOR clears the carry flag, so each RCR that follows an XOR starts with carry 0.
+//      An earlier version of this file chained the carry straight through the XORs and could not
+//      reproduce a single real value.
+//   2. The carry the FIRST `rcr al,1` (1000:1207) consumes is whatever the caller left in CF. At
+//      the main loop's call #13 it was 1 on every one of the 1111 transitions that were a single
+//      step, and never 0. So next() defaults to carryIn = 1.
+// 43 of the 1154 observed transitions advanced the state more than once between two iteration
+// samples: something else calls this function too (not identified; ledger item 13).
 
 'use strict';
 
 function rcr8(value, cf) {
-  const bitOut = value & 1;
-  const newValue = ((value >>> 1) | (cf << 7)) & 0xff;
-  return [newValue, bitOut];
-}
-
-function rcl8(value, cf) {
-  const newValue = ((value << 1) | cf) & 0xff;
-  return newValue & 0xff;
+  return [((value >>> 1) | (cf << 7)) & 0xff, value & 1];
 }
 
 export class Rng {
   constructor(seed = 0x1234) {
     this.state = seed & 0xffff; // mirrors [0x8b71]
-    this.lastValue = 0; // mirrors [0x8b6b], this frame's output
+    this.lastValue = 0; // mirrors [0x8b6b], the last output
   }
 
-  /** Advance the LFSR by one step (call once per frame, like the original's call #13). */
-  next() {
-    let L = this.state & 0xff;
-    let H = (this.state >>> 8) & 0xff;
-    let DL = L;
-    let CL = H;
-    let AL = CL; // = H
-    let cf = 0; // see CAVEAT above
+  /** Advance the generator one step. `carryIn` is the CF the caller leaves (1 at call #13). */
+  next(carryIn = 1) {
+    let DL = this.state & 0xff;
+    let CL = (this.state >>> 8) & 0xff;
+    let AL = CL;
+    let cf = carryIn;
 
     [AL, cf] = rcr8(AL, cf); // 1207
-    CL = CL ^ AL; // 1209
+    CL ^= AL; cf = 0; // 1209 xor clears CF
     [AL, cf] = rcr8(AL, cf); // 120b
     [AL, cf] = rcr8(AL, cf); // 120d
-    CL = CL ^ AL; // 120f
+    CL ^= AL; cf = 0; // 120f
     [AL, cf] = rcr8(AL, cf); // 1211
-    DL = DL ^ AL; // 1213
+    DL ^= AL; cf = 0; // 1213
     [AL, cf] = rcr8(AL, cf); // 1215
     [AL, cf] = rcr8(AL, cf); // 1217
-    AL = AL & 1; // 1219
+    AL &= 1; // 1219
 
     const dlBit7 = (DL >>> 7) & 1;
-    DL = (DL << 1) & 0xff; // 121b SHL DL,1
-    cf = dlBit7;
-
-    CL = rcl8(CL, cf); // 121d RCL CL,1
+    DL = (DL << 1) & 0xff; // 121b SHL DL,1 -> CF = old bit 7
+    CL = ((CL << 1) | dlBit7) & 0xff; // 121d RCL CL,1
 
     AL = (AL + DL) & 0xff; // 121f ADD AL,DL
-    DL = AL; // 1221
-    const AH = CL; // 1223
-    AL = DL; // 1225
-
-    this.state = ((AH << 8) | AL) & 0xffff;
+    this.state = ((CL << 8) | AL) & 0xffff;
     this.lastValue = this.state;
     return this.lastValue;
   }

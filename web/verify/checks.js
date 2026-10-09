@@ -17,6 +17,7 @@ import { GROUND_TABLE } from '../core/tile-collision.js';
 import { RAW_BANKS } from '../core/palette.js';
 import { decodeDemoTape, DemoPlayback, INPUT_BITS, DEMO_RNG_SEED } from '../core/demo-tape.js';
 import { FRAME_ORDER } from '../engine/frame.js';
+import { Rng } from '../engine/rng.js';
 
 export function makeChecker() {
   const results = [];
@@ -219,8 +220,42 @@ export async function checkFrameOrder(ctx) {
   return results;
 }
 
+/** DOSBox ground truth (tools/attract-capture/autoplay.capture.json) against the port's Rng. */
+export async function checkCaptureRng(ctx) {
+  const { results, check, note } = makeChecker();
+  let cap = null;
+  try {
+    cap = JSON.parse(new TextDecoder().decode(await ctx.fetchRaw('tools/attract-capture/autoplay.capture.json')));
+  } catch { /* no capture committed or served */ }
+  if (!cap) {
+    note('DOSBox capture not found', 'tools/attract-capture/autoplay.capture.json is missing; RNG-vs-DOS checks skipped');
+    return results;
+  }
+  const rows = cap.rows;
+  check('capture rows are consecutive iterations starting at 0', rows.every((r, i) => r.done === i), `${rows.length} rows`);
+  check('capture row 0 holds the demo seed 0x3141 (12609)', rows[0].rng === 12609, `got ${rows[0].rng}`);
+  const rng = new Rng();
+  const byStep = new Array(7).fill(0); // index k = transitions first explained by k steps; 0 = none
+  for (let i = 1; i < rows.length; i++) {
+    let found = 0;
+    for (let k = 1; k <= 5 && !found; k++) {
+      for (let mask = 0; mask < (1 << k) && !found; mask++) {
+        rng.state = rows[i - 1].rng;
+        for (let j = 0; j < k; j++) rng.next((mask >> j) & 1);
+        if (rng.state === rows[i].rng) found = k;
+      }
+    }
+    byStep[found]++;
+  }
+  const total = rows.length - 1;
+  check('at least 90% of captured RNG transitions are exactly one Rng.next() (carry-in 1)', byStep[1] / total >= 0.9, `${byStep[1]}/${total}`);
+  check('all but at most 5 transitions are reproduced by 5 or fewer Rng.next() calls with some carry-in', byStep[0] <= 5, `${byStep[0]} unexplained`);
+  note('RNG calls outside main-loop call 13', `${byStep[2]} two-step, ${byStep[3]} three-step, ${byStep[4]} four-step, ${byStep[5]} five-step, ${byStep[0]} unexplained of ${total}; clustered in iterations ~1000-1400; the extra caller is not identified (ledger item 13)`);
+  return results;
+}
+
 export async function runAllChecks(ctx) {
-  const groups = [checkRncCorpus, checkPap, checkCollisionTable, checkPalettes, checkSoundBanks, checkLevelScripts, checkDemoTape, checkFrameOrder];
+  const groups = [checkRncCorpus, checkPap, checkCollisionTable, checkPalettes, checkSoundBanks, checkLevelScripts, checkDemoTape, checkFrameOrder, checkCaptureRng];
   const results = [];
   for (const g of groups) results.push(...await g(ctx));
   return { results };
