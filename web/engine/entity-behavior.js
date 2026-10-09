@@ -13,7 +13,7 @@ import { VISIBLE_LIST, ENTITY_ARRAY, findByClass } from './ds-memory.js';
 import { runScript } from './script-runner.js';
 import { terrainCollision, overlapTest } from './ground-collision.js';
 import { fireAndCharge } from './fire.js';
-import { behaviorKind2 } from './enemy.js';
+import { behaviorKind2, behaviorKind5 } from './enemy.js';
 import { Rng } from './rng.js';
 
 export const G = {
@@ -235,10 +235,30 @@ export function updateBehavior(m, si, ctx) {
     if (kind === 0) return;
     if (kind === 1) { behaviorKind1(m, si, ctx); return; }
     if (kind === 2) { behaviorKind2(m, si, ctx); return; }
-    if (kind === 4 || kind === 5 || kind === 6 || kind === 7) { ctx.unported.add(`behavior kind ${kind}`); return; }
+    if (kind === 5) { behaviorKind5(m, si, ctx); return; }
+    if (kind === 4 || kind === 6 || kind === 7) { ctx.unported.add(`behavior kind ${kind}`); return; }
     interactions(m, si, ctx); // CB07
   }
   if (kind === 3) behaviorKind3(m, si, ctx); // CB10
+}
+
+/** 1000:241F Entity_ResetExtendedFields. */
+function resetExtendedFields(m, si) {
+  for (const o of [0x3e, 0x40, 0x3f, 0x39, 0x36, 0x37, 0x38, 0x3a, 0x3b, 0x3c]) m.w8(si + o, 0);
+  for (const o of [0x24, 0x26, 0x28, 0x2a, 0x2c, 0x2e, 0x30, 0x32]) m.w16(si + o, 0);
+}
+
+/** 1000:C961 Entity_FreeSlot: drop `si` from the pointer array and compact it. */
+export function freeSlot(m, si) {
+  let di = ENTITY_ARRAY;
+  let ax;
+  do { ax = m.u16(di); di += 2; } while (si !== ax);
+  m.w16(di - 2, 0);
+  resetExtendedFields(m, si);
+  m.w16(si + 2, 0);
+  if (di >= 0x91a8) return;
+  do { ax = m.u16(di); di += 2; m.w16(di - 4, ax); } while (di !== 0x91a8);
+  m.w16(di - 2, 0);
 }
 
 /** 1000:C91D Entity_UpdateAll. `only` restricts which entity pointers run (for staged porting). */
@@ -262,7 +282,7 @@ export function updateAll(m, ctx, only = null) {
         if (!freed) continue;
       }
     }
-    ctx.unported.add('entity freed (C961)'); // C950: FreeSlot compacts the pointer array
+    freeSlot(m, si); // C950
     di = m.u16(G.CUR_LIST) + 2;
   }
 }

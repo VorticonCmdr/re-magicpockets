@@ -414,21 +414,41 @@ function sideContact(m, bx, withAlign) {
 function sideEnemy(m, bx, ctx) {
   const face = m.u16(bx + 0x14);
   if (face === 0) return;
-  if (m.u16(bx + 4) !== 2) { ctx.unported.add(`E8D7/E961 kind ${m.u16(bx + 4)}`); return; }
   const probe = face === 8 ? R.CC : R.CB;
+  if (m.u16(bx + 4) === 5) { // E940 / E9CA: turn around at a wall
+    if (m.u8(probe) === 0) return;
+    if (m.u16(bx + 2) === 6) return;
+    alignToWall(m, bx);
+    m.w16(bx + 0x14, m.u16(bx + 0x14) ^ 0xc);
+    return;
+  }
+  if (m.u16(bx + 4) !== 2) { ctx.unported.add(`E8D7/E961 kind ${m.u16(bx + 4)}`); return; }
   const hit2 = face === 8 ? R.C8 : R.C7;
   if (m.u8(probe) === 0) return;
   sideContact(m, bx, m.u8(hit2) !== 0);
 }
 
 /** 1000:F290 (kind 2 floor contact) and F37D (no floor). */
+function floorProp(m, bx, ctx) { // kind 5: E703 -> F3EA, E6A4/E6D5 -> E740
+  const cls = m.u16(bx + 2);
+  if (m.u8(R.CA) === 0) { ctx.unported.add('F3EA kind 5 without floor'); return; }
+  if (m.u8(R.C6) !== 0) { if (cls === 6) return; alignToFloor(m, bx); } // E734
+  m.w16(bx + 0x24, m.u16(bx + 0x24) | 2); // E740
+  if (m.s8(bx + 0x26) < 0) { ctx.unported.add('E74D kind 5 bounce'); return; }
+  if (m.u8(bx + 1) !== 0) return; // E7F9
+  const stay = [0x15, 0x40, 0x41, 0x43, 0x24, 0x26, 0x29, 0x1a, 0x2a, 0x22, 0x1c];
+  if (!stay.includes(cls)) ctx.unported.add(`E846 kind 5 class 0x${cls.toString(16)}`);
+}
+
 function floorEnemy(m, bx, ctx) {
+  if (m.u16(bx + 4) === 5) { floorProp(m, bx, ctx); return; }
   const cls = m.u16(bx + 2);
   if (m.u8(R.CA) === 0) { // E703 -> F37D
-    if (cls !== 0x13) { ctx.unported.add(`F37D class 0x${cls.toString(16)}`); return; }
-    if (m.u8(bx + 1) !== 0) return;
-    m.w16(bx + 0xa, 0x24);
-    m.w8(bx + 1, 0x8d); m.w16(bx + 0xc, 0xcfd1);
+    const frame = { 0x13: 0x24, 0x23: 0xdc, 0x14: 0xc }[cls];
+    if (frame === undefined) { ctx.unported.add(`F37D class 0x${cls.toString(16)}`); return; }
+    if (cls !== 0x14 && m.u8(bx + 1) !== 0) return;
+    m.w16(bx + 0xa, frame);
+    if (m.u8(bx + 1) === 0) { m.w8(bx + 1, 0x8d); m.w16(bx + 0xc, 0xcfd1); }
     return;
   }
   if (m.u8(R.C6) !== 0) alignToFloor(m, bx); // E6D5 -> F28D
@@ -451,6 +471,7 @@ function floorEnemy(m, bx, ctx) {
 /** 1000:E5B3 for kind 2 (ceiling). */
 function ceilingEnemy(m, bx) {
   if (m.u8(R.C9) === 0) return;
+  if (m.u16(bx + 4) === 5) { m.w16(bx + 0x24, m.u16(bx + 0x24) | 1); return; } // E66F is not ported: only the flag
   if (m.u8(R.C5) !== 0) alignToCeiling(m, bx);
   m.w16(bx + 0x24, m.u16(bx + 0x24) | 1);
 }
@@ -463,7 +484,8 @@ function verticalEnemy(m, bx, ctx) {
 
 /** The enemy half of 1000:E14F (world 1-2, kinds other than the player). */
 function resolveEnemy(m, bx, di, ctx) {
-  if (m.u16(bx + 4) !== 2) { ctx.unported.add(`E14F kind ${m.u16(bx + 4)}`); return; }
+  const kind = m.u16(bx + 4);
+  if (kind !== 2 && kind !== 5) { ctx.unported.add(`E14F kind ${kind}`); return; }
   const vy = m.s8(bx + 0x26);
   let dl, dh;
   if (vy > 0) { scanLeft(m, bx, di); dl = m.s8(R.C9); } else { scanFloor(m, bx, di); dl = m.s8(R.CA); }

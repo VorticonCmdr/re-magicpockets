@@ -279,8 +279,8 @@ export async function checkConformance(ctx) {
   check('at least 694 of 699 transitions reproduce entities 0-2 byte for byte', r.entExact >= 694, `${r.entExact}/${r.total}`);
   check('at least 595 of 699 transitions also reproduce every non-scratch global', r.exact >= 595, `${r.exact}/${r.total}`);
   const all = runConformance(env, cap.rows, { ignoreScratch: true });
-  check('at least 483 of 699 transitions reproduce all 8 captured entities byte for byte', all.entExact >= 483, `${all.entExact}/${all.total}`);
-  check('at least 434 of 699 transitions reproduce all 8 entities and every non-scratch global', all.exact >= 434, `${all.exact}/${all.total}`);
+  check('at least 654 of 699 transitions reproduce all 8 captured entities byte for byte', all.entExact >= 654, `${all.entExact}/${all.total}`);
+  check('at least 592 of 699 transitions reproduce all 8 entities and every non-scratch global', all.exact >= 592, `${all.exact}/${all.total}`);
   const top = [...all.unportedHist].sort((a, b) => b[1] - a[1]).slice(0, 6).map(([k, n]) => `${k} x${n}`).join(', ');
   note('unported branches still hit', top || 'none');
   return results;

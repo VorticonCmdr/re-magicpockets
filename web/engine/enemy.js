@@ -78,21 +78,30 @@ function aiDecide(m, si, ctx) {
   aiOpcodes(m, si, ctx);
 }
 
-/** 1000:6320: read one AI opcode through the pointer in [8C77] and run it. */
+/** 1000:6320: run AI opcodes through the pointer in [8C77] until one ends the decision. */
 function aiOpcodes(m, si, ctx) {
-  let di = m.u16(0x8c77);
-  const op = m.u8(di);
-  di += 1;
-  m.w16(0x8c77, di);
-  if (op === 0x6e) { // 6350
-    const set = m.u8(si + 0x39);
-    if (set === 0 || set === 0xa || m.u8(di - 2) === 0x71) { aiTurn(m, si, di, ctx); return; }
-    rollRandom(m, si, ctx);
-    if (m.u16(0x8be5) !== 0) aiTurn(m, si, di, ctx);
+  for (let guard = 0; guard < 32; guard++) {
+    let di = m.u16(0x8c77);
+    const op = m.u8(di);
+    di += 1;
+    m.w16(0x8c77, di);
+    if (op === 0x6e) { // 6350
+      const set = m.u8(si + 0x39);
+      if (set === 0 || set === 0xa || m.u8(di - 2) === 0x71) { aiTurn(m, si, di, ctx); return; }
+      rollRandom(m, si, ctx);
+      if (m.u16(0x8be5) !== 0) aiTurn(m, si, di, ctx);
+      return;
+    }
+    if (op === 0x73) { // 648E: scan-then-react
+      m.w16(0x8c2b, 0);
+      const cls = m.u16(si + 2), set = m.u8(si + 0x39);
+      if (cls === 0x2c || set === 5 || set === 0xa || (cls === 0x14 && set === 0)) { ctx.unported.add(`AI opcode 's' class 0x${cls.toString(16)} set ${set}`); return; }
+      continue; // 6555 -> 6320
+    }
+    const names = { 0x70: 'p', 0x71: 'q', 0x72: 'r', 0x74: 't' };
+    if (names[op]) ctx.unported.add(`AI opcode '${names[op]}'`); // any other byte (0x6F, ...) ends the decision
     return;
   }
-  const names = { 0x70: 'p', 0x71: 'q', 0x72: 'r', 0x73: 's', 0x74: 't' };
-  if (names[op]) ctx.unported.add(`AI opcode '${names[op]}'`);
 }
 
 /** 1000:5F56 world 1, class 0x13. */
@@ -187,4 +196,14 @@ export function behaviorKind2(m, si, ctx) {
   if (m.u8(si + 0x39) === 0xf) { ce87(); return; }
   if (m.u8(si + 0x39) === 0x15) return;
   ce93();
+}
+
+/** 1000:D023 kind 5 (props and pickups). */
+export function behaviorKind5(m, si, ctx) {
+  const cls = m.u16(si + 2);
+  if (cls === 0x17) return;
+  if (m.u8(si + 0x40) === 0xf6) { ctx.unported.add(`kind 5 tracking entity class 0x${cls.toString(16)}`); return; }
+  terrainCollision(m, findByClass(m, 1), si, ctx); // D584
+  if (cls !== 0xe) return;
+  ctx.unported.add('kind 5 class 0xe');
 }

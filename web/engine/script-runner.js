@@ -154,6 +154,7 @@ function handler(m, si, di, op, ctx) {
     case 54: m.w16(si + 0xc, 0); m.w8(si + 1, 0); return ABORT; // ResetScript
     case 55: // DispatchSpeedTickByKind
       if (m.u16(si + 4) === 1) { tickKind1(m, si, di); return ABORT; }
+      if (m.u16(si + 4) === 2) { tickKind2(m, si, di, ctx); return ABORT; }
       ctx.unported.add(`opcode 55 kind ${m.u16(si + 4)}`);
       return ABORT;
     case 21: { // WaitUntilSyncTriple
@@ -282,4 +283,33 @@ function spawnEffect(m, si, di, ctx) {
   m.w16(0x8c27, m.u16(0x8c27) + (left ? dxl : dxr));
   pushEvent5(m);
   return di;
+}
+
+/** 1000:DBC2 Entity_TickKind2VerticalBounce (always parks). */
+function tickKind2(m, si, di, ctx) {
+  if (m.u16(si + 0x26) === 0) { m.w8(si + 0x26, m.u8(di)); m.w8(si + 0x27, m.u8(di + 1)); di += 2; }
+  let ax = sx8(m.u8(si + 0x26));
+  let skipVertical = false;
+  if (ax < 0) { moveDown(m, si, -ax); ax = -ax === 0 ? 0 : ax; }
+  else if (ax !== 0) moveUp(m, si, ax);
+  else {
+    m.w8(si + 0x27, (-m.s8(si + 0x27)) & 0xff);
+    if (m.s8(si + 0x27) >= 0) moveDown(m, si, 0);
+    else { ax = -sx8(m.u8(si + 0x27)); skipVertical = true; }
+  }
+  if (!skipVertical) {
+    if (ax <= -15) return; // jg DBFF fails: park
+    m.w8(si + 0x26, m.u8(si + 0x26) - 1);
+    if (m.s8(si + 0x27) < 0) return;
+    ax = m.s8(si + 0x27);
+  }
+  if (m.u16(si + 0x14) === 0) return;
+  moveHorizontalByFlagsRunner(m, si, ax);
+}
+
+/** 1000:D5E2 */
+function moveHorizontalByFlagsRunner(m, si, ax) {
+  const dx = m.u16(si + 0x24);
+  if (m.u16(si + 0x14) === 4) { if ((dx & 4) === 0) m.w16(si + 6, m.u16(si + 6) - ax); return; }
+  if ((dx & 8) === 0) m.w16(si + 6, m.u16(si + 6) + ax);
 }
