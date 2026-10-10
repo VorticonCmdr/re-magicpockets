@@ -528,7 +528,7 @@ export async function checkConformance(ctx) {
     }
     // World 4 (one session, warps 8498 -> sub 1, then sub 2 and sub 5 by the level codes): three full segments, the generator checked every row.
     // Rows polled between a roll and call #13 (call #13 has carry 0 in world 4) are recognised by the generator alone (see runLiveFree).
-    for (const [file, segs, world = 4, pinHurt = false] of [
+    for (const [file, segs, world = 4, pinHurt = false, noGod = false] of [
       ['live13-w4', [[1, 52, 726, 660], [2, 739, 1413, 660], [5, 1426, 2100, 640]]],
       ['live14-w4b', [[3, 52, 726, 630], [4, 739, 1413, 640]]],
       ['live15-w4c', [[6, 52, 726, 660], [7, 739, 1413, 650], [8, 1426, 2278, 780]]],
@@ -539,6 +539,7 @@ export async function checkConformance(ctx) {
       ['live18-w2b', [[3, 52, 726, 620], [5, 740, 1414, 630], [6, 1427, 2166, 700]], 2, true],
       ['live19-w2c', [[7, 52, 726, 660]], 2, true],
       ['live19-w2c', [[6, 739, 1969, 1100, true]], 1, true], // the boss level (world 1 sub-level 6), the hero on skates for part of it
+      ['live21-w2d', [[2, 52, 726, 640], [4, 739, 1413, 650], [5, 1426, 2036, 570]], 2, false, true], // played without god mode: the hero is hurt, loses hearts and bounces
       ['live20-w1c', [[5, 52, 726, 600], [3, 740, 1414, 650], [4, 1427, 2011, 570]], 1, false], // sub-level 5 from a clean warp: the side handler's DI carries over to the ceiling handler
     ]) {
       let cap = null;
@@ -562,7 +563,7 @@ export async function checkConformance(ctx) {
           b.m.w16(0x8b71, wc(exc[from], 0x8b71)); b.m.w16(0x8b6b, wc(exc[from], 0x8b6b));
           start = b.m;
         }
-        return runLiveFree(e, cap.rows, { start, from, to, entitiesOnly: true, checkRng: true, force: [[0x8b96, 50]], pinHurtTimer: pinHurt, levelFiles: () => ({ script, map: e.map }) });
+        return runLiveFree(e, cap.rows, { start, from, to, entitiesOnly: true, checkRng: true, force: noGod ? [] : [[0x8b96, 50]], pinHurtTimer: pinHurt, levelFiles: () => ({ script, map: e.map }) });
       };
       for (const [sub, from, to, min, loadStart] of segs) {
         const ok = exc[from] && wc(exc[from], 0x8b89) === world && wc(exc[from], 0x8b8b) === sub;

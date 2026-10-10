@@ -901,40 +901,9 @@ function aiSeekPrize(m, si, di, ctx) {
   if (m.s16(0x8c1d) > 1) return 'next';
   if (flags !== 0 && (flags & m.u16(si + 0x14)) === 0) { aiTurn(m, si, di, ctx); return 'end'; } // 6B13
   const cls = m.u16(si + 2); // 6A82
-  if (cls === 0x57) { // 6E27
-    if (m.u8(si + 0x40) === 0x43) { // 6E66: the speed comes from a table at 0xED08 (the index is not applied: the word at 0xED08 is read)
-      m.w16(si + 0x26, m.u16(0xed08));
-      m.w8(si + 1, 0x7d); m.w16(si + 0xc, 0xcd4b);
-      return 'end';
-    }
-    const item = findByClass(m, 0x43);
-    let dx = (m.u16(item + 6) - m.u16(si + 6)) & 0xffff;
-    if (dx & 0x8000) dx = (-dx) & 0xffff;
-    if ((dx & 0xffe0) !== 0) return 'next';
-    m.w8(si + 0x40, 0x43); m.w16(si + 0x10, 0x38); m.w16(si + 0x12, 0x3b); m.w16(si + 0xa, 0x38);
-    m.w8(item + 0x40, 0x19);
-    m.w16(0x8c29, 0x2f);
-    pushEntityEvent(m, si);
-    return 'end';
-  }
+  if (cls === 0x57) return prizeClass57(m, si);
   const farFrom = (item) => { let d = (m.u16(item + 6) - m.u16(si + 6)) & 0xffff; if (d & 0x8000) d = (-d) & 0xffff; return (d & 0xffe0) !== 0; };
-  if (cls === 0x4b) { // 6D0E: pick up the item (class 0x40) and swap the two pointer-array slots
-    if (m.u8(si + 0x40) === 0x40) { // 6D58
-      if (m.s16(0x8c1b) > 1) return 'next';
-      if (m.u8(si + 1) === 0xe5) return 'end';
-      m.w8(si + 1, 0xe5); m.w16(si + 0xc, 0xd7e1);
-      return 'next';
-    }
-    const item = findByClass(m, 0x40);
-    if (farFrom(item)) return 'next';
-    if (m.u8(item + 0x40) === 0xf6) return 'end';
-    m.w8(si + 0x40, 0x40); m.w16(item + 0x2c, si); m.w16(si + 0x2c, item); m.w8(item + 0x40, 0xf6); m.w8(item, 0);
-    if (item > si) return 'end';
-    const slotOf = (e) => { let a = 0x9090; do a += 2; while (m.u16(a) !== e); return a; };
-    const a1 = slotOf(si), a2 = slotOf(item);
-    m.w16(a2, si); m.w16(a1, item);
-    return 'end';
-  }
+  if (cls === 0x4b) return prizeClass4b(m, si);
   if (cls === 0x51) { // 6DC1
     const item = findByClass(m, 0x41);
     if (farFrom(item)) return 'next';
@@ -953,6 +922,44 @@ function aiSeekPrize(m, si, di, ctx) {
   m.w8(si + 0x38, ((m.u16(0x8b6b) & 3) + 6) & 0xff);
   m.w16(si + 0x2a, 0);
   m.w8(si, 0);
+  return 'end';
+}
+
+/** 1000:6D0E: the class-0x4B enemy goes for the item (class 0x40) and the two pointer-array slots are swapped. */
+function prizeClass4b(m, si) {
+  const farFrom = (item) => { let d = (m.u16(item + 6) - m.u16(si + 6)) & 0xffff; if (d & 0x8000) d = (-d) & 0xffff; return (d & 0xffe0) !== 0; };
+  if (m.u8(si + 0x40) === 0x40) { // 6D58
+    if (m.s16(0x8c1b) > 1) return 'next';
+    if (m.u8(si + 1) === 0xe5) return 'end';
+    m.w8(si + 1, 0xe5); m.w16(si + 0xc, 0xd7e1);
+    return 'next';
+  }
+  const item = findByClass(m, 0x40);
+  if (farFrom(item)) return 'next';
+  if (m.u8(item + 0x40) === 0xf6) return 'end';
+  m.w8(si + 0x40, 0x40); m.w16(item + 0x2c, si); m.w16(si + 0x2c, item); m.w8(item + 0x40, 0xf6); m.w8(item, 0);
+  if (item > si) return 'end';
+  const slotOf = (e) => { let a = 0x9090; do a += 2; while (m.u16(a) !== e); return a; };
+  const a1 = slotOf(si), a2 = slotOf(item);
+  m.w16(a2, si); m.w16(a1, item);
+  return 'end';
+}
+
+/** 1000:6E27: the class-0x57 enemy goes for the item (class 0x43). */
+function prizeClass57(m, si) {
+  if (m.u8(si + 0x40) === 0x43) { // 6E66: the speed comes from a table at 0xED08 (the index is not applied: the word at 0xED08 is read)
+    m.w16(si + 0x26, m.u16(0xed08));
+    m.w8(si + 1, 0x7d); m.w16(si + 0xc, 0xcd4b);
+    return 'end';
+  }
+  const item = findByClass(m, 0x43);
+  let dx = (m.u16(item + 6) - m.u16(si + 6)) & 0xffff;
+  if (dx & 0x8000) dx = (-dx) & 0xffff;
+  if ((dx & 0xffe0) !== 0) return 'next';
+  m.w8(si + 0x40, 0x43); m.w16(si + 0x10, 0x38); m.w16(si + 0x12, 0x3b); m.w16(si + 0xa, 0x38);
+  m.w8(item + 0x40, 0x19);
+  m.w16(0x8c29, 0x2f);
+  pushEntityEvent(m, si);
   return 'end';
 }
 
@@ -1022,9 +1029,34 @@ function noticeHero(m, si, di, ctx) {
     }
     if (m.u8(0x8b96) !== 0) return 'next';
     const world = m.u16(0x8b89) || m.u16(0x8b8b);
+    const set = (state, script) => { m.w8(si + 1, state); m.w16(si + 0xc, script); };
+    if (world >= 2 && world <= 4) { // 69EC / 6A2C / 6A4A / 6A5D: the per-world classes
+      const a8 = m.u16(0x8c1b) & 0xff;
+      if (world === 2) {
+        if (cls === 0x4b) { // 6CB2
+          if (m.u8(si + 0x40) === 0x40) return prizeClass4b(m, si);
+          m.w16(si + 0x26, m.u16(0xed1c + 2 * m.u16(0x8c1b)));
+          set(0xcc, 0xd4f7);
+          return 'end';
+        }
+        if (cls === 0x4c) { set(0xd1, 0xd555); return 'end'; } // 6D74
+        if (cls === 0x4a) { const al = (m.u8(si + 0x3d) - 1) & 0xff; if ((al & 0x80) === 0) m.w8(si + 0x3d, al); return 'end'; } // 6C75
+        return 'next';
+      }
+      if (world === 3) {
+        if (cls === 0x51) { m.w8(si + 0x32, a8); set(0xe1, 0xd799); } // 6DB1 (class 0x50: 6D9C is a RET)
+        return 'end';
+      }
+      if (cls === 0x57) { // 6E11
+        if (m.u8(si + 0x40) === 0x43) return prizeClass57(m, si);
+        m.w8(si + 0x32, a8); set(0xea, 0xd828); return 'end';
+      }
+      if (cls === 0x58) { m.w8(si + 0x32, a8); set(0xed, 0xd85b); return 'end'; } // 6E87
+      if (cls === 0x59) { m.w16(si + 0x26, m.u16(0xed08 + 2 * m.u16(0x8c1b))); set(0xe7, 0xd80a); return 'end'; } // 6EAC
+      return 'end'; // 0x5a: 6EA1 is a RET
+    }
     if (world !== 1) { ctx.unported.add(`AI attack world ${world}`); return 'end'; }
     if (m.u8(si + 0x39) !== 5) return 'next';
-    const set = (state, script) => { m.w8(si + 1, state); m.w16(si + 0xc, script); };
     if (cls === 0x13) { // 6BAA
       if (m.u8(si + 0x39) !== 0) { m.w8(si + 0x32, m.u16(0x8c1b) & 0xff); set(0x8b, 0xcf7c); }
       return 'end';
