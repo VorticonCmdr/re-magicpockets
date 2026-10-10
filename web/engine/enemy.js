@@ -639,7 +639,27 @@ function followParent(m, si, ctx) {
   m.w16(si + 6, m.u16(bx + 6));
   m.w16(si + 8, m.u16(bx + 8));
   if (cls === 0x1a || cls === 0x41) { carriedItem(m, si, bx, ctx); return; } // D14A
-  if (cls === 0x40) { ctx.unported.add('D08D class 0x40 follower'); return; }
+  if (cls === 0x40) { // D08D: the item class 0x40 held by the hero (frames 6/7/9) or by a class-0x4b enemy (frames 5..9 plus an offset table at 0xEEFB)
+    const pc = m.u16(bx + 2);
+    if (pc === 3) {
+      if (m.u16(0x8c38) === 0x6b || m.u16(bx + 0xa) === 0x77) {
+        if (m.u16(bx + 0x14) === 4) { m.w16(si + 0xa, 9); m.w16(si + 6, 0x86); m.w16(si + 8, 0x53); }
+        else { m.w16(si + 0xa, 7); m.w16(si + 6, 0xac); m.w16(si + 8, 0x52); }
+      } else m.w16(si + 0xa, 6);
+      return;
+    }
+    if (pc !== 0x4b) return;
+    m.w16(si + 6, m.u16(bx + 6)); m.w16(si + 8, m.u16(bx + 8));
+    const pf = m.s16(bx + 0xa), left = m.u16(bx + 0x14) === 4;
+    if (pf === 0x23 || pf === 0x24) m.w16(si + 0xa, 6);
+    else if (left) m.w16(si + 0xa, pf === 0x22 ? 9 : 5);
+    else m.w16(si + 0xa, pf === 0x22 ? 7 : 8);
+    const di = 0xeefb + 2 * ((pf - 0x1e) & 0xffff);
+    const cx = m.s8(di), ay = m.s8(di + 1);
+    if (left) { m.w16(si + 6, m.u16(si + 6) + cx); m.w16(si + 8, m.u16(si + 8) + ay); }
+    else { m.w16(si + 6, m.u16(si + 6) + 0x10 - cx); m.w16(si + 8, m.u16(si + 8) + ay); }
+    return;
+  }
 }
 
 /** 1000:D14A: the item the player carries: stays in his hands, follows the walk cycle. */
@@ -897,7 +917,32 @@ function aiSeekPrize(m, si, di, ctx) {
     pushEntityEvent(m, si);
     return 'end';
   }
-  if (cls !== 0x20) { if (cls === 0x4b || cls === 0x51) ctx.unported.add(`AI 6A82 class 0x${cls.toString(16)}`); return 'end'; }
+  const farFrom = (item) => { let d = (m.u16(item + 6) - m.u16(si + 6)) & 0xffff; if (d & 0x8000) d = (-d) & 0xffff; return (d & 0xffe0) !== 0; };
+  if (cls === 0x4b) { // 6D0E: pick up the item (class 0x40) and swap the two pointer-array slots
+    if (m.u8(si + 0x40) === 0x40) { // 6D58
+      if (m.s16(0x8c1b) > 1) return 'next';
+      if (m.u8(si + 1) === 0xe5) return 'end';
+      m.w8(si + 1, 0xe5); m.w16(si + 0xc, 0xd7e1);
+      return 'next';
+    }
+    const item = findByClass(m, 0x40);
+    if (farFrom(item)) return 'next';
+    if (m.u8(item + 0x40) === 0xf6) return 'end';
+    m.w8(si + 0x40, 0x40); m.w16(item + 0x2c, si); m.w16(si + 0x2c, item); m.w8(item + 0x40, 0xf6); m.w8(item, 0);
+    if (item > si) return 'end';
+    const slotOf = (e) => { let a = 0x9090; do a += 2; while (m.u16(a) !== e); return a; };
+    const a1 = slotOf(si), a2 = slotOf(item);
+    m.w16(a2, si); m.w16(a1, item);
+    return 'end';
+  }
+  if (cls === 0x51) { // 6DC1
+    const item = findByClass(m, 0x41);
+    if (farFrom(item)) return 'next';
+    if (m.u8(item + 0x40) === 0xf6) return 'end';
+    m.w8(si + 0x39, 0x41); m.w16(si + 0x10, 0x13); m.w16(si + 0x12, 0x13); m.w16(si + 0xa, 0x13); m.w8(item + 0x40, 0x19);
+    return 'end';
+  }
+  if (cls !== 0x20) return 'end';
   // 6BD0
   let dx = (m.u16(prize + 6) - m.u16(si + 6)) | 0;
   if (dx < 0) dx = -dx;
@@ -965,7 +1010,16 @@ function noticeHero(m, si, di, ctx) {
   const flags = targetDistance(m, si, bx);
   m.w16(0x8c2b, flags);
   const attack = () => { // 69CA, world 1, set 5
-    if (cls === 0x42) { ctx.unported.add('AI 6CD4'); return 'end'; }
+    if (cls === 0x42) { // 6CD4
+      if (m.s16(0x8c1b) < 2) {
+        rollRandom(m, si, ctx);
+        if (m.u16(0x8be5) !== 0) { m.w8(si + 1, 0xd7); m.w16(si + 0xc, 0xd5e5); return 'end'; }
+      }
+      const di = 0xed1c + 2 * m.u16(0x8c1b);
+      m.w8(si + 0x26, m.u8(di)); m.w8(si + 0x27, m.u8(di + 1));
+      m.w8(si + 1, 0xd6); m.w16(si + 0xc, 0xd5d1);
+      return 'end';
+    }
     if (m.u8(0x8b96) !== 0) return 'next';
     const world = m.u16(0x8b89) || m.u16(0x8b8b);
     if (world !== 1) { ctx.unported.add(`AI attack world ${world}`); return 'end'; }

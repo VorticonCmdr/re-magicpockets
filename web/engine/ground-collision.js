@@ -204,7 +204,11 @@ function land(m, si, bx, ctx) {
     const vy = m.s8(si + 0x26);
     if (ws === 0x11 ? vy > -10 : vy >= 0) return; // not falling fast enough to land
     if (t === 1) { landTarget1(m, si, bx, ctx); return; }
-    if (t === 0x15 || t === 0x43) { ctx.unported.add(`F489 landing target ${t}`); return; }
+    if (t === 0x15) { // F608
+      if (m.u8(R.E7) === 0) { m.w16(bx + 0x24, m.u16(bx + 0x24) | 2); snapWorldY(m, si); bounce(m, si, bx, ctx); }
+      return;
+    }
+    if (t === 0x43) { ctx.unported.add(`F489 landing target ${t}`); return; }
     landing = true;
   }
   // F4F6

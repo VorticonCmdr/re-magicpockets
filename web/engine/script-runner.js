@@ -112,7 +112,7 @@ function handler(m, si, di, op, ctx) {
     case 6: m.w8(si + 0x40, 0x19); return ABORT; // Kill
     case 9: return animTable(m, si, di, ctx); // PlayDirectionalAnimTable
     case 11: { // CallStateScript (type 0x42 special case not ported)
-      if (m.u16(si + 2) === 0x42) { ctx.unported.add('op11 on type 0x42'); return ABORT; }
+      if (m.u16(si + 2) === 0x42 && m.u8(0x8b96) === 0) return di + 1; // 3A16: with the hurt timer at zero the call is skipped
       const a = m.s8(di); di += 1;
       m.w16(si + 0x2a, di);
       return m.u16(NEG_STATE_SCRIPTS + 2 * a);
@@ -376,6 +376,9 @@ function handler(m, si, di, op, ctx) {
       m.w16(bx + 0xc, st >= 0 ? m.u16(0xcd88 + 2 * st) : m.u16(0xd996 + 2 * (st + 0x80)));
       return di;
     }
+    case 69: // 268E: the type-0x42 enemy's hit box depends on its frame
+      if (m.u16(si + 2) === 0x42) { if (m.u16(si + 0xa) === 0x5c) { m.w16(si + 0x1c, 0); m.w16(si + 0x20, 0x40); } else { m.w16(si + 0x1c, 0x10); m.w16(si + 0x20, 0x20); } }
+      return di;
     case 67: m.w8(si + 0x3d, m.u8(di)); return di + 1; // SetAnimLockFlag
     case 71: m.w8(0x8c0c, m.u8(di)); return di + 1; // SetGlobalEventTrigger
     case 76: m.w8(0x8c0e, 0); return di; // clears [8C0E]

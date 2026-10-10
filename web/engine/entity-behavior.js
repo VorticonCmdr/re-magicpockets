@@ -204,6 +204,72 @@ function downPressed(m, si, bx, ctx) {
   if (ax === 0x40 || ax === 0x43) unp(`class 0x${ax.toString(16)}`);
 }
 
+/** 1000:D984: the hero skates with speed `ax` (signed); 0 parks him in the idle skate pose. */
+function skateMove(m, si, bx, ax) {
+  if (ax === 0) {
+    if (m.u16(bx + 0x10) === 0x8a) return;
+    m.w16(bx + 0x10, 0x8a); m.w16(bx + 0x12, 0x8d); m.w16(bx + 0xa, 0x8a); m.w8(0x8b94, 0);
+    return;
+  }
+  const blocked = ((m.u16(si + 0x24) | m.u16(bx + 0x24)) ^ 0xff) & 0xff;
+  if (((m.u16(bx + 0x14)) & blocked & 0xff) === 0) return;
+  if (m.u8(bx + 1) !== 0) return;
+  m.w16(si + 6, m.u16(si + 6) + (ax & 0xfffc));
+  if (m.u8(si + 1) !== 0) return;
+  const q = Math.floor(((0xc - m.s8(0x8b97)) & 0xffff) / 4) & 0xff;
+  advanceAnim(m, bx, q); // 3178 with SI = the hero
+}
+
+/** 1000:D9E6 (target 0x15): the hero on skates. `si` is the world entity, `bx` the hero. */
+function skate(m, si, bx, ctx) {
+  const key = (m.u8(0x8b5e) | m.u16(si + 0x24) | m.u16(bx + 0x24)) & 0xffff;
+  const speed = () => (m.u16(bx + 0x14) === 4 ? m.s8(0x8b97) : -m.s8(0x8b97));
+  const pressing = (((key & 0xff) ^ 0xff) & 0x80) !== 0 && (m.u8(0x8b67) & 0x80) !== 0;
+  if (pressing) {
+    if (m.u16(bx + 0x10) !== 0x76 && m.u16(0x8bfb) === 0) { skateCoast(m, si, bx, speed); } // DA03 -> DA6F
+    else {
+      if (m.u16(bx + 0x10) !== 0x76) m.w16(0x8bfb, 0);
+      skateMove(m, si, bx, speed()); // DA10
+      if (m.u8(si + 1) === 0) {
+        if (m.u8(0x8b97) !== 0xc) m.w8(0x8b97, m.u8(0x8b97) + 2); // + sound 1CCF(0x39)
+        else {
+          m.w8(0x8b94, m.u8(0x8b94) + 1);
+          if (m.s8(0x8b94) >= 0x14 && m.u16(bx + 0x10) !== 0x76) { // + sound 1CCF(0x50)
+            m.w16(bx + 0x10, 0x76); m.w16(bx + 0x12, 0x79); m.w16(bx + 0xa, 0x76); m.w8(0x8b94, 0);
+          }
+        }
+      }
+    }
+  } else {
+    m.w16(0x8bfb, 1); // DA69
+    skateCoast(m, si, bx, speed);
+  }
+  // DA9C: steering and the jump / stop keys
+  const k2 = (((m.u8(0x8b5e) | m.u16(si + 0x24) | m.u16(bx + 0x24)) ^ 0xff) & m.u8(0x8b67)) & 0xff;
+  if (k2 & 2) { // DAFB: Down stops the skating
+    if (m.u8(0x8b97) !== 0 || m.u16(0x8bfd) !== 0 || m.u8(si + 1) !== 0) return;
+    m.w8(0x8b97, 4); m.w8(0x8b98, 0); m.w16(0x8bfb, 0); m.w8(0x8c04, 0);
+    m.w16(bx + 0x10, 0x41); m.w16(bx + 0x12, 0x48); m.w16(bx + 0xa, 0x40);
+    m.w16(0x8c29, 0x15); m.w16(0x8c27, m.u16(bx + 6)); m.w16(0x8c25, m.u16(bx + 8));
+    pushEvent3(m);
+    return;
+  }
+  m.w16(0x8bfd, 0);
+  if ((k2 & 1) && m.u8(si + 1) === 0 && m.u8(bx + 1) === 0) { m.w8(si + 1, 0x10); m.w16(si + 0xc, 0xc601); } // DB49
+  if (k2 & 4) { if (m.u16(bx + 0x14) !== 4) m.w16(bx + 0x14, m.u16(bx + 0x14) ^ 0xc); } // DAD2
+  else if (k2 & 8) { if (m.u16(bx + 0x14) !== 8) m.w16(bx + 0x14, m.u16(bx + 0x14) ^ 0xc); } // DADA
+}
+
+/** DA6F: no skate key held: coast and slow down. */
+function skateCoast(m, si, bx, speed) {
+  skateMove(m, si, bx, speed());
+  if (m.u8(si + 1) !== 0) return;
+  m.w8(0x8b95, m.u8(0x8b95) - 2);
+  if (m.s8(0x8b95) > 0) return;
+  m.w8(0x8b95, 6);
+  if (m.u8(0x8b97) !== 0) m.w8(0x8b97, m.u8(0x8b97) - 2);
+}
+
 /**
  * 1000:D67D (target 0x41, world 3): the hero floats on the carried float: the world entity `si` is moved by the keys (D73A), a splash event
  * every 17th tick, the world entity's vertical speed byte from [8C59], and the hero's frame advances while a key is held.
@@ -262,7 +328,8 @@ function handleCollisionOrStateDispatch(m, si, ctx) {
   const bx = findByClass(m, 3);
   const t = m.u8(G.TARGET);
   if (t === 1) { airSteer(m, si, bx); return; }
-  if (t === 0x15 || t === 0x21 || t === 0x43) { ctx.unported.add(`3CE8 target ${t}`); return; }
+  if (t === 0x15) { skate(m, si, bx, ctx); return; } // D9E6
+  if (t === 0x21 || t === 0x43) { ctx.unported.add(`3CE8 target ${t}`); return; }
   if (t === 0x41) { floatControls(m, si, bx, ctx); return; } // D67D
   if (t === 3 || t === 0xff) return;
   if (m.u8(bx + 1) === 0x63) return;

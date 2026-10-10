@@ -536,6 +536,9 @@ export async function checkConformance(ctx) {
       ['live16-w3b', [[2, 52, 726, 630], [3, 739, 1413, 630], [5, 1426, 2142, 610]], 3, true],
       // sub-levels 7 and 8 start from the first real row: the warp kept the hero floating (target 0x41), which a files-only boot does not know
       ['live17-w3c', [[6, 52, 726, 550], [7, 739, 1413, 570, true], [8, 1426, 2131, 700, true]], 3, true],
+      ['live18-w2b', [[3, 52, 726, 620], [5, 740, 1414, 630], [6, 1427, 2166, 700]], 2, true],
+      ['live19-w2c', [[7, 52, 726, 660]], 2, true],
+      ['live19-w2c', [[6, 739, 1969, 1100, true]], 1, true], // the boss level (world 1 sub-level 6), the hero on skates for part of it
     ]) {
       let cap = null;
       try { cap = await loadGzJson(ctx, `tools/attract-capture/${file}.capture.json.gz`); } catch { /* absent */ }
