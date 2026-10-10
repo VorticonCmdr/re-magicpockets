@@ -257,6 +257,29 @@ function skateMove(m, si, bx, ax) {
   advanceAnim(m, bx, q); // 3178 with SI = the hero
 }
 
+/** 1000:D8D8 (target 0x43): the hero carries a burden; walking turns and shuffles, A-press sets the throw state. [STATIC] */
+function carried(m, si, bx) {
+  if (m.s8(bx + 0x3d) >= 0) {
+    advanceAnim(m, bx, m.u8(bx + 0x3d)); // 3178 with SI = the hero
+    const a = m.u16(bx + 0xa);
+    m.w16(0x8c38, a);
+    if (a === 0x2e) m.w8(bx + 0x3d, 0xff);
+    else if (a === 0x2d) m.w8(si + 1, 0x75);
+  }
+  m.w16(0x8c38, m.u16(bx + 0xa));
+  const cl = ((m.u8(0x8b5e) | m.u16(si + 0x24) | m.u16(bx + 0x24)) ^ 0xff) & m.u8(0x8b67) & 0xff;
+  if (cl & 1) {
+    if (m.u8(si + 1) === 0 && m.u8(bx + 1) === 0) { m.w8(bx + 0x3e, 0); m.w8(si + 1, 0x75); m.w16(si + 0xc, 0xccb1); } // D943
+  }
+  m.w16(0x8bfd, 0); // D92A
+  // the original loops forever when a blocked direction is held together with bit 1; not reproduced
+  if (cl & 4) {
+    if ((m.u16(bx + 0x24) & 4) === 0) { m.w16(bx + 0x14, 4); m.w16(si + 6, m.u16(si + 6) + 4); }
+  } else if (cl & 8) {
+    if ((m.u16(bx + 0x24) & 8) === 0) { m.w16(bx + 0x14, 8); m.w16(si + 6, m.u16(si + 6) - 4); }
+  }
+}
+
 /** 1000:D7FA (target 0x21): the hero rides the class-0x21 cart; the cart sits 0x9a (or 0x86 facing right) from the left. [STATIC] */
 function rideCart(m, si, bx) {
   // D81F
@@ -395,7 +418,7 @@ function handleCollisionOrStateDispatch(m, si, ctx) {
   if (t === 1) { airSteer(m, si, bx); return; }
   if (t === 0x15) { skate(m, si, bx, ctx); return; } // D9E6
   if (t === 0x21) { rideCart(m, si, bx); return; } // D7FA
-  if (t === 0x43) { ctx.unported.add(`3CE8 target ${t}`); return; }
+  if (t === 0x43) { carried(m, si, bx); return; } // D8D8
   if (t === 0x41) { floatControls(m, si, bx, ctx); return; } // D67D
   if (t === 3 || t === 0xff) return;
   if (m.u8(bx + 1) === 0x63) return;
