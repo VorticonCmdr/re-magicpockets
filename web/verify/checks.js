@@ -540,6 +540,8 @@ export async function checkConformance(ctx) {
       ['live19-w2c', [[7, 52, 726, 660]], 2, true],
       ['live19-w2c', [[6, 739, 1969, 1100, true]], 1, true], // the boss level (world 1 sub-level 6), the hero on skates for part of it
       ['live21-w2d', [[2, 52, 726, 640], [4, 739, 1413, 650], [5, 1426, 2036, 570]], 2, false, true], // played without god mode: the hero is hurt, loses hearts and bounces
+      ['live22-w3d', [[1, 52, 726, 620], [2, 738, 1412, 640]], 3, false, true], // played without god mode
+      ['live23-w4d', [[1, 52, 726, 650], [2, 739, 1413, 650], [5, 1426, 1950, 490]], 4, false, true],
       ['live20-w1c', [[5, 52, 726, 600], [3, 740, 1414, 650], [4, 1427, 2011, 570]], 1, false], // sub-level 5 from a clean warp: the side handler's DI carries over to the ceiling handler
     ]) {
       let cap = null;

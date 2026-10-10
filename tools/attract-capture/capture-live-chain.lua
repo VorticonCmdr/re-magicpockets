@@ -20,7 +20,7 @@ local FG = ('%02x'):rep(GLEN)
 local FP = ('%02x'):rep(302)
 local FL = ('%02x'):rep(48)
 local FQ = ('%02x'):rep(300)
-local BLEN = 66 * 145
+local BLEN = 66 * 146 -- the pool is 0x9398..0xB918: record 145 (0xB8FA) exists too
 local FB = ('%02x'):rep(BLEN)
 
 local state = SEED
