@@ -560,6 +560,7 @@ export async function checkConformance(ctx) {
       ['live24-w1d', [[2, 52, 726, 640], [5, 739, 1413, 610], [6, 1425, 2099, 550, true]], 1, false, true], // played without god mode, ending on skates in the boss level
       ['live27-w2s6-w4s7', [[6, 52, 596, 510], [7, 609, 1153, 530]], 2, false, true], // non-god, fresh seed: world 2's last two levels
       ['live27-w2s6-w4s7', [[7, 1167, 2099, 900]], 4, false, true], // non-god: world 4 sub-level 7 (the same capture, typed 5139)
+      ['live28-w3', [[1, 0, 1241, 1200, true], [1, 1338, 1492, 150, true]], 1, false, true], // non-god from the first row of a level (loadStart): a failed warp left the hero on world 1 sub-level 1, then the demo and a new game
       ['live20-w1c', [[5, 52, 726, 600], [3, 740, 1414, 650], [4, 1427, 2011, 570]], 1, false], // sub-level 5 from a clean warp: the side handler's DI carries over to the ceiling handler
     ]) {
       let cap = null;
