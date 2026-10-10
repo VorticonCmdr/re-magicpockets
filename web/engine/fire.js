@@ -145,7 +145,29 @@ export function fireAndCharge(m, si, bx, ctx) {
     if (item !== 0 && m.u8(item + 1) === 0) { m.w8(item + 1, 0x42); m.w16(item + 0xc, 0xc8c5); }
     return m.u16(bx + 0xa) === 0x40;
   }
-  if (c04 === 0x40 || c04 === 0x1b || c04 === 0x27) { ctx.unported.add(`4269 special mode ${c04}`); return false; }
+  if (c04 === 0x1b) { // 44F2: the pickup-powered shot
+    m.w16(0x8c69, 0x1b); m.w16(0x8bf9, 0); m.w16(0x8bf7, 0x1f);
+    m.w8(0x8c0a, m.u8(0x8c0a) - 1);
+    if (m.u8(0x8c0a) === 0) m.w8(0x8c04, 0);
+    return m.u16(bx + 0xa) === 0x40;
+  }
+  if (c04 === 0x27) { // 4564 (the sound call 1CCF is graphics-side)
+    m.w16(0x8c69, 0x27); m.w16(0x8bf7, ax);
+    if (m.u16(0x8bef) === 0) m.w8(0x8c04, 0);
+    checkTimerEvent(m, bx);
+    return m.u16(bx + 0xa) === 0x40;
+  }
+  if (c04 === 0x40) { // 458D: the carried item is thrown
+    if (m.u8(bx + 1) === 0x5d || m.u8(bx + 1) === 0x5b) return false;
+    m.w16(0x8bf9, ax);
+    if (m.u8(si + 1) === 0x10) { m.w8(bx + 1, 0x5b); m.w16(bx + 0xc, 0xcaa8); }
+    else {
+      m.w8(bx + 1, 0x5d); m.w16(bx + 0xc, 0xcaef);
+      m.w16(bx + 0x10, 0x61); m.w16(bx + 0x12, 0x68); m.w16(bx + 0xa, 0x61);
+    }
+    checkTimerEvent(m, bx);
+    return false;
+  }
   weaponId(m, bx, ax, ctx);
   checkTimerEvent(m, bx);
   return m.u16(bx + 0xa) === 0x40;
