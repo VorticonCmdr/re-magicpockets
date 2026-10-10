@@ -343,7 +343,12 @@ function handler(m, si, di, op, ctx) {
     case 37: { // 31F5: change level. A negative operand replays the current one (the player continued after losing).
       if (m.u16(0x8b89) === 0) { ctx.unported.add('opcode 37 outside a world (3253)'); return ABORT; }
       const al = m.s8(di); di += 1;
-      if (al > 0) { ctx.unported.add(`opcode 37 operand ${al}`); return ABORT; }
+      if (al > 0) { // 3203..3216: the next sub-level of the same map (operand 7: 3250 -> 2663, try again next iteration); `[STATIC]`, no capture reaches it
+        if (al === 7) return ABORT;
+        m.w16(0x8b8b, m.u16(0x8b8b) + 1); // 3216
+        ctx.levelStart = { world: m.u16(0x8b89), sub: m.u16(0x8b8b), sameMap: true }; // pop ax x3, jmp 00CA: no map load (the dispatch at 03FF is skipped)
+        return ABORT;
+      }
       if (al < 0) { // 3221
         m.w16(0x8c11, 0);
         m.w16(0x8b8b, m.u16(0x8b8b) - 1);

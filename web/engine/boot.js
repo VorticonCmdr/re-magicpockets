@@ -126,3 +126,15 @@ export function startLevel(m, ctx, { world, sub }) {
   levelUpdateAnimatedTiles(m, ctx);
   renderConsumes(m);
 }
+
+/**
+ * The next world of a running game (1000:07EB -> the world's loader -> 086B -> 00C7): the loader has put the world's script at DS:0 and the
+ * map at 0x4200 (the host does that, like `startLevel`), then the world's tile-class table and two flags are set (0D53) and the level
+ * starts as at 00CA. Score, lives and the other game-wide state are kept (the 0D19 initializer, which clears them, is skipped by `jmp 00C7`).
+ * After world 4 the game starts over at world 1 with [8BA3] = 1 (0807). `[STATIC]`: no capture covers a world change.
+ */
+export function startWorld(m, ctx, { world, sub = 1, hardMode = false }) {
+  if (hardMode) m.w8(0x8ba3, 1);
+  m.w16(0x8bf5, 0); m.w8(0x8bb2, 0); // 0D53
+  startLevel(m, ctx, { world, sub });
+}

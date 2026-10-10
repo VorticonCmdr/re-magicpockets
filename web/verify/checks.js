@@ -22,6 +22,7 @@ import { stepIterationAfterRng } from '../engine/iteration.js';
 import { Rng } from '../engine/rng.js';
 import { prepare, runConformance, runFreeRun, runLiveConformance, runLiveFree, bootFromFiles, diffBootEntities, expandRows, midConsumeParticles, loadRow } from './conformance-lib.js';
 import { mapFixups } from '../engine/boot.js';
+import * as FE from '../engine/frontend.js';
 import { DsMemory } from '../engine/ds-memory.js';
 import { collectDraws, mirrorTile32, BANKS } from '../render/sprites.js';
 
@@ -644,8 +645,82 @@ export async function checkSprites(ctx) {
   return results;
 }
 
+
+/**
+ * The front end (web/engine/frontend.js): the world intro screen against DOSBox video captures of all four worlds (palette indices,
+ * three states each, plus the frame numbers of every fade step and box toggle), and the level dispatch against the shipped file names.
+ */
+export async function checkFrontend(ctx) {
+  const { results, check, note } = makeChecker();
+  const exeBytes = await ctx.fetchRaw('game/GAMEU.EXE');
+  const exe = new Uint8Array(exeBytes);
+  const timing = FE.introTiming(exe);
+  check('intro timing read from the code bytes: fade banks 0x16..0x1D (8 steps, 2 vsyncs each), 5 blink cycles of 11 + 11 vsyncs', timing.fadeInFirst === 0x16 && timing.fadeInEnd === 0x1e && timing.fadeOutFirst === 0x1d && timing.fadeOutLast === 0x16 && timing.ticksPerStep === 2 && timing.blinkCycles === 5 && timing.onTicks === 11 && timing.offTicks === 11);
+  const R = FE.readRects(exe);
+  check('intro rectangle table (CS:8EBB..8EE3): number boxes 1-4 are the picture bytes at (288, 0/32/64/96), the arrow is at (0, 160)', R.box.join() === '36,1316,2596,3876' && R.arrowSrc === 6400 && R.boxOffSrc === 6408 && R.islandDst === 2828 && R.boxDst === 2476);
+  const pic = FE.decodePictureIndices(rncUnpack(await ctx.fetchRaw('data/new.pip')).data);
+  check('new.pip decodes to 320 x 192 indices using all 16 palette entries', pic.length === 61440 && new Set(pic).size === 16);
+  let cap = null;
+  try { cap = await loadGzJson(ctx, 'tools/front-capture/intro.capture.json.gz'); } catch { /* absent */ }
+  if (!cap) { note('front-end capture not found', 'tools/front-capture/intro.capture.json.gz is missing; the intro comparison was skipped'); } else {
+    check('the capture holds five intros (world 1 twice, 2, 3, 4)', cap.captures.length === 5 && cap.captures.map((c) => c.world).join() === '1,2,3,4,1');
+    const b64 = (t) => Uint8Array.from(atob(t), (c) => c.charCodeAt(0));
+    for (const c of cap.captures) {
+      const blits = FE.introBlits(R, c.world);
+      const diff = (img, ph) => { const got = FE.composeIntro(pic, blits, ph, c.panX), want = b64(img); let bad = 0; for (let i = 0; i < want.length; i++) if (got[i] !== want[i]) bad++; return bad; };
+      const bad = [diff(c.images.full, { arrow: true, box: 'on' }), diff(c.images.erasedOn, { arrow: false, box: 'on' }), diff(c.images.off, { arrow: false, box: 'off' })];
+      check(`world ${c.world} intro (${c.label}, pan ${c.panX}): the composed screen equals the DOSBox frame pixel for pixel in all three states (arrow + box, box, empty box)`, bad.join() === '0,0,0', `mismatching pixels ${bad.join('/')} of 64000`);
+      // timing: the model's palette and box changes, relative to the first blink change, against the video frame numbers
+      const rel = (a) => a.map((f) => f - c.blink[0]);
+      const hold = 0, fadeLen = 16;
+      const ticks = [];
+      let last = FE.introPhase(timing, 0, hold);
+      for (let t = 1; t < 400; t++) { const p = FE.introPhase(timing, t, hold); ticks.push({ t, p, last }); last = p; }
+      const B = fadeLen + hold;
+      const toggles = [0, ...ticks.filter((x) => x.p.phase === 'blink' && x.p.box !== x.last.box).map((x) => x.t - B)];
+      const outChanges = ticks.filter((x) => x.p.phase === 'fadeOut' && x.p.bank !== x.last.bank).map((x) => x.t - B);
+      const inChanges = ticks.filter((x) => x.p.phase === 'fadeIn' && x.p.bank !== x.last.bank).map((x) => x.t);
+      // every fade step's palette: the model's bank k applied to the composed screen gives the video's (non-black pixels : r+g+b sum) exactly
+      const stat = (ph, bank) => { const img = FE.composeIntro(pic, blits, ph, c.panX), pal = FE.bankPalette(exe, bank); let nz = 0, sum = 0; for (const i of img) { const v = pal[i][0] + pal[i][1] + pal[i][2]; if (v) nz++; sum += v; } return `${nz}:${sum}`; };
+      const inStats = [0x17, 0x18, 0x19, 0x1a, 0x1b, 0x1c, 0x1d].map((b) => stat({ arrow: true, box: 'on' }, b));
+      const outStats = [0x1c, 0x1b, 0x1a, 0x19, 0x18, 0x17, 0x16].map((b) => stat({ arrow: false, box: 'off' }, b));
+      check(`world ${c.world} intro (${c.label}): every fade step's palette (banks 0x17..0x1D in, 0x1C..0x16 out, read through the pointer table at DS:DE56) reproduces the video frame's lit-pixel count and colour sum`, c.fadeInStats.join() === inStats.join() && c.fadeOutStats.join() === outStats.join(), `${c.fadeInStats[0]} .. ${c.fadeInStats[6]}`);
+      check(`world ${c.world} intro (${c.label}): box toggles every 11 frames (10 changes), fade-out changes at +113..+125 every 2, fade-in 7 changes every 2, as in the video`,
+        rel(c.blink).join() === toggles.join() && rel(c.fadeOut).join() === outChanges.join() && c.gapsFadeIn.join() === inChanges.slice(1).map((v, i) => v - inChanges[i]).join() && c.fadeIn.length === 7);
+    }
+    const pans = cap.captures.map((c) => [c.scroll8b69, c.panX]).filter(([s]) => s !== null);
+    check('the page flip pans by [8B69] & 7 (+8 when bit 3 is set): [8B69] was 0 for the fresh start and worlds 3/4 and 4 for the world-1 warp, and the frames are shifted by exactly 0 / 4 pixels', pans.map(([s, p]) => `${s}:${p}`).join() === '0:0,0:0,0:0,4:4' && pans.every(([s, p]) => FE.panFromScroll(s) === p));
+    note('world 2 intro warped from the GAME OVER screen was shifted by 12 pixels', '[8B69] was not read then (12 = 4 + 8 fits the flip code); [STATIC] for the bit-3 branch');
+  }
+  check('a fresh GAMEU.EXE data segment has [8B69] = 0, so the very first intro (the fresh start) is not shifted', exe[385392 + 0x8b69] === 0);
+  // The state machine: a new game shows the world 1 intro for 16 + 110 + 16 ticks and then asks for world 1 sub-level 1.
+  const fs = FE.newGame();
+  let n = 0, boot = null;
+  while (!boot && n < 1000) { const o = FE.step(fs, timing); boot = o.boot; if (!boot) n++; }
+  check('a new game runs the world 1 intro for 142 ticks (16 fade-in, 110 blink, 16 fade-out) and then boots world 1 sub-level 1', n === 142 && boot && boot.world === 1 && boot.sub === 1 && boot.reason === 'newGame', `${n} ticks`);
+  // 03FF: the map file each (world, sub-level) loads, as the shipped strings read, against the dumped-from-DOSBox level table.
+  const wrong = [];
+  let count = 0;
+  for (const world of [1, 2, 3, 4]) {
+    for (let sub = 1; sub <= 9; sub++) {
+      const files = levelFilesFor(world, sub);
+      if (!files) continue;
+      count++;
+      const d = FE.levelDispatch(exe, world, sub);
+      if (d.kind !== 'map' || d.map !== files.pap) wrong.push(`${world}.${sub} map ${d.map} != ${files.pap}`);
+      if (d.script && d.script !== files.pin) wrong.push(`${world}.${sub} script ${d.script} != ${files.pin}`);
+    }
+  }
+  check('the dispatch at 1000:03FF names the map the DOSBox level table says for every known (world, sub-level), and reloads the script only where that table changes it', count === 29 && wrong.length === 0, wrong.join('; ') || `${count} levels`);
+  const after = (w, s) => FE.levelDispatch(exe, w, s);
+  check('past the last sub-level of a world the next world starts (7EB): 1 after sub 6, 2 after 7, 3 after 8, 4 after 10; after world 4 it starts over at world 1',
+    after(1, 7).world === 2 && after(2, 8).world === 3 && after(3, 9).world === 4 && after(4, 11).world === 1 && after(4, 11).hardMode === true && after(1, 6).kind === 'map' && after(2, 7).kind === 'map' && after(3, 8).kind === 'map');
+  check('world 4 sub-level 10 is the ending (endscrn.pip); world 2 sub-level 7 loads ape.pak first; world 3 sub-level 8 loads level3c.pin and sea.pap', after(4, 10).kind === 'ending' && after(4, 10).picture === 'endscrn.pip' && after(2, 7).extraBank === 'ape.pak' && after(3, 8).script === 'level3c.pin' && after(3, 8).map === 'sea.pap');
+  return results;
+}
+
 export async function runAllChecks(ctx) {
-  const groups = [checkRncCorpus, checkPap, checkCollisionTable, checkPalettes, checkSoundBanks, checkLevelScripts, checkDemoTape, checkFrameOrder, checkCaptureRng, checkSprites, checkCodeEntry, checkConformance];
+  const groups = [checkRncCorpus, checkPap, checkCollisionTable, checkPalettes, checkSoundBanks, checkLevelScripts, checkDemoTape, checkFrameOrder, checkCaptureRng, checkSprites, checkCodeEntry, checkFrontend, checkConformance];
   const results = [];
   for (const g of groups) results.push(...await g(ctx));
   return { results };

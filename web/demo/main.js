@@ -41,6 +41,12 @@ async function loadExe() {
 const hue = (cls) => `hsl(${(cls * 47) % 360} 80% 60%)`;
 
 async function main() {
+  // ?game: the whole game flow (world intro screens, level and world progression) instead of booting a level directly; see web/demo/game.js.
+  if (new URLSearchParams(location.search).has('game')) {
+    const { startGame } = await import('./game.js');
+    document.querySelectorAll('#play, #pause, #restart').forEach((b) => { b.style.display = 'none'; });
+    return startGame({ exe: await loadExe(), fetchBytes, canvas, setStatus });
+  }
   const [exe, tape, pap, script, world1Script] = await Promise.all([loadExe(), fetchBytes('/data/autoplay.pin'), fetchBytes('/data/pcmap.pap'), fetchBytes('/data/level0.pin'), fetchBytes('/data/new1.pin')]);
   const cache = new AssetCache(sourceFromFetch('/data', ['blocks1.pak', 'pcmap.pap']));
   const [pak, papDecoded] = await Promise.all([cache.getPak('blocks1.pak', WORLD_PALETTES.world1), cache.getPap('pcmap.pap')]);
