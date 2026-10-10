@@ -1,9 +1,8 @@
 // Fixed-timestep logic clock. Adapted from gods-web's src/engine/clock.js.
 //
-// The logic rate is a parameter, not a recovered constant: the original runs one main-loop
-// iteration per retrace-aligned frame and its real rate varies with CPU speed (see
-// docs/open-questions-history.md item 2). Replays and parity are indexed by iteration, never by
-// wall-clock time, so the only effect of `tickHz` is how fast the port plays in a browser.
+// The default rate is derived from the game's own timer programming (frame.js DEFAULT_TICK_HZ, 16.72 Hz,
+// docs/open-questions-history.md item 2). Replays and parity are indexed by iteration, never by wall-clock
+// time, so `tickHz` only changes how fast the port plays in a browser.
 
 'use strict';
 

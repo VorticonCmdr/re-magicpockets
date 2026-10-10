@@ -16,7 +16,7 @@ import { decodeLevelScript } from '../core/pin-level-script.js';
 import { WORLD_GROUND_TABLES, WORLD_GROUND_TABLE_ADDR, TABLE_BYTES } from '../core/tile-collision.js';
 import { RAW_BANKS } from '../core/palette.js';
 import { decodeDemoTape, DemoPlayback, INPUT_BITS, DEMO_RNG_SEED } from '../core/demo-tape.js';
-import { FRAME_ORDER } from '../engine/frame.js';
+import { FRAME_ORDER, DEFAULT_TICK_HZ } from '../engine/frame.js';
 import { Rng } from '../engine/rng.js';
 import { prepare, runConformance, runFreeRun, runLiveConformance, runLiveFree, bootFromFiles, diffBootEntities, expandRows, midConsumeParticles } from './conformance-lib.js';
 
@@ -225,6 +225,14 @@ export async function checkFrameOrder(ctx) {
   check('FRAME_ORDER lists 14 calls', FRAME_ORDER.length === 14);
   check('at least one run of 14 consecutive near calls in GAMEU.EXE has exactly FRAME_ORDER\'s targets, in order', matching.length >= 1, `${matching.length} of ${runs.length} candidate runs`);
   check('no 14-call run in GAMEU.EXE disagrees with FRAME_ORDER', matching.length === runs.length, `${runs.length - matching.length} disagree`);
+  // The pacing: PIT divisor, ISR decrement and the per-iteration reload, read out of the file.
+  const at = (off, bytes) => bytes.every((b, i) => exe[hdr + off + i] === b);
+  check('1000:2047 programs PIT channel 0 with the bytes B0 36 E6 43 B0 EC E6 40 B0 5C E6 40 (divisor 0x5CEC)', at(0x2047, [0xb0, 0x36, 0xe6, 0x43, 0xb0, 0xec, 0xe6, 0x40, 0xb0, 0x5c, 0xe6, 0x40]));
+  const divisor = exe[hdr + 0x204c] | (exe[hdr + 0x2050] << 8);
+  check('1000:010B reloads cs:[2085] with 3 every iteration', at(0x10b, [0x2e, 0xc7, 0x06, 0x85, 0x20, 0x03, 0x00]));
+  check('the timer ISR at 1000:20B6 decrements cs:[2085] ("cmp word cs:[2085],0 / jz / dec word cs:[2085]")', at(0x20b6, [0x2e, 0x83, 0x3e, 0x85, 0x20, 0x00, 0x74, 0x05, 0x2e, 0xff, 0x0e, 0x85, 0x20]));
+  check('1000:1605 waits for cs:[2085] to reach zero ("cmp word cs:[2085],0 / jnz back")', at(0x1605, [0x2e, 0x83, 0x3e, 0x85, 0x20, 0x00, 0x75, 0xf8]));
+  check('the port\'s default tick rate is the PIT rate over the divisor read from the file over 3 ticks, 16.72 Hz', Math.abs(DEFAULT_TICK_HZ - 1193182 / divisor / 3) < 1e-9 && Math.abs(DEFAULT_TICK_HZ - 16.72) < 0.01, `divisor 0x${divisor.toString(16)}, ${DEFAULT_TICK_HZ.toFixed(4)} Hz`);
   note('contiguous 14-call runs in the EXE', `${matching.length} (the demo starter's loop); docs/engine.md says boot and warp have their own copies, but this search did not find them as contiguous runs and that was not investigated`);
   return results;
 }

@@ -6,10 +6,9 @@
 // back. `FRAME_ORDER` is what MainLoop iterates, so `tools/scope-check.mjs` and verify can assert
 // the order without parsing a hand-written call sequence.
 //
-// One iteration of this list is one logic tick. The original's only pacing is call 14's single
-// retrace wait, so its real rate is 70.086 Hz / a whole number of retraces (about 17 Hz when
-// measured); see docs/open-questions-history.md item 2. TICK_HZ below is a PORT display choice,
-// not a recovered constant.
+// One iteration of this list is one logic tick. Its pacing is three timer ticks of the game's own PIT
+// reprogramming (see DEFAULT_TICK_HZ below) with call 14's retrace wait aligning the end;
+// docs/open-questions-history.md item 2.
 
 'use strict';
 
@@ -33,5 +32,18 @@ export const FRAME_ORDER = [
 /** Nominal vsync rate of the 320x200 16-colour mode DOSBox emulates (70.086 Hz). */
 export const VSYNC_HZ = 70.086;
 
-/** Default logic rate for the browser: VSYNC_HZ / 4, close to the ~17 Hz measured live. */
-export const DEFAULT_TICK_HZ = VSYNC_HZ / 4;
+/** The PC's PIT input clock. */
+export const PIT_HZ = 1193182;
+
+/**
+ * The game reprograms PIT channel 0 (1000:2047: `mov al,36h / out 43h` then `mov al,0ECh / out 40h` and
+ * `mov al,5Ch / out 40h`) to a 0x5CEC divisor `[STATIC]`, and its timer ISR (installed with int 21h/25h at
+ * 1000:2056, handler 1000:2092) decrements `cs:[2085]` once per tick `[STATIC]`. The main loop sets
+ * `cs:[2085] = 3` every iteration (1000:010B) and the pel-pan routine (1000:1605) waits for it to reach 0, so one
+ * iteration takes at least 3 timer ticks `[STATIC]`: 1193182 / 23788 / 3 = 16.72 Hz, which agrees with the
+ * 16.9 +/- 0.4 calls per second measured live `[PROVEN]` (ledger item 2). The final retrace wait (call 14) can
+ * add up to one retrace period; whether it does in practice is the residual uncertainty (about 1%).
+ */
+export const PIT_DIVISOR = 0x5cec;
+export const TICKS_PER_ITERATION = 3;
+export const DEFAULT_TICK_HZ = PIT_HZ / PIT_DIVISOR / TICKS_PER_ITERATION;
