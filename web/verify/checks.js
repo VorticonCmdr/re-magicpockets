@@ -22,6 +22,8 @@ import { stepIterationAfterRng } from '../engine/iteration.js';
 import { Rng } from '../engine/rng.js';
 import { prepare, runConformance, runFreeRun, runLiveConformance, runLiveFree, bootFromFiles, diffBootEntities, expandRows, midConsumeParticles, loadRow } from './conformance-lib.js';
 import { mapFixups } from '../engine/boot.js';
+import { DsMemory } from '../engine/ds-memory.js';
+import { collectDraws, mirrorTile32, BANKS } from '../render/sprites.js';
 
 export function makeChecker() {
   const results = [];
@@ -592,8 +594,48 @@ export async function checkConformance(ctx) {
   return results;
 }
 
+
+/** Sprite rendering (web/render/sprites.js): frame -> tile-stream -> bank tile, from the shipped bytes.
+ *  The 396-byte entity dump below is a live DOSBox read (paused, world 1 level 1, [8B69]=0): the same frame
+ *  rendered by the port matched the DOSBox screenshot on 2681 of 2764 sprite pixels (the rest is the score
+ *  digits the HUD pass writes, not part of this DS image). [PROVEN] live; these rows pin the decode. */
+const LIVE_ENTITIES_B64 = '/wABAAEAQP3A/AEAAsYAAAEABAAIAAsAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAEABAAA/wADAAMAkABQAEAAAsgAAEEASAAIAAoAIAAgAAQABAAYABwAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAEIAAAEABAAAAAACAAAAkABkALAAWsQAALAAsAAAAA4AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAEABPYAAAAHAAAAcACoAAIAAAAAAAIAAgAAAA4AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAEABAAAAAAYAAAAAACoAHwAWsQAAH8AfwAAAA4AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAMABAAAAAAZAAAAIAGoAHoAWsQAAHoAegAAAA0AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAEABAAA';
+export async function checkSprites(ctx) {
+  const { results, check } = makeChecker();
+  const exe = await ctx.fetchRaw('game/GAMEU.EXE');
+  const m = new DsMemory(exe);
+  const stream = (frame, n) => Array.from(m.get(m.u16(0xe4fa + 2 * frame), n));
+  const desc = (type) => { const d = m.u16(0xc39a + 2 * type); return Array.from({ length: 14 }, (_, i) => m.u16(d + 2 * i)); };
+  check('player descriptor (type 3): mode 0xa, 1 column x 2 rows of 32x16, bank 2', desc(3).join() === '0,65,72,0,10,1,2,2,1,32,16,0,3,12');
+  check('player frame 64 streams half-tiles 20,21 (tile 10, top then bottom half)', stream(64, 2).join() === '20,21');
+  check('score ring frame 2 streams tile 188 in every cell', stream(2, 4).join() === '188,188,188,188');
+  check('type 0x19 descriptor: mode 0xd, one 32x32 cell, bank 2', desc(0x19).join() === '2,122,122,0,13,1,1,2,1,32,32,0,0,0');
+  check('type 0x19 frame 122 stream starts with tile 59', stream(122, 1)[0] === 59);
+  check('bank tile counts: bitkid 60 + kidx 20, special 20, extras 240 + extrax 80, nasty 60', Object.values(BANKS).map((b) => b.tiles).join() === '80,20,320,60');
+  const rawTile = (f, i, size) => rncUnpack(f).data.subarray(i * size, (i + 1) * size);
+  const nasty = rawTile(await ctx.fetchRaw('data/nasty1.pak'), 9, 640);
+  check('nasty1.pak tile 9 mask row 0 is ff e0 1f ff (matches DOSBox bank 7 segment)', nasty.subarray(16, 20).join() === '255,224,31,255');
+  const mir = mirrorTile32(nasty, 0);
+  check('mirrored copy of that row is ff f8 07 ff (matches DOSBox bank 8 segment, 1000:B449)', mir.subarray(16, 20).join() === '255,248,7,255');
+  const bitkid = rawTile(await ctx.fetchRaw('data/bitkid.pak'), 9, 640);
+  check('mirrored bitkid tile 9 row at +20 is ff 80 00 0f (matches DOSBox mirrored bank 2)', mirrorTile32(bitkid, 0).subarray(20, 24).join() === '255,128,0,15');
+  // the live DS slice
+  const b = Uint8Array.from(atob(LIVE_ENTITIES_B64), (c) => c.charCodeAt(0));
+  m.put(0x9398, b);
+  [0x9398, 0x93da, 0x941c, 0x94e2, 0x94a0, 0x945e, 0xffff].forEach((v, i) => m.w16(0x91be + 2 * i, v));
+  m.w16(0x8b69, 0);
+  const cmds = collectDraws(m);
+  const short = cmds.map((c) => `${c.type}:${c.bank}/${c.tile}${c.half >= 0 ? 'h' + c.half : ''}@${c.dx},${c.dy}${c.vflip ? 'v' : ''}${c.mirror ? 'm' : ''}`);
+  check('live frame: 14 draw commands', cmds.length === 14, `${cmds.length}`);
+  check('live frame: player = bank 2 tile 10, top half at (144,80), bottom half at (144,96), facing 8 unmirrored', short[0] === '3:2/10h0@144,80' && short[1] === '3:2/10h1@144,96');
+  check('live frame: type 0x19 hand = bank 2 tile 59 flipped at (288,168)', short[3] === '25:2/59@288,168v');
+  check('live frame: score ring = six 16x16 tiles of bank 6 tile 188 along y=168', short.slice(8).join() === [112, 128, 144, 160, 176, 192].map((x) => `7:6/188@${x},168`).join());
+  check('player facing 4 reads the mirrored bank', (() => { m.w16(0x93da + 0x14, 4); return collectDraws(m)[0].mirror === true; })());
+  return results;
+}
+
 export async function runAllChecks(ctx) {
-  const groups = [checkRncCorpus, checkPap, checkCollisionTable, checkPalettes, checkSoundBanks, checkLevelScripts, checkDemoTape, checkFrameOrder, checkCaptureRng, checkConformance];
+  const groups = [checkRncCorpus, checkPap, checkCollisionTable, checkPalettes, checkSoundBanks, checkLevelScripts, checkDemoTape, checkFrameOrder, checkCaptureRng, checkSprites, checkConformance];
   const results = [];
   for (const g of groups) results.push(...await g(ctx));
   return { results };

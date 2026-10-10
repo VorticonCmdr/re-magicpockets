@@ -16,6 +16,7 @@ import { stepIteration } from '../engine/iteration.js';
 import { Clock } from '../engine/clock.js';
 import { INPUT_BITS } from '../core/demo-tape.js';
 import { findByClass } from '../engine/ds-memory.js';
+import { buildSpriteAtlas, drawEntities, BANKS } from '../render/sprites.js';
 
 const VIEW_W = 320, VIEW_H = 192;
 const statusEl = document.getElementById('status');
@@ -44,6 +45,15 @@ async function main() {
   const cache = new AssetCache(sourceFromFetch('/data', ['blocks1.pak', 'pcmap.pap']));
   const [pak, papDecoded] = await Promise.all([cache.getPak('blocks1.pak', WORLD_PALETTES.world1), cache.getPap('pcmap.pap')]);
   const background = buildBackgroundCanvas(pak, papDecoded);
+  // Sprite banks (world 1 files; the same bank layout holds for worlds 2-4, see web/render/sprites.js).
+  // ?boxes keeps the old coloured boxes instead of the sprites.
+  const boxes = new URLSearchParams(location.search).has('boxes');
+  const spriteRaw = {};
+  await Promise.all([...new Set(Object.values(BANKS).flatMap((b) => b.files))].map(async (f) => {
+    const name = f.replace('%', 1);
+    spriteRaw[name] = rncUnpack(await fetchBytes(`/data/${name}`)).data;
+  }));
+  const atlas = buildSpriteAtlas(spriteRaw, 1, WORLD_PALETTES.world1, (w, h) => Object.assign(document.createElement('canvas'), { width: w, height: h }));
   const env = prepare(exe, tape, pap);
   let playing = new URLSearchParams(location.search).has('play');
   let m, ticks, step;
@@ -80,7 +90,9 @@ async function main() {
     const ox = s16(world + 6), oy = s16(world + 8);
     ctx2d.fillStyle = '#000'; ctx2d.fillRect(0, 0, VIEW_W, VIEW_H);
     ctx2d.drawImage(background, ox, oy);
-    for (let a = 0x9090; a < 0x91a8; a += 2) {
+    let spriteInfo = '';
+    if (!boxes) { const r = drawEntities(ctx2d, m, atlas); spriteInfo = `  sprites ${r.drawn}${r.missing.length ? ` (${r.missing.length} unresolved)` : ''}`; }
+    for (let a = 0x9090; boxes && a < 0x91a8; a += 2) {
       const p = m.u16(a);
       if (p === 0 || p === 0xffff) continue;
       const cls = m.u16(p + 2);
@@ -90,7 +102,7 @@ async function main() {
       ctx2d.strokeStyle = hue(cls);
       ctx2d.strokeRect(x - 8, y - 8, 16, 16);
     }
-    setStatus(`iteration ${ticks}  score ${m.u16(0x8b75)}  cam (${camX}, ${camY})  unported: ${[...sim.unported].join(', ') || 'none'}`);
+    setStatus(`iteration ${ticks}  score ${m.u16(0x8b75)}  cam (${camX}, ${camY})  unported: ${[...sim.unported].join(', ') || 'none'}${spriteInfo}`);
   };
   if (playing) document.getElementById('play').textContent = 'watch demo';
   const clock = new Clock(step, { onRender: draw });

@@ -113,6 +113,10 @@ assuming a placeholder was the real thing.
 binary, machine-specific project files). `docs/*.md` narrate what was found there; `symbols/*.json`
 are the exported symbol data. Don't expect to open `ghidra/` directly — go through the docs.
 
+## Sprite rendering
+
+`web/render/sprites.js` (`collectDraws`, `drawEntities`, `buildSpriteAtlas`) transliterates the render pass (call 3, `73A5`/`7419`; draw modes `0xa/0xd/0xe/0xf` at `759D/7D77/79B2/7B6D`): descriptor + frame table -> tile stream -> bank tile, mirrored bank for facing, vertical flip for mode `0xd`. `web/demo/main.js` uses it (`?boxes` keeps the old boxes). `[PROVEN]` live (DOSBox paused, two frames): 2681/2764 sprite pixels identical; bank layout and mirrored banks equal the depacked pak bytes. Screen x is the record's x (the `[8B69]&15` added in the buffer is cancelled by the hardware pan). Unported/unknown: `[8C38]` overlay (`772C`), video-memory grab (fsm 0xffff), mode 0xb. `npm run verify` group `checkSprites` pins the decode.
+
 ## Parity workflow (how the port is checked against DOSBox)
 
 The method is gods-web's: port one original function at a time, and check each against ground truth captured from the real game. State as of 2026-10-10 `[PROVEN]` by `npm run verify`: the whole attract demo (2342 iterations) is reproduced, one-step 2339/2339 usable transitions entity-exact, and a **free run** (the engine's own state, fed only the first captured row) stays exact for 2340 consecutive rows.
