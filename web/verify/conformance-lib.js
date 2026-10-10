@@ -355,6 +355,7 @@ export function runLiveFree(env, rows, o = {}) {
       const want = hexBytes(e.hex), got = m.get(e.ptr, ENTITY_SIZE);
       for (let off = 0; off < ENTITY_SIZE; off++) if (want[off] !== got[off]) diffs.push(`e${e.ptr.toString(16)} c${want[2]} +0x${off.toString(16)} want ${want[off]} got ${got[off]}`);
     }
+    if (o.checkRng && m.u16(0x8b71) !== (g[0x8b71 - GLOBALS_BASE] | (g[0x8b72 - GLOBALS_BASE] << 8))) diffs.push(`RNG [8B71] want ${(g[0x8b71 - GLOBALS_BASE] | (g[0x8b72 - GLOBALS_BASE] << 8)).toString(16)} got ${m.u16(0x8b71).toString(16)}`);
     const gd = [];
     if (!o.entitiesOnly) for (let off = 0; off < g.length; off++) if (g[off] !== m.u8(GLOBALS_BASE + off) && !isLiveScratch(GLOBALS_BASE + off, o.ignore) && !RACE(GLOBALS_BASE + off)) gd.push(`G 0x${(GLOBALS_BASE + off).toString(16)} want ${g[off]} got ${m.u8(GLOBALS_BASE + off)}`);
     if (diffs.length || gd.length) return { matched, firstBad: b.done, diffs: [...diffs, ...gd].slice(0, 12), unported: [...ctx.unported], state: m };

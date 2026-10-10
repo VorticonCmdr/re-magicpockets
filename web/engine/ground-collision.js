@@ -437,7 +437,7 @@ function ledgeProbe(m, bx) {
   }
   if (m.u16(R.C7) !== 0) return;
   di = m.u16(R.D7);
-  if (!solid(di)) return;
+  if (m.u8(ef + m.u8(di)) === 0) return; // E323: AX was zeroed first, so this one tile byte is an unsigned index
   di = (di - 0x80) & 0xffff;
   if (solid(di)) return;
   di = (di + 0x100) & 0xffff;

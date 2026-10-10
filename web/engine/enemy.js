@@ -77,7 +77,10 @@ function aiTurn(m, si, di, ctx) {
   }
   if (e9 < 128) { m.w16(si + 0x24, m.u16(si + 0x24) & (m.u16(si + 0x14) ^ 0xffff)); return; } // 6B9D
   const set = m.u8(si + 0x39);
-  if (set === 5 || set === 0xf) ctx.unported.add('AI 6B90 set 5/0xf');
+  if (set === 5 || set === 0xf) { // 6B90: a gap ahead (E9 < 0): jump with the height class in [+0x36]
+    m.w16(0x8c29, m.u8(si + 0x36));
+    startJump(m, si, m.u8(si + 0x36), ctx);
+  }
 }
 
 /** 1000:5F14 (the decision core) up to the opcode loop at 6320. */
@@ -477,12 +480,26 @@ export function behaviorKind4(m, si, ctx) {
     return;
   }
   if (c0c === 8 || c0c === 0xe || c0c === 0x14) { ctx.unported.add(`kind 4 global event ${c0c}`); return; }
-  if (cls !== 0x12) {
-    if ([0x48, 0x49, 0x54, 0x5d, 0x4e, 0x4f].includes(cls)) { ctx.unported.add(`kind 4 class 0x${cls.toString(16)}`); return; }
+  if (cls === 0x48 || cls === 0x49) { // CD8E / CD93: the world-2 throwers' charge field, then the usual
+    m.w8(si + 0x29, cls === 0x48 ? m.u8(si + 0x36) : 2);
+    const al = m.s8(si + 0x3d);
+    if (al >= 0) advanceAnim(m, si, al);
     common();
     return;
   }
-  if (m.u8(si + 1) === 0x36) { common(); return; } // CD03
+  if (cls === 0x4e) { // CDA8
+    moveHorizontalByFlags(m, si, 2);
+    const al = m.s8(si + 0x3d);
+    if (al >= 0) advanceAnim(m, si, al);
+    common();
+    return;
+  }
+  if (cls === 0x4f) { ctx.unported.add('kind 4 class 0x4f'); return; } // CDC1
+  if (cls !== 0x12 && cls !== 0x54 && cls !== 0x5d) {
+    common();
+    return;
+  }
+  if (cls === 0x12 && m.u8(si + 1) === 0x36) { common(); return; } // CD03 (classes 0x54/0x5d enter at CD09)
   moveHorizontalByFlags(m, si, 2);
   const st = m.u8(si + 0x40);
   if (st === 0xd) { // CD32: rising
@@ -637,6 +654,16 @@ function tileScan(m, kind, di, dl, cx) {
   return { dh, di, cx };
 }
 
+/** The per-world, per-class jump state the two jump starters (682F, 68EC) switch to; false when the class has none here. */
+function worldJumpState(m, si, world) {
+  const cls = m.u16(si + 2);
+  const table = world === 2 ? { 0x4b: [0xcb, 0xd4e8], 0x4a: [0xce, 0xd52c], 0x4c: [0xd0, 0xd54c] }
+    : world === 3 ? { 0x50: [0xda, 0xd633], 0x51: [0xe0, 0xd78b] } : null;
+  if (!table) return false;
+  if (table[cls]) { m.w8(si + 1, table[cls][0]); m.w16(si + 0xc, table[cls][1]); }
+  return true;
+}
+
 /** 1000:682F: start a jump of height class `cx` (the vertical speed comes from a table at 0xED3A). */
 function startJump(m, si, cx, ctx) {
   m.w8(si + 0x26, m.u8(0xed3a + (cx & 0xff)));
@@ -645,6 +672,7 @@ function startJump(m, si, cx, ctx) {
   const set = (state, script) => { m.w8(si + 1, state); m.w16(si + 0xc, script); };
   if (cls === 0x2c) { set(0x15, 0xc625); return 'end'; }
   const world = m.u16(0x8b89) || m.u16(0x8b8b);
+  if (worldJumpState(m, si, world)) return 'end';
   if (world !== 1) { ctx.unported.add(`AI jump 682F world ${world}`); return 'end'; }
   if (cls === 0x14) return 'next'; // 686B: back into the opcode loop
   if (cls === 0x13) set(0x83, 0xced5);
@@ -667,6 +695,7 @@ function startAimedJump(m, si, dx, cx, ctx) {
   const set = (state, script) => { m.w8(si + 1, state); m.w16(si + 0xc, script); };
   if (cls === 0x2c) { set(0x15, 0xc625); return 'end'; }
   const world = m.u16(0x8b89) || m.u16(0x8b8b);
+  if (worldJumpState(m, si, world)) return 'end'; // 6975 / 6991: one scripted jump state per class
   if (world !== 1) { ctx.unported.add(`AI jump 68EC world ${world}`); return 'end'; }
   if (cls === 0x14) return 'next';
   if (cls === 0x13) set(0x83, 0xced5);

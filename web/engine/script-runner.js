@@ -17,6 +17,7 @@ import { pushEvent3, pushEvent4, pushEvent5, pushSpawnEvent, pushEntityEvent } f
 import { setupLineMotion, insertByGroup } from './spawn.js';
 import { gameOverBody } from './hit.js';
 import { projectileRunsOut } from './ground-collision.js';
+import { rollRandom } from './enemy.js';
 
 const ABORT = Symbol('abort');
 
@@ -162,7 +163,7 @@ function handler(m, si, di, op, ctx) {
       if (m.u16(si + 4) === 1) { tickKind1(m, si, di); return ABORT; }
       if (m.u16(si + 4) === 2) { tickKind2(m, si, di, ctx); return ABORT; }
       if (m.u16(si + 4) === 7) return tickKind7(m, si, di, ctx); // DDBA
-      if (m.u16(si + 4) === 4) { ctx.unported.add('opcode 55 kind 4 (DC1E)'); return ABORT; }
+      if (m.u16(si + 4) === 4) return tickKind4(m, si, di, ctx); // DC1E
       return genericTick(m, si, di); // 2C90
     case 21: { // WaitUntilSyncTriple
       const a = m.u8(di), b = m.u8(di + 1), c = m.u8(di + 2); di += 3;
@@ -500,6 +501,46 @@ function tickKind7(m, si, di, ctx) {
   const h = sx8(m.u8(si + 0x27));
   if (h < 0 || m.u16(si + 0x14) === 0) return ABORT;
   moveHorizontalByFlagsRunner(m, si, h);
+  return ABORT;
+}
+
+/**
+ * 1000:DC1E opcode 55 for kind 4 (scenery that patrols): [+0x26] is the current vertical speed, [+0x27] the target, [+0x28] the
+ * step (+1 or -1) between them; at the target it reverses (and may turn round) and reloads the speed from the operand.
+ */
+function tickKind4(m, si, di, ctx) {
+  if (m.u8(si + 0x28) === 0) { // first tick: load both speeds
+    m.w8(si + 0x26, m.u8(di)); di += 1;
+    m.w8(si + 0x27, m.u8(di)); di += 1;
+    m.w8(si + 0x28, m.s8(si + 0x26) >= 0 ? 0xff : 1);
+  }
+  const v = m.s8(si + 0x26);
+  if (v < 0) moveDown(m, si, -v); else moveUp(m, si, v);
+  if (m.u16(si + 0x14) === 0) return ABORT;
+  moveHorizontalByFlagsRunner(m, si, m.s8(si + 0x29));
+  let al = m.s8(si + 0x26);
+  if (al !== m.s8(si + 0x27)) { m.w8(si + 0x26, al + m.s8(si + 0x28)); return ABORT; }
+  const step = m.s8(si + 0x28);
+  const atEnd = al !== 0 && (al < 0 ? step < 0 : step >= 0); // DC8B: the speed has run out in the direction of the step
+  const turnIf = (roll, want) => { rollRandom(m, si, ctx); if ((m.u16(0x8be5) !== 0) === want) m.w16(si + 0x14, m.u16(si + 0x14) ^ 0xc); };
+  if (atEnd) {
+    if (m.u8(si + 0x39) === 0xf) { // DCAC
+      m.w8(si + 0x28, -step); m.w8(si + 0x26, al); m.w8(si + 0x27, 0);
+      turnIf(null, true);
+    } else {
+      m.w8(si + 0x26, -al); m.w8(si + 0x27, 0);
+      turnIf(null, false);
+    }
+    return ABORT;
+  }
+  const operand = m.u8(di); // DCCA
+  if (m.u8(si + 0x39) !== 0xf) { m.w8(si + 0x26, 0); m.w8(si + 0x27, -operand); m.w8(si + 0x28, 0xff); return ABORT; }
+  m.w8(si + 0x26, 0); // DCE2
+  rollRandom(m, si, ctx);
+  const rolled = m.u16(0x8be5) !== 0;
+  const neg = m.s8(si + 0x28) < 0;
+  if (rolled !== neg) { m.w8(si + 0x27, m.u8(di)); m.w8(si + 0x28, 1); } // DD0E
+  else { m.w8(si + 0x27, -operand); m.w8(si + 0x28, 0xff); } // DD00
   return ABORT;
 }
 

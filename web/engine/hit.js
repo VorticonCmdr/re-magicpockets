@@ -195,13 +195,32 @@ function hurt(m, bx, si, ctx) {
   }
   if (m.u16(bx + 0x2c) !== 0) return true; // 5263
   const world = m.u16(0x8b89) || m.u16(0x8b8b);
-  if (world !== 1) return false;
   let al;
-  if (cls === 0x13) al = 0x8a;
-  else if (cls === 0x12) al = 0x94;
-  else if (cls === 0x20) { if (m.u8(bx + 0x39) === 0x15) return spark(m, bx); al = 0x98; }
-  else if (cls === 0x14) al = 0x88;
-  else return spark(m, bx); // 523E
+  if (world === 1) {
+    if (cls === 0x13) al = 0x8a;
+    else if (cls === 0x12) al = 0x94;
+    else if (cls === 0x20) { if (m.u8(bx + 0x39) === 0x15) return spark(m, bx); al = 0x98; }
+    else if (cls === 0x14) al = 0x88;
+    else return spark(m, bx); // 523E
+  } else if (world === 2) { // 5122
+    if (cls === 0x4b) { if (m.u8(bx + 0x40) === 0x67) return spark(m, bx); al = 0xcd; }
+    else if (cls === 0x4a) al = 0xcf;
+    else if (cls === 0x4c) al = 0xd3;
+    else return spark(m, bx);
+  } else if (world === 3) { // 5140
+    const to = { 0x51: 0xe2, 0x50: 0xdb, 0x54: 0xe4 }[cls];
+    if (to !== undefined) al = to;
+    else if (cls === 0x4e || cls === 0x4f) { // 5264: a second spark event first
+      al = cls === 0x4e ? 0xcf : 0xdf;
+      m.w16(0x8c1f, 0x101); m.w16(0x8c21, 0x32); m.w16(0x8c23, 4); m.w16(0x8c29, 0x55);
+      m.w16(0x8c25, (m.u16(bx + 8) + 8) & 0xffff); m.w16(0x8c27, (m.u16(bx + 6) + 8) & 0xffff);
+      pushSpawnEvent(m); // + sound request 1CCF
+    } else return spark(m, bx);
+  } else { // 5170
+    const to = { 0x57: 0xeb, 0x58: 0xee, 0x59: 0xe8, 0x5d: 0xf1, 0x5a: 0xfb }[cls];
+    if (to === undefined) return spark(m, bx);
+    al = to;
+  }
   // 522A
   if (al === m.u8(bx + 1)) return true;
   if (m.u8(bx + 1) !== 0) return spark(m, bx);

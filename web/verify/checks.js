@@ -453,6 +453,29 @@ export async function checkConformance(ctx) {
       const f10 = runLiveFree(env10, live10.rows, { start: fb10.m, from: sw10, entitiesOnly: true, force: [[0x8b96, 50]], levelFiles: () => ({ script: script2, map: map10 }) });
       check('a free run reproduces every captured entity record of world 2 sub-level 1 (level2.pin + level2b.pap) from a clean start', sw10 > 0 && f10.firstBad === null && f10.matched >= 1500, `${f10.matched} rows from row ${sw10}, first mismatch ${f10.firstBad ?? 'none'}`);
     }
+    // One session, two clean level-code warps (5284 -> world 2 sub-level 2 on level2b.pap, 2818 -> sub-level 4 on level2a.pap): each segment
+    // is booted from level2.pin plus its map, with the generator seeded from the capture (a warp does not reseed it) and checked every row.
+    let live11 = null;
+    try { live11 = await loadGzJson(ctx, 'tools/attract-capture/live11-w2s2s4.capture.json.gz'); } catch { /* absent */ }
+    if (live11) {
+      const ex11 = expandRows(live11.rows);
+      const w11 = (r, o) => { const b = Uint8Array.from(r.g.match(/../g), (h) => parseInt(h, 16)); return b[o - 0x8b50] | (b[o - 0x8b50 + 1] << 8); };
+      const script11 = rncUnpack(await ctx.fetchRaw('data/level2.pin')).data;
+      const mapOf11 = async (name) => { const g = rncUnpack(await ctx.fetchRaw('data/' + name)).data; const mp = new Uint8Array(128 * 128); for (let r = 0; r < 128; r++) for (let c = 0; c < 128; c++) mp[c * 128 + r] = g[r * 128 + c]; return mp; };
+      const seg = async (sub, pap, from, to) => {
+        const e = { ...env, map: await mapOf11(pap) };
+        const b = bootFromFiles(e, script11, { world: 2, sub, demo: false });
+        stepIterationAfterRng(b.m, { unported: new Set(), events: [] }, null);
+        b.m.w16(0x8b71, w11(ex11[from], 0x8b71)); b.m.w16(0x8b6b, w11(ex11[from], 0x8b6b));
+        return runLiveFree(e, live11.rows, { start: b.m, from, to, entitiesOnly: true, checkRng: true, force: [[0x8b96, 50]], levelFiles: () => ({ script: script11, map: e.map }) });
+      };
+      const s2 = ex11.findIndex((r) => w11(r, 0x8b89) === 2 && w11(r, 0x8b8b) === 2 && r.e.length > 0);
+      const s4 = ex11.findIndex((r) => w11(r, 0x8b89) === 2 && w11(r, 0x8b8b) === 4 && r.e.length > 0);
+      const f2 = await seg(2, 'level2b.pap', s2, s4 > 0 ? Math.min(750, s4 - 1) : 750);
+      check('a free run with the generator checked reproduces world 2 sub-level 2 (level2b.pap) until the capture script itself types the next code', s2 > 0 && f2.firstBad === null && f2.matched >= 640, `${f2.matched} rows from row ${s2}, first mismatch ${f2.firstBad ?? 'none'}`);
+      const f4 = await seg(4, 'level2a.pap', s4, ex11.length - 1);
+      check('a free run with the generator checked reproduces every row of world 2 sub-level 4 (level2a.pap)', s4 > 0 && f4.firstBad === null && f4.matched >= 690, `${f4.matched} rows from row ${s4}, first mismatch ${f4.firstBad ?? 'none'}`);
+    }
     note('live-play unported branches still hit', [...lr.unportedHist].map(([k, n]) => `${k} x${n}`).join(', ') || 'none');
   }
   const top = [...all.unportedHist].sort((a, b) => b[1] - a[1]).slice(0, 6).map(([k, n]) => `${k} x${n}`).join(', ');
