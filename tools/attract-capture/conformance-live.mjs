@@ -18,7 +18,7 @@ const env = prepare(new Uint8Array(readFileSync(root + 'game/GAMEU.EXE')), new U
 const raw = readFileSync(root + capPath);
 const rows = JSON.parse((capPath.endsWith('.gz') ? gunzipSync(raw) : raw).toString('utf8')).rows;
 const r = runLiveConformance(env, rows, { from: flag('--from', 1), to: flag('--to', rows.length - 1), show: flag('--show', 6) });
-console.log(`transitions ${r.total}: entity records exact ${r.entExact}, entities+globals exact ${r.exact} (${r.raceRows} of them differ only in the camera sample-race globals)`);
+console.log(`transitions ${r.total}: entity records exact ${r.entExact}, entities+globals exact ${r.exact} (${r.raceRows} of them differ only in the camera sample-race globals); ${r.skipped || 0} transitions next to ${r.midRows.length} mid-iteration samples skipped`);
 for (const s of r.shown) console.log(s);
 if (args.includes('--ent-fails')) for (const f of r.entFails) console.log(f);
 const top = flag('--top', 14);

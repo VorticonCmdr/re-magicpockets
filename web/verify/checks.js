@@ -317,8 +317,8 @@ export async function checkConformance(ctx) {
   if (live) {
     check('the live-play capture holds 1800 consecutive iterations of world 1, sub-level 1', live.rows.length === 1800 && live.rows.every((r, i) => r.done === i));
     const lr = runLiveConformance(env, live.rows, {});
-    check('at least 1767 of 1798 live-play transitions reproduce every captured entity record byte for byte', lr.entExact >= 1767, `${lr.entExact}/${lr.total}`);
-    check('at least 1752 of 1798 live-play transitions also reproduce every non-scratch global', lr.exact >= 1752, `${lr.exact}/${lr.total} (${lr.raceRows} differ only in sample-race scroll globals)`);
+    check('at least 1781 of 1782 usable live-play transitions reproduce every captured entity record byte for byte', lr.entExact >= 1781 && lr.total === 1782, `${lr.entExact}/${lr.total}`);
+    check('at least 1773 of 1782 usable live-play transitions also reproduce every non-scratch global', lr.exact >= 1773, `${lr.exact}/${lr.total} (${lr.raceRows} differ only in sample-race scroll globals; ${lr.skipped} transitions beside ${lr.midRows.length} mid-iteration samples skipped)`);
     note('live-play unported branches still hit', [...lr.unportedHist].map(([k, n]) => `${k} x${n}`).join(', ') || 'none');
   }
   const top = [...all.unportedHist].sort((a, b) => b[1] - a[1]).slice(0, 6).map(([k, n]) => `${k} x${n}`).join(', ');

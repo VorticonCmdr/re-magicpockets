@@ -423,6 +423,47 @@ function burst5DBA(m, bx, ctx) {
   return false;
 }
 
+/**
+ * 1000:4A8D: the last heart is gone. The hero drops to its dying frame, the clock entity (class 7) starts
+ * its game-over script, a life is used up and a message is queued. The sound call (1D4C) touches only
+ * the sound driver's own state.
+ */
+export function gameOverBody(m) {
+  const hero = findByClass(m, 3);
+  m.w16(hero + 0xa, 0x4d); m.w16(0x8c38, 0); m.w16(hero + 0x24, 0); m.w8(hero + 1, 0);
+  m.w8(0x8b5f, 1); m.w8(0x8b98, 0xff);
+  const clock = findByClass(m, 7);
+  if (m.u8(clock + 1) === 0x43) return; // 4AC1: already running
+  m.w8(clock + 0x3e, 0); m.w8(clock + 1, 0x43); m.w16(clock + 0xc, 0xc8dd);
+  m.w8(0x8c0b, (m.u8(0x8c0b) - 1) & 0xff);
+  if (m.u8(0x8c0b) === 0) return; // 4B56: no lives left
+  // 4BD1: the lives counter digit, then a message chosen from the player's record
+  m.w8(0xe24d, (m.u8(0x8c0b) + 0xbc) & 0xff);
+  const put = (a, b, c, d, e, f) => { m.w16(0x8c1f, a); m.w16(0x8c21, b); m.w16(0x8c23, c); m.w16(0x8c25, d); m.w16(0x8c27, e); m.w16(0x8c29, f); pushSpawnEvent(m); };
+  put(0x2d, 0x52, 4, 0x88, 0x28, 0x2d);
+  const s8 = (v) => (v & 0x80 ? (v & 0xff) - 0x100 : v & 0xff), s16 = (v) => (v & 0x8000 ? (v & 0xffff) - 0x10000 : v & 0xffff);
+  const world = m.u16(0x8b89);
+  let msg;
+  const byScoreThenHearts = () => (m.u16(0x8b75) > 0xc8 ? 0x38 : (s8(m.u8(0x8c05)) > 0x1e ? 0x39 : 0x37)); // 4B1F
+  const generic = () => { // 4B38
+    if (s8(m.u8(0x8c09)) >= 1) return 0x3f;
+    if (s8(m.u8(0x8bb2)) >= 1) return 0x36;
+    if (s16(m.u16(0x8bff)) >= 2) return 0x35;
+    return s8(m.u8(0x8c05)) > 0x1e ? 0x39 : 0x37;
+  };
+  if (world === 1) {
+    if (s8(m.u8(0x8bb3)) <= 3) msg = 0x3a;
+    else if (s8(m.u8(0x8c07)) > 0xa) msg = 0x3b;
+    else if (s8(m.u8(0x8c07)) <= 3) msg = 0x3d;
+    else {
+      const q = Math.floor(m.u8(0x8c07) / m.u8(0x8c08)), r = m.u8(0x8c07) % m.u8(0x8c08);
+      msg = ((r << 8) | q) < 3 ? 0x3c : byScoreThenHearts();
+    }
+  } else if (world === 2) msg = m.u16(0x8b75) > 0x190 ? 0x38 : generic();
+  else msg = generic();
+  put(msg, 0x66, 4, 0x20, 0x155, 0x2d);
+}
+
 /** 1000:4A50: the hero is hit while already in a reaction: a spark, and one heart-bar frame is used up. */
 function heroLosesHeart(m, si, ctx) {
   m.w16(0x8c29, 0x11);
@@ -432,7 +473,7 @@ function heroLosesHeart(m, si, ctx) {
   m.w8(0x8bb4, m.u8(0x8bb4) + 1);
   m.w8(0x8b96, 0x32);
   const bar = findByClass(m, 0x18);
-  if (m.u16(bar + 0xa) === 0x7b) { ctx.unported.add('4A8C game over (health bar empty)'); return false; }
+  if (m.u16(bar + 0xa) === 0x7b) { gameOverBody(m); return true; } // 4A8C
   m.w16(bar + 0xa, m.u16(bar + 0xa) - 1);
   return true;
 }

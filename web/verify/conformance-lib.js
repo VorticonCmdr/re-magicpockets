@@ -8,6 +8,7 @@ import { DsMemory, ENTITY_ARRAY, ENTITY_ARRAY_END, ENTITY_SIZE } from '../engine
 import { stepIteration, stepIterationAfterRng } from '../engine/iteration.js';
 import { rebuildVisibleList } from '../engine/entity-behavior.js';
 import { bootAttractDemo } from '../engine/boot.js';
+import { Rng } from '../engine/rng.js';
 
 export const GLOBALS_BASE = 0x8b50;
 // Probe results, scratch words, list cursors, the render row counter and the timer ISR's seconds
@@ -240,7 +241,25 @@ export function runLiveConformance(env, rows, o = {}) {
   // A poll that lands after the next iteration's call #1 shows the scroll state of that call. These
   // globals are the only ones it changes.
   const RACE = (a) => a === 0x8b69 || (a >= 0x8bb7 && a <= 0x8bba) || a === 0x8c15 || a === 0x8c17;
+  // The poll can land between an iteration's call #8 and its call #13. Every iteration's last RNG call is
+  // call #13 with carry 1, so a row whose RNG state cannot be reached from the previous row by a run of
+  // calls ending in carry 1 is such a mid-iteration sample; it and the transition after it are half
+  // iterations that a whole-iteration model cannot reproduce.
+  const rngOf = (row) => hexBytes(row.g).reduce((v, byte, i) => (i === 0x8b71 - GLOBALS_BASE ? byte : i === 0x8b72 - GLOBALS_BASE ? v | (byte << 8) : v), 0);
+  const reaches = (a, b) => {
+    for (let len = 1; len <= 6; len++) for (let mask = 0; mask < (1 << (len - 1)); mask++) {
+      let s2 = a;
+      for (let i = 0; i < len - 1; i++) s2 = new Rng(s2).next((mask >> i) & 1);
+      if (new Rng(s2).next(1) === b) return true;
+    }
+    return false;
+  };
+  const rng = rows.map(rngOf);
+  const mid = new Set();
+  for (let k = Math.max(from, 1); k <= to; k++) if (!reaches(rng[k - 1], rng[k]) && rng[k] !== 0x3141) mid.add(k);
+  r.midRows = [...mid];
   for (let k = from; k < to; k++) {
+    if (mid.has(k) || mid.has(k + 1)) { r.skipped = (r.skipped || 0) + 1; continue; }
     const b = rows[k + 1];
     const m = loadRow(env, rows[k]);
     const g = hexBytes(b.g);

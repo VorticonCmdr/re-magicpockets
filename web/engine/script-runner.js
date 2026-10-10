@@ -15,6 +15,7 @@ import { findByClass } from './ds-memory.js';
 import { resetExtendedFields } from './entity-behavior.js';
 import { pushEvent3, pushEvent4, pushEvent5, pushSpawnEvent, pushEntityEvent } from './fire.js';
 import { setupLineMotion, insertByGroup } from './spawn.js';
+import { gameOverBody } from './hit.js';
 
 const ABORT = Symbol('abort');
 
@@ -242,7 +243,7 @@ function handler(m, si, di, op, ctx) {
     }
     case 62: { // 2AC5: the player loses a life (the HUD icon steps down)
       const icon = findByClass(m, 0x18);
-      if (m.u16(icon + 0xa) === 0x7b) { ctx.unported.add('4A8D game over'); return ABORT; }
+      if (m.u16(icon + 0xa) === 0x7b) { gameOverBody(m); return ABORT; } // 2AD1 -> 4A8D, then 2663
       m.w16(icon + 0xa, m.u16(icon + 0xa) - 1);
       m.w8(0x8bb4, m.u8(0x8bb4) + 1);
       return di;
@@ -319,6 +320,24 @@ function handler(m, si, di, op, ctx) {
       m.w16(orig + 0xc, di);
       ctx.swapTo = orig;
       ctx.partner = si;
+      return di;
+    }
+    case 77: { // 26B1: a random spark above or beside the clock (the operand is the spawn code in [8C1F])
+      ctx.rng(m, 0);
+      m.w16(0x8c1f, m.u8(di)); di += 1;
+      m.w16(0x8c27, 0x90); m.w16(0x8c25, 0x48); m.w16(0x8c29, 0xf);
+      const rnd = m.u16(0x8b6b);
+      m.w16(0x8c21, rnd & 1);
+      if ((rnd & 1) !== 0) {
+        m.w16(0x8c25, 0x58);
+        m.w16(0x8c21, m.u8(0xee36 + (m.u16(0x8b6b) & 0xf)));
+        m.w16(0x8c23, 4);
+      } else {
+        m.w16(0x8c27, 0xa0); m.w16(0x8c25, 0x58);
+        m.w16(0x8c21, m.u8(0xee36 + (m.u16(0x8b6b) & 0xf)));
+        m.w16(0x8c23, 8);
+      }
+      pushSpawnEvent(m);
       return di;
     }
     case 52: { // 2CEA: the CONTINUE? screen waits for the fire key, counting [8C57] up in steps of 0x80
