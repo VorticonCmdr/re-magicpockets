@@ -398,6 +398,20 @@ export async function checkConformance(ctx) {
       const f7 = runLiveFree(env, live7.rows, { start: fb7.m, from: 0, entitiesOnly: true, force: [[0x8b96, 50, sw7 + 40]], pokes: [{ row: 60, addr: 0x94aa, bytes: [0x7b, 0] }, { row: sw7, addr: 0x8b89, bytes: [1, 0, 3, 0] }], levelFiles: () => ({ script: world1, map: map7 }) });
       check('a free run reproduces every captured entity record of world 1 sub-level 3 (level1b.pap) from the files alone', sw7 > 0 && f7.firstBad === null && f7.matched >= 2340, `${f7.matched} rows, first mismatch ${f7.firstBad ?? 'none'}, level words written at row ${sw7}`);
     }
+    // World 1, sub-level 4: shares level1b.pap with sub-level 3 but has its own entity list.
+    let live8 = null;
+    try { live8 = await loadGzJson(ctx, 'tools/attract-capture/live8-sub4.capture.json.gz'); } catch { /* absent */ }
+    if (live8) {
+      const ex8 = expandRows(live8.rows);
+      const word8 = (r, o) => { const b = Uint8Array.from(r.g.match(/../g), (h) => parseInt(h, 16)); return b[o - 0x8b50] | (b[o - 0x8b50 + 1] << 8); };
+      const sw8 = ex8.findIndex((r) => word8(r, 0x8b8b) === 4);
+      const grid8 = rncUnpack(await ctx.fetchRaw('data/level1b.pap')).data;
+      const map8 = new Uint8Array(128 * 128);
+      for (let r = 0; r < 128; r++) for (let c = 0; c < 128; c++) map8[c * 128 + r] = grid8[r * 128 + c];
+      const fb8 = bootFromFiles(env, world1, { world: 1, sub: 1, demo: false });
+      const f8 = runLiveFree(env, live8.rows, { start: fb8.m, from: 0, entitiesOnly: true, force: [[0x8b96, 50, sw8 + 40]], pokes: [{ row: 60, addr: 0x94aa, bytes: [0x7b, 0] }, { row: sw8, addr: 0x8b89, bytes: [1, 0, 4, 0] }], levelFiles: () => ({ script: world1, map: map8 }) });
+      check('a free run reproduces every captured entity record of world 1 sub-level 4 (level1b.pap, its own entity list) from the files alone', sw8 > 0 && f8.firstBad === null && f8.matched >= 2170, `${f8.matched} rows, first mismatch ${f8.firstBad ?? 'none'}, level words written at row ${sw8}`);
+    }
     note('live-play unported branches still hit', [...lr.unportedHist].map(([k, n]) => `${k} x${n}`).join(', ') || 'none');
   }
   const top = [...all.unportedHist].sort((a, b) => b[1] - a[1]).slice(0, 6).map(([k, n]) => `${k} x${n}`).join(', ');
