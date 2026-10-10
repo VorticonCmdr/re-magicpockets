@@ -1,0 +1,70 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>Magic Pockets — web port</title>
+<script>
+  if (new URLSearchParams(location.search).has('debug')) document.documentElement.classList.add('debug');
+</script>
+<style>
+  :root {
+    --bg:#0e0d12; --panel:#17161d; --line:#2a2833;
+    --ink:#e8e6ef; --dim:#9b97ac; --bad:#ff6b6b; --accent:#e0a33e;
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  }
+  * { box-sizing: border-box; }
+  html, body { height:100%; }
+  body { margin:0; background:var(--bg); color:var(--ink); display:flex; flex-direction:column; }
+  header { display:flex; align-items:center; gap:.75rem; padding:.6rem 1rem; flex:none; background:var(--panel); border-bottom:1px solid var(--line); }
+  header h1 { margin:0; font-size:14px; letter-spacing:.08em; text-transform:uppercase; white-space:nowrap; }
+  header label, header a { font-size:12px; color:var(--dim); display:flex; gap:.4em; align-items:center; text-decoration:none; }
+  header a:hover { color:var(--ink); }
+  header .spacer { flex:1; }
+  #status { font-size:11px; color:var(--dim); min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  #status.error { color:var(--bad); white-space:normal; }
+  button.primary { background:#5a3f12; border-color:var(--accent); color:#ffe2b0; cursor:pointer; }
+  select, button { background:#221f2b; color:var(--ink); border:1px solid var(--line); padding:.35rem .5rem; font:inherit; font-size:12px; border-radius:4px; }
+  [hidden] { display:none !important; }
+  #app { flex:1; display:flex; min-height:0; }
+  #view { flex:1; display:flex; min-height:0; min-width:0; overflow:hidden; }
+  #screen { margin:auto; flex:none; display:block; background:#000; image-rendering:pixelated; outline:none; }
+  html:not(.debug) .debug-only { display:none !important; }
+  aside { width:340px; flex:none; background:var(--panel); border-left:1px solid var(--line); padding:1rem; overflow-y:auto; font-size:11px; line-height:1.5; color:var(--dim); }
+  aside h2 { font-size:11px; text-transform:uppercase; letter-spacing:.08em; color:var(--accent); margin:1rem 0 .4rem; }
+  aside code, kbd { color:var(--accent); }
+  #log { white-space:pre-wrap; word-break:break-word; margin:0; }
+  footer { flex:none; padding:.35rem 1rem; font-size:11px; color:var(--dim); border-top:1px solid var(--line); background:var(--panel); }
+</style>
+</head>
+<body>
+<header>
+  <h1>Magic Pockets — web port</h1>
+  <button id="btnFolder" class="primary" hidden>Load folder…</button>
+  <input type="file" id="inpFolder" webkitdirectory multiple hidden>
+  <span id="status">starting…</span>
+  <div class="spacer"></div>
+  <a href="./viewer.html" title="the decoded-asset explorer">assets</a>
+  <a href="./level.html" title="the level viewer">levels</a>
+  <label>scale
+    <select id="scale">
+      <option value="1">1x</option><option value="2">2x</option><option value="3">3x</option><option value="4">4x</option>
+      <option value="max" selected>max</option>
+    </select>
+  </label>
+</header>
+<div id="app">
+  <div id="view"><canvas id="screen" width="320" height="200" tabindex="0"></canvas></div>
+  <aside class="debug-only">
+    <h2>Keys</h2>
+    <div>← → move · ↑ jump · ↓ down · <kbd>Space</kbd>/<kbd>Ctrl</kbd>/<kbd>Z</kbd> fire · any movement key leaves the intro · digits, arrows and <kbd>Enter</kbd> on the level-code screen</div>
+    <h2>Options (URL)</h2>
+    <div><code>?nointro</code> skip the logo and intro · <code>?mute</code> no sound · <code>?hold=N</code>, <code>?load=N</code> disk-pause stand-ins (ticks)</div>
+    <h2>Status log</h2>
+    <pre id="log"></pre>
+  </aside>
+</div>
+<footer>Your own copy of the game is required: the files are read from the folder you pick (or from <code>game/</code> and <code>data/</code> in the dev server) and never leave the browser.</footer>
+<script type="module" src="/web/play/main.js"></script>
+</body>
+</html>
