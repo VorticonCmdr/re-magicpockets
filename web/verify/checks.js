@@ -606,6 +606,9 @@ export async function checkConformance(ctx) {
       // The retype campaign in world 4 (sub-levels 1 and 4; a different order of entity types, 24 rewrites): worlds 1-4 have now all run it.
       ['live38-retype-w4', [[1, 52, 596, 540, true]], 4, false, false, 'live38-retype-w4.pokes.json'],
       ['live38-retype-w4', [[4, 609, 1579, 935, true]], 4, false, false, 'live38-retype-w4.pokes.json'],
+      // 23 live power-up setups: the capture script rewrote an enemy into a type-0x1B item (kind 5/7, frames 0x15..0x67, state 0x3E = 1) on the hero's own position.
+      // The captured rows show frame 0x1F (the [8C04] = 0x1B pickup, nine times) and frame 0x66 (an extra continue, twice) taking effect; all of it reproduces.
+      ['live39-powerups', [[4, 0, 1299, 1285, true]], 4, false, false, 'live39-powerups.pokes.json'],
       ['live20-w1c', [[5, 52, 726, 600], [3, 740, 1414, 650], [4, 1427, 2011, 570]], 1, false], // sub-level 5 from a clean warp: the side handler's DI carries over to the ceiling handler
     ]) {
       let cap = null;
