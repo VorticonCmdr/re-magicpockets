@@ -7,6 +7,9 @@
 -- Tune SEED and END_ITER below.
 
 local SEED, END_ITER = 20261010, 4000
+local GOD = false   -- keep the hurt timer [8B96] topped up: the hero is never hurt, so the run gets further (the writes show up
+                    -- as [8B96] differences in the captured rows; treat [8B96] as scratch when replaying such a capture)
+local RIGHT = 45    -- percent of segments that hold Right (the rest: left 17, down 8, idle)
 local DS = 0x5FD8
 local rb, rw, wf, fmt, byte, mr = dosbox.mem_read_byte, dosbox.mem_read_word, dosbox.wait_frames, string.format, string.byte, dosbox.mem_read
 local GLEN = 352
@@ -33,9 +36,9 @@ end
 local function pick()
   local r = rnd(100)
   local want = {}
-  if r < 45 then want['KBD_right'] = true
-  elseif r < 62 then want['KBD_left'] = true
-  elseif r < 70 then want['KBD_down'] = true end
+  if r < RIGHT then want['KBD_right'] = true
+  elseif r < RIGHT + 17 then want['KBD_left'] = true
+  elseif r < RIGHT + 25 then want['KBD_down'] = true end
   if rnd(100) < 30 then want['KBD_up'] = true end
   if rnd(100) < 25 then want['KBD_leftctrl'] = true end
   if rnd(100) < 15 then want['KBD_space'] = true end
@@ -54,6 +57,8 @@ local n, lastrng, left = 0, -1, 0
 local want
 while n < END_ITER do
   wf(1)
+  -- the API writes a string's bytes (a number would be written as its decimal digits)
+  if GOD then dosbox.mem_write(DS, 0x8B96, string.char(0x32)) end
   if rb(DS, 0x8BA1) == 0 then -- the player is in control (not frozen by READY / a fade)
     if left <= 0 then want, left = pick(); setkeys(want) end
     left = left - 1

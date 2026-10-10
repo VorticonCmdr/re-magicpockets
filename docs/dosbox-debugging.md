@@ -141,6 +141,14 @@ used by `tools/attract-capture/capture.lua`:
 - Reaching the attract demo: launch `GAMEU`, let the level start, press Esc, let "GAME OVER /
   CONTINUE?" time out; the title cycle then starts the demo by itself (about 2 minutes).
 
+## Live-play capture notes (`[PROVEN]` 2026-10-10)
+
+- Bridge key names are `KBD_*` (`KBD_enter`, `KBD_up`, `KBD_leftctrl`, `KBD_space`); `input_key` rejects `enter`, `space`.
+- Lua scripts can drive the keyboard themselves: `dosbox.key('KBD_right', true/false)`. `dosbox.mem_write(seg, off, v)` writes the bytes of a **string**; a number is written as its decimal digits (`0x32` wrote "50" = `0x35 0x30`, which also clobbered the next byte). Use `string.char(n)`.
+- `GAMEU` launched from the prompt starts world 1, level 1 directly ("THE CAVE / READY!", `[8BAA] == 0xFF`); the attract demo (`[8BAA] == 1`) only comes later from the title cycle. Typing `GAMEU` in one `input_type` call sometimes drops letters; typing `G` and then `AMEU\n` is reliable.
+- One row per main-loop iteration is possible by polling every frame and logging when the RNG word `[8B71]` changes; a poll landing between call #8 and call #13 gives a mid-iteration row (detect it from the RNG carry sequence, see `runLiveConformance`).
+- The script instruction budget is spent per frame polled, not per byte read: block reads with `mem_read` are cheap, so 3000+ rows fit.
+
 ## Tools that didn't work this session
 
 - `script_run` (Lua scripting), original session — hit an internal bridge error (`'Connection' object has no

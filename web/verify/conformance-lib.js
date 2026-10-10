@@ -227,7 +227,7 @@ export function diffBootEntities(m, row) {
 }
 
 // [8B58]/[8B5D] and [8C85]-[8C94] are the keyboard ISR's own state, fed from the next row's input words.
-const isLiveScratch = (a) => isScratch(a) || a === 0x8b58 || a === 0x8b5d || (a >= 0x8c85 && a <= 0x8c94);
+const isLiveScratch = (a, extra) => isScratch(a) || (extra && extra.includes(a)) || a === 0x8b58 || a === 0x8b5d || (a >= 0x8c85 && a <= 0x8c94);
 
 /**
  * One-step conformance for a live-play capture (tools/attract-capture/capture-live.lua, rows sampled
@@ -273,7 +273,7 @@ export function runLiveConformance(env, rows, o = {}) {
       const want = hexBytes(e.hex), got = m.get(e.ptr, ENTITY_SIZE);
       for (let off = 0; off < ENTITY_SIZE; off++) if (want[off] !== got[off]) diffs.push(`e${e.ptr.toString(16)} c${want[2]} +0x${off.toString(16)} want ${want[off]} got ${got[off]}`);
     }
-    for (let off = 0; off < g.length; off++) if (g[off] !== m.u8(GLOBALS_BASE + off) && !isLiveScratch(GLOBALS_BASE + off)) gdiffs.push(GLOBALS_BASE + off);
+    for (let off = 0; off < g.length; off++) if (g[off] !== m.u8(GLOBALS_BASE + off) && !isLiveScratch(GLOBALS_BASE + off, o.ignore)) gdiffs.push(GLOBALS_BASE + off);
     r.total++;
     if (!diffs.length) r.entExact++; else r.entFails.push(`${rows[k].done}->${b.done}: ${diffs.slice(0, 3).join('; ')} [${[...ctx.unported].join(',')}]`);
     if (!diffs.length && gdiffs.length && gdiffs.every(RACE)) { r.raceRows++; r.exact++; continue; }
@@ -321,6 +321,7 @@ export function runLiveFree(env, rows, o = {}) {
     const b = rows[k];
     const g = hexBytes(b.g);
     m.w8(0x8b5d, g[0x8b67 - GLOBALS_BASE]); m.w8(0x8b58, g[0x8b68 - GLOBALS_BASE]);
+    for (const [a, v] of o.force || []) m.w8(a, v); // bytes the capture script itself kept rewriting
     const ctx = { unported: new Set(), events: [] };
     stepIterationAfterRng(m, ctx, null);
     const diffs = [];
@@ -329,7 +330,7 @@ export function runLiveFree(env, rows, o = {}) {
       for (let off = 0; off < ENTITY_SIZE; off++) if (want[off] !== got[off]) diffs.push(`e${e.ptr.toString(16)} c${want[2]} +0x${off.toString(16)} want ${want[off]} got ${got[off]}`);
     }
     const gd = [];
-    if (!o.entitiesOnly) for (let off = 0; off < g.length; off++) if (g[off] !== m.u8(GLOBALS_BASE + off) && !isLiveScratch(GLOBALS_BASE + off) && !RACE(GLOBALS_BASE + off)) gd.push(`G 0x${(GLOBALS_BASE + off).toString(16)} want ${g[off]} got ${m.u8(GLOBALS_BASE + off)}`);
+    if (!o.entitiesOnly) for (let off = 0; off < g.length; off++) if (g[off] !== m.u8(GLOBALS_BASE + off) && !isLiveScratch(GLOBALS_BASE + off, o.ignore) && !RACE(GLOBALS_BASE + off)) gd.push(`G 0x${(GLOBALS_BASE + off).toString(16)} want ${g[off]} got ${m.u8(GLOBALS_BASE + off)}`);
     if (diffs.length || gd.length) return { matched, firstBad: b.done, diffs: [...diffs, ...gd].slice(0, 12), unported: [...ctx.unported] };
     matched++;
   }
