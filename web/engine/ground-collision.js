@@ -496,20 +496,21 @@ function sideProjectile(m, bx, di, face, probe, ctx) {
     // The 1CCF sound request writes nothing this model compares yet.
     const breakTile = (o) => { m.w8(di + o, -m.u8(di + o)); m.w8(bx + 0x40, 0x19); };
     ax &= 0xffff;
-    if (m.u8(di) === 0x3c) { breakTile(0); ax = 1; if (cls !== 0xd) return; }
+    if (m.u8(di) === 0x3c) { breakTile(0); ax = 1; if (cls !== 0xd) return di; }
     if (m.u8(di + 1) === 0x3c) { breakTile(1); ax = 2; }
-    if (cls === 0xd && m.u8(di + 2) === 0x3c && ax !== 2) { breakTile(2); return; } // EADD
+    if (cls === 0xd && m.u8(di + 2) === 0x3c && ax !== 2) { breakTile(2); return di; } // EADD
   }
   if (m.u16(R.C7) !== 0) alignToWall(m, bx); // EA90
   m.w16(bx + 0x24, m.u16(bx + 0x24) | m.u16(bx + 0x14));
   m.w16(bx + 0x14, m.u16(bx + 0x14) ^ 0xc);
+  return di;
 }
 
 function sideEnemy(m, bx, ctx, di) {
   const face = m.u16(bx + 0x14);
   if (face === 0) return;
   const probe = face === 8 ? R.CC : R.CB;
-  if (m.u16(bx + 4) === 7) { sideProjectile(m, bx, di, face, probe, ctx); return; }
+  if (m.u16(bx + 4) === 7) return sideProjectile(m, bx, di, face, probe, ctx);
   if (m.u16(bx + 4) === 5 || m.u16(bx + 4) === 4) { // E940 / E9CA: turn around at a wall
     if (m.u8(probe) === 0) return;
     if (m.u16(bx + 2) === 6) return;
@@ -883,7 +884,7 @@ function resolveEnemy(m, bx, di, ctx) {
     dl &= 0xf; dh &= 0xf;
     for (const a of [R.C9, R.CA, R.CB, R.CC, R.E7]) m.w8(a, m.u8(a) & 0xf);
   }
-  const side = () => sideEnemy(m, bx, ctx, di);
+  const side = () => { const r = sideEnemy(m, bx, ctx, di); if (r !== undefined) di = r; }; // DI is not preserved by the side handlers (EA61 adds to it)
   const vert = () => verticalEnemy(m, bx, ctx, di);
   const finish = () => { if (m.u8(R.E9) !== 0) m.w16(bx + 0x24, m.u16(bx + 0x24) | 0xc); };
   if (dh === dl) { // E276

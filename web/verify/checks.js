@@ -437,7 +437,7 @@ export async function checkConformance(ctx) {
       for (let r = 0; r < 128; r++) for (let c = 0; c < 128; c++) map9[c * 128 + r] = grid9[r * 128 + c];
       const fb9 = bootFromFiles(env, world1, { world: 1, sub: 1, demo: false });
       const f9 = runLiveFree(env, live9.rows, { start: fb9.m, from: 0, entitiesOnly: true, force: [[0x8b96, 50, sw9 + 40]], pokes: [{ row: 60, addr: 0x94aa, bytes: [0x7b, 0] }, { row: sw9, addr: 0x8b89, bytes: [1, 0, 5, 0] }], levelFiles: () => ({ script: world1, map: map9 }) });
-      check('a free run reproduces the captured entity records of world 1 sub-level 5 up to row 1437 (open: the hero collision flag there, ledger item 24)', sw9 > 0 && (f9.firstBad === null || f9.firstBad >= 1437) && f9.matched >= 1300, `${f9.matched} rows, first mismatch ${f9.firstBad ?? 'none'}, level words written at row ${sw9}`);
+      check('a free run reproduces the captured entity records of world 1 sub-level 5 up to row 1525 (the older hybrid-start capture; the clean one is live20)', sw9 > 0 && (f9.firstBad === null || f9.firstBad >= 1525) && f9.matched >= 1300, `${f9.matched} rows, first mismatch ${f9.firstBad ?? 'none'}, level words written at row ${sw9}`);
     }
     // World 2 sub-level 1, a CLEAN start: the game's own level-code warp (F2, then 6245; ledger item 24) loads level2.pin and
     // level2b.pap itself, so this run boots those two files with no earlier level and compares every captured entity record.
@@ -539,6 +539,7 @@ export async function checkConformance(ctx) {
       ['live18-w2b', [[3, 52, 726, 620], [5, 740, 1414, 630], [6, 1427, 2166, 700]], 2, true],
       ['live19-w2c', [[7, 52, 726, 660]], 2, true],
       ['live19-w2c', [[6, 739, 1969, 1100, true]], 1, true], // the boss level (world 1 sub-level 6), the hero on skates for part of it
+      ['live20-w1c', [[5, 52, 726, 600], [3, 740, 1414, 650], [4, 1427, 2011, 570]], 1, false], // sub-level 5 from a clean warp: the side handler's DI carries over to the ceiling handler
     ]) {
       let cap = null;
       try { cap = await loadGzJson(ctx, `tools/attract-capture/${file}.capture.json.gz`); } catch { /* absent */ }
