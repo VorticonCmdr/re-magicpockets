@@ -16,6 +16,7 @@ import { resetExtendedFields } from './entity-behavior.js';
 import { pushEvent3, pushEvent4, pushEvent5, pushSpawnEvent, pushEntityEvent } from './fire.js';
 import { setupLineMotion, insertByGroup } from './spawn.js';
 import { gameOverBody } from './hit.js';
+import { projectileRunsOut } from './ground-collision.js';
 
 const ABORT = Symbol('abort');
 
@@ -487,7 +488,7 @@ function moveHorizontalByFlagsRunner(m, si, ax) {
 /** 1000:DDBA opcode 55 for kind 7 (projectiles): the vertical arc and horizontal drift, per world. */
 function tickKind7(m, si, di, ctx) {
   const world = m.u16(0x8b89) || m.u16(0x8b8b);
-  if (world === 2) { ctx.unported.add('DE74 kind 7 world 2 tick'); return ABORT; }
+  if (world === 2) return tickKind7World2(m, si, di, ctx);
   if (world !== 1 && world !== 3 && world !== 4) return di; // DDDB
   if (m.u16(si + 0x26) === 0) { // load the vertical and horizontal speeds
     m.w8(si + 0x26, m.u8(di)); di += 1;
@@ -499,6 +500,39 @@ function tickKind7(m, si, di, ctx) {
   const h = sx8(m.u8(si + 0x27));
   if (h < 0 || m.u16(si + 0x14) === 0) return ABORT;
   moveHorizontalByFlagsRunner(m, si, h);
+  return ABORT;
+}
+
+/** 1000:DE74 opcode 55 for kind 7 in world 2: world 1's arc, plus the [+0x29] mode that ends in the shot running out. */
+function tickKind7World2(m, si, di, ctx) {
+  if (m.u16(si + 0x26) === 0) { // load the vertical and horizontal speeds
+    m.w8(si + 0x26, m.u8(di)); di += 1;
+    m.w8(si + 0x27, m.u8(di)); di += 1;
+  }
+  let ax = sx8(m.u8(si + 0x26));
+  const mode = m.u8(si + 0x29) !== 0;
+  if (!(mode && ax === 0)) { // DE90: in that mode a zero speed skips the move and the decay
+    if (ax < 0) moveDown(m, si, -ax); else moveUp(m, si, ax);
+    if (ax > -15) m.w8(si + 0x26, (ax - 1) & 0xff);
+  }
+  if (!mode) { // DF27
+    const h = sx8(m.u8(si + 0x27));
+    if (h < 0 || m.u16(si + 0x14) === 0) return ABORT;
+    moveHorizontalByFlagsRunner(m, si, h);
+    return ABORT;
+  }
+  if (m.u16(si + 0x14) === 0) return ABORT; // DEB7
+  moveHorizontalByFlagsRunner(m, si, sx8(m.u8(si + 0x27))); // DEC0
+  if (m.u8(si + 0x26) !== 0) return ABORT;
+  m.w8(si + 0x27, m.u8(si + 0x27) - 2);
+  const left = m.s8(si + 0x27);
+  if (left > 0) return ABORT; // jz/js DEDB: only a zero or negative value goes on
+  if (m.u16(si + 2) === 0x33) { // DEDB
+    m.w16(si + 0x14, 0); m.w16(si + 0x26, 0);
+    if (m.u8(0x8c03) === 0) { m.w8(si + 1, 0xa8); m.w16(si + 0xc, 0xd150); } else { m.w8(si + 1, 0x67); m.w16(si + 0xc, 0xcbea); }
+    return ABORT;
+  }
+  projectileRunsOut(m, si, ctx); // DF1C: xchg si,bx / call EE60
   return ABORT;
 }
 

@@ -17,6 +17,7 @@ import { WORLD_GROUND_TABLES, WORLD_GROUND_TABLE_ADDR, TABLE_BYTES } from '../co
 import { RAW_BANKS } from '../core/palette.js';
 import { decodeDemoTape, DemoPlayback, INPUT_BITS, DEMO_RNG_SEED } from '../core/demo-tape.js';
 import { FRAME_ORDER, DEFAULT_TICK_HZ } from '../engine/frame.js';
+import { stepIterationAfterRng } from '../engine/iteration.js';
 import { Rng } from '../engine/rng.js';
 import { prepare, runConformance, runFreeRun, runLiveConformance, runLiveFree, bootFromFiles, diffBootEntities, expandRows, midConsumeParticles } from './conformance-lib.js';
 
@@ -433,6 +434,24 @@ export async function checkConformance(ctx) {
       const fb9 = bootFromFiles(env, world1, { world: 1, sub: 1, demo: false });
       const f9 = runLiveFree(env, live9.rows, { start: fb9.m, from: 0, entitiesOnly: true, force: [[0x8b96, 50, sw9 + 40]], pokes: [{ row: 60, addr: 0x94aa, bytes: [0x7b, 0] }, { row: sw9, addr: 0x8b89, bytes: [1, 0, 5, 0] }], levelFiles: () => ({ script: world1, map: map9 }) });
       check('a free run reproduces the captured entity records of world 1 sub-level 5 up to row 1437 (open: the hero collision flag there, ledger item 24)', sw9 > 0 && (f9.firstBad === null || f9.firstBad >= 1437) && f9.matched >= 1300, `${f9.matched} rows, first mismatch ${f9.firstBad ?? 'none'}, level words written at row ${sw9}`);
+    }
+    // World 2 sub-level 1, a CLEAN start: the game's own level-code warp (F2, then 6245; ledger item 24) loads level2.pin and
+    // level2b.pap itself, so this run boots those two files with no earlier level and compares every captured entity record.
+    let live10 = null;
+    try { live10 = await loadGzJson(ctx, 'tools/attract-capture/live10-w2s1.capture.json.gz'); } catch { /* absent */ }
+    if (live10) {
+      const ex10 = expandRows(live10.rows);
+      const word10 = (r, o) => { const b = Uint8Array.from(r.g.match(/../g), (h) => parseInt(h, 16)); return b[o - 0x8b50] | (b[o - 0x8b50 + 1] << 8); };
+      const sw10 = ex10.findIndex((r) => word10(r, 0x8b89) === 2);
+      const script2 = rncUnpack(await ctx.fetchRaw('data/level2.pin')).data;
+      const grid10 = rncUnpack(await ctx.fetchRaw('data/level2b.pap')).data;
+      const map10 = new Uint8Array(128 * 128);
+      for (let r = 0; r < 128; r++) for (let c = 0; c < 128; c++) map10[c * 128 + r] = grid10[r * 128 + c];
+      const env10 = { ...env, map: map10 };
+      const fb10 = bootFromFiles(env10, script2, { world: 2, sub: 1, demo: false });
+      stepIterationAfterRng(fb10.m, { unported: new Set(), events: [] }, null); // the capture's first row is after the first iteration
+      const f10 = runLiveFree(env10, live10.rows, { start: fb10.m, from: sw10, entitiesOnly: true, force: [[0x8b96, 50]], levelFiles: () => ({ script: script2, map: map10 }) });
+      check('a free run reproduces every captured entity record of world 2 sub-level 1 (level2.pin + level2b.pap) from a clean start', sw10 > 0 && f10.firstBad === null && f10.matched >= 1500, `${f10.matched} rows from row ${sw10}, first mismatch ${f10.firstBad ?? 'none'}`);
     }
     note('live-play unported branches still hit', [...lr.unportedHist].map(([k, n]) => `${k} x${n}`).join(', ') || 'none');
   }

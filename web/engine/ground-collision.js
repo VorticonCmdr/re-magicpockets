@@ -568,10 +568,27 @@ function floorProjectile(m, bx, ctx) {
     return;
   }
   if (m.u8(R.C6) !== 0) alignToFloor(m, bx); // EB20: FAF5
-  if (world !== 1) { ctx.unported.add(`EB23 kind 7 world ${world}`); return; }
+  if (world !== 1 && world !== 2) { ctx.unported.add(`EB23 kind 7 world ${world}`); return; }
   const cls = m.u16(bx + 2);
   const kill = () => m.w8(bx + 0x40, 0x19);
-  if ([0xa, 0xb, 0xc, 0xd, 0x27].includes(cls)) { // ECBA: breakable tiles under the shot
+  if (world === 2) { // EB90: the world-2 shots; the classes 0x30-0x33 and 0x27/0x44 bounce (ECE5), the rest end here
+    if (cls === 0x34) { // ED32
+      if (m.u8(bx + 1) === 0x5c) return;
+      m.w16(bx + 0x26, 0); m.w8(bx + 1, 0x5c); m.w16(bx + 0xc, 0xcac4);
+      return;
+    }
+    if (cls === 0x3f) { // ED9B: a 0x6E tile under the shot turns to 0x92
+      const tile = m.u16(R.D7);
+      if (m.u8(tile) === 0x6e) m.w8(tile, 0x92);
+      else if (m.u8(0x8be8) !== 0 && m.u8(tile + 0x80) === 0x6e) m.w8(tile + 0x80, 0x92);
+      m.w8(bx + 0x40, 0x65); m.w8(bx + 1, 0x84); m.w16(bx + 0xc, 0xcee6);
+      return;
+    }
+    if (cls !== 0x27 && cls !== 0x44) {
+      m.w8(bx + 0x29, 0xff);
+      if (cls < 0x30 || cls > 0x33) { kill(); return; }
+    }
+  } else if ([0xa, 0xb, 0xc, 0xd, 0x27].includes(cls)) { // ECBA: breakable tiles under the shot
     const tile = m.u16(R.D7);
     let broke = false;
     if (m.u8(tile) === 0x3c) { m.w8(tile, -m.u8(tile)); broke = true; }
@@ -591,7 +608,7 @@ function floorProjectile(m, bx, ctx) {
     m.w16(bx + 0x26, 0); m.w8(bx + 1, 0x5c); m.w16(bx + 0xc, 0xcac4);
     return;
   }
-  else if (cls !== 0x44 && cls !== 0x28) { kill(); return; }
+  else if (world === 1 && cls !== 0x44 && cls !== 0x28) { kill(); return; }
   // ECE5
   if (m.u8(R.E7) !== 0) return;
   m.w16(bx + 0x24, m.u16(bx + 0x24) | 2);
@@ -612,7 +629,14 @@ function floorProjectile(m, bx, ctx) {
     }
     if (m.s8(bx + 0x26) > 3) return; // ED19: only the bounce sound
   }
-  // EE60 -> F08F: the shot has run out of bounce
+  projectileRunsOut(m, bx, ctx, world, cls, kill);
+}
+
+/** 1000:EE60: the shot has run out of bounce (or was told to by DE74): it becomes a fixed scripted object, or goes. */
+export function projectileRunsOut(m, bx, ctx, world, cls, kill) {
+  world = world ?? (m.u16(0x8b89) || m.u16(0x8b8b));
+  cls = cls ?? m.u16(bx + 2);
+  kill = kill ?? (() => m.w8(bx + 0x40, 0x19));
   const settle = (state, script, dying) => { // the shot becomes a fixed scripted object
     if (m.u8(bx + 1) === state) return;
     if (dying) m.w8(bx + 0x40, 0x65);
@@ -626,6 +650,14 @@ function floorProjectile(m, bx, ctx) {
   if (cls === 0x27) { settle(0xca, 0xd4d6, true); return; } // EED8
   if (cls === 0x28 || cls === 0x5f) { settle(0xad, 0xd1fe, true); return; } // EEC4
   if (cls === 0x16) { settle(0xae, 0xd20b, true); return; } // EEEC
+  if (world === 2) { // F02E
+    const to = { 0x30: [0xbe, 0xd35b, true], 0x31: [0xbd, 0xd350, false], 0x32: [0xbc, 0xd345, false], 0x33: [0xa8, 0xd150, false] }[cls];
+    if (!to) { kill(); return; }
+    if (m.s8(bx + 1) < 0) return;
+    m.w8(bx + 1, to[0]); m.w16(bx + 0xc, to[1]);
+    if (to[2]) m.w8(bx + 0x40, 0x65);
+    return;
+  }
   if (cls === 0xa) {
     if (m.s8(bx + 1) < 0) return;
     m.w8(bx + 1, 0x93); m.w16(bx + 0xc, 0xd006); m.w8(bx + 0x40, 0x65);

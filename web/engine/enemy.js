@@ -285,10 +285,86 @@ function thinkByWorld(m, si, ctx) {
     if (cls === 0x23) { if (m.u8(si + 1) === 0) aiDecide(m, si, ctx); return; }
     if (cls === 0x12) { thinkClass12(m, si, ctx); return; } // 6EC5
   }
-  if (w === 2 && cls === 0x4a) { thinkClass13(m, si, ctx); return; } // 5EA0 -> 5F56, shared with world 1's class 0x13
+  if (cls === 0x2c && w >= 1 && w <= 4) { if (m.u8(si + 1) === 0 && m.u16(0x8bc7) === 0) aiDecide(m, si, ctx); return; } // 6065, every world
+  if (w === 2) {
+    if (cls === 0x4a) { thinkClass13(m, si, ctx); return; } // 5EA0 -> 5F56, shared with world 1's class 0x13
+    if (cls === 0x42) { if (m.u8(si + 1) === 0) aiDecide(m, si, ctx); return; } // 6076
+    if (cls === 0x4c) { thinkClass4c(m, si, ctx); return; } // 610D
+    if (cls === 0x4b) { thinkClass4b(m, si, ctx); return; } // 6080
+    if (cls === 0x48 || cls === 0x49) { thinkSpitter(m, si, ctx); return; } // 6F00 / 6F92
+    return;
+  }
   // Classes the dispatcher at 5E22 knows per world; anything else does nothing (a plain RET).
-  const handled = { 1: [], 2: [0x48, 0x49, 0x4b, 0x4c, 0x42, 0x2c], 3: [0x4f, 0x54, 0x50, 0x51, 0x2c], 4: [0x57, 0x58, 0x5a, 0x59, 0x5d, 0x2c] }[w];
-  if (handled && (w === 1 ? cls === 0x2c : handled.includes(cls))) ctx.unported.add(`think world ${w} class 0x${cls.toString(16)}`);
+  const handled = { 3: [0x4f, 0x54, 0x50, 0x51], 4: [0x57, 0x58, 0x5a, 0x59, 0x5d] }[w];
+  if (handled && handled.includes(cls)) ctx.unported.add(`think world ${w} class 0x${cls.toString(16)}`);
+}
+
+/** 1000:610D (world 2, class 0x4C): like class 0x14, with frame 0xA and state 0x52. */
+function thinkClass4c(m, si, ctx) {
+  if (m.u8(si + 1) === 0) { if (m.u16(0x8bc7) === 0) aiDecide(m, si, ctx); return; }
+  if (m.u16(si + 0xa) !== 0xa) return;
+  m.w8(si + 0x2e, m.u8(si + 0x2e) + 1);
+  if (m.u8(si + 0x2e) !== 0xa) return;
+  m.w16(si + 0x2e, 0);
+  rollRandom(m, si, ctx);
+  if (m.u16(0x8be5) === 0) return;
+  m.w8(si + 1, 0x52); m.w16(si + 0xc, 0xd571);
+}
+
+/** 1000:6080 (world 2, class 0x4B): walks until the ground ahead changes, then turns or stops (state 0x67 -> 0). */
+function thinkClass4b(m, si, ctx) {
+  if (m.u16(0x8bc7) !== 0 || m.u8(si + 1) !== 0) return;
+  if (m.u8(si + 0x40) !== 0x67) { aiDecide(m, si, ctx); return; }
+  const ef = m.u16(0xef23);
+  const solid = (a) => m.u8(ef + m.u8(a & 0xffff)) !== 0; // AH is 0 here: the tile byte is an unsigned index
+  let di = (m.u16(0x8bd7) - 3) & 0xffff;
+  di = (m.u16(si + 0x14) === 4 ? di - 0x80 : di + 0x80) & 0xffff; // 7319
+  const stop = () => { // 60F9
+    m.w8(si + 0x40, 0); m.w16(si + 0x10, 0x28); m.w16(si + 0x12, 0x2f); m.w16(si + 0xa, 0x28);
+  };
+  const turn = () => { m.w16(si + 0x14, m.u16(si + 0x14) ^ 0xc); m.w16(si + 0x24, m.u16(si + 0x24) | m.u16(si + 0x14)); }; // 60EE
+  if (solid(di + 1) || solid(di + 2)) { // 60E4
+    rollRandom(m, si, ctx);
+    if (m.u16(0x8be5) !== 0) { stop(); return; }
+    turn(); return;
+  }
+  if (!solid(di)) { turn(); return; }
+  const scan = tileScan(m, 'right', m.u16(0x8bd7), 1, m.u8(si + 0x37));
+  if (scan.dh === 0) return;
+  rollRandom(m, si, ctx);
+  if (m.u16(0x8be5) !== 0) stop();
+}
+
+/**
+ * 1000:6F00 / 6F92 (world 2, classes 0x48 and 0x49): a thrower that stands until its target (the hero for 0x48,
+ * the class-0x4C partner for 0x49) is in range and in front of it, then rolls to start its throw (state 0x46).
+ * The sound request at the end (1CCF) writes nothing this model compares.
+ */
+function thinkSpitter(m, si, ctx) {
+  const cls = m.u16(si + 2);
+  const relax = () => { // 6F0A / 6F9C: back to the idle state
+    if (m.u8(si + 1) !== 0x46) return;
+    if (cls === 0x48) { m.w16(si + 0xa, 0x2a); m.w16(si + 0x10, 0x2a); m.w16(si + 0x12, 0x2d); }
+    m.w8(si + 1, 0x65); m.w16(si + 0xc, 0xcbd5);
+  };
+  if (m.u8(si + 0x39) !== 5) { relax(); return; }
+  const target = findByClass(m, cls === 0x48 ? 3 : 0x4c);
+  if (target === 0) { relax(); return; }
+  const flags = targetDistance(m, si, target);
+  if ((flags & 2) === 0 || (flags & m.u16(si + 0x14)) === 0) { relax(); return; }
+  if (m.s16(0x8c1d) > ((m.u8(si + 0x37) << 1) & 0xff) || m.s16(0x8c1b) > 2) { relax(); return; }
+  rollRandom(m, si, ctx);
+  if (m.u16(0x8be5) === 0) return;
+  if (cls === 0x48) {
+    if (m.u8(0x8b96) !== 0 || m.u8(si + 1) === 0x46) return;
+    m.w16(si + 0x26, 0); m.w16(si + 0x28, 0);
+    m.w16(si + 0xa, 0x2f); m.w16(si + 0x10, 0x2f); m.w16(si + 0x12, 0x30);
+    m.w8(si + 1, 0x46); m.w16(si + 0xc, 0xc961);
+    return;
+  }
+  if (m.u8(si + 1) === 0x46) return;
+  m.w16(si + 0x26, 0); m.w16(si + 0x28, 0);
+  m.w8(si + 1, 0x46); m.w16(si + 0xc, 0xc961);
 }
 
 /** 1000:CE0B: kind 2 behavior. */
@@ -299,10 +375,23 @@ export function behaviorKind2(m, si, ctx) {
   if (cls === 0x5b) return;
   terrainCollision(m, findByClass(m, 1), si, ctx); // D584: collision against the world entity
   thinkByWorld(m, si, ctx); // 5E22
-  if (cls === 0x4b) { ctx.unported.add('kind 2 class 0x4b'); return; }
-  if (m.u8(si + 1) !== 0 || cls === 0x42) return;
   const ce87 = () => { moveHorizontalByFlags(m, si, 4); advanceAnim(m, si, 0); };
   const ce93 = () => { moveHorizontalByFlags(m, si, (m.u8(si + 0x3d) & 3) ^ 3); advanceAnim(m, si, m.s8(si + 0x3d)); };
+  if (cls === 0x4b) { // CEC4
+    const st = m.u8(si + 1);
+    if (st === 0xcb) { // CEDE: back on its feet once it has landed (the flag word is masked in place)
+      m.w16(si + 0x24, m.u16(si + 0x24) & 1);
+      if (m.u16(si + 0x24) === 0) return;
+      m.w8(si + 1, 0); m.w16(si + 0x26, 0);
+      m.w16(si + 0xa, 0x32); m.w16(si + 0x10, 0x32); m.w16(si + 0x12, 0x39);
+      m.w8(si + 0x40, 0x67);
+      return;
+    }
+    if (st !== 0) return;
+    if (m.u8(si + 0x40) === 0x40 || m.u8(si + 0x40) === 0x67) ce87(); else ce93();
+    return;
+  }
+  if (m.u8(si + 1) !== 0 || cls === 0x42) return;
   const ceac = () => { // CEAC: a random roll may start an action
     rollRandom(m, si, ctx);
     if (m.u16(0x8be5) === 0) return;
