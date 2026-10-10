@@ -57,7 +57,23 @@ function playerTouchesProp(m, si, bx, ctx) {
   if (cls === 0x26) return bonusItem(m, bx); // 5B26
   if (cls === 0x1b) return powerUp(m, si, bx, ctx);
   if (cls === 0x1c) return levelGoal(m, si, bx); // 5851
-  if (cls === 6 || cls === 0x56 || cls === 0x2e) return false;
+  if (cls === 6) { // 59A9: remember the prop's frame; the frame-0x9E doorway at the screen centre is not ported
+    m.w8(0x8bb1, m.u16(bx + 0xa) & 0xff);
+    if (m.u16(bx + 0xa) === 0x9e && m.u16(bx + 6) === 0x90 && m.u16(bx + 8) === 0x50) { ctx.unported.add('59B5 class 6 doorway'); return false; }
+    return true;
+  }
+  if (cls === 0x56) { // 5B70: a clock pickup flips to its collected frame
+    if (m.u16(bx + 0xa) === 0x99) return true;
+    m.w16(bx + 0xa, 0x99); m.w8(bx + 1, 0x77); m.w16(bx + 0xc, 0xccc8);
+    m.w8(0x8c0e, m.u8(0x8c0e) + 1);
+    return true;
+  }
+  if (cls === 0x2e) { // 5B8B: time bonus (the seconds counter [8BAE] gains 15, 60 carry into the minutes [8BAF])
+    m.w8(bx + 0x40, 0x19);
+    m.w8(0x8bae, m.u8(0x8bae) + 0xf);
+    if (m.s8(0x8bae) > 0x3c) { m.w8(0x8bae, m.u8(0x8bae) - 0x3c); m.w8(0x8baf, m.u8(0x8baf) + 1); }
+    return true;
+  }
   if (!PICKUP_STAY.includes(cls) && (m.u8(bx + 0x40) === 0xf6 || m.u8(bx + 0x3e) === 0)) return true; // 5850
   m.w16(0x8c01, bx); // 584C: remember the prop the player stands against
   return true;

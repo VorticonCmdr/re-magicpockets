@@ -12,6 +12,9 @@
 
 import { pairEvent } from './hit.js';
 import { pushEvent5 } from './fire.js';
+import { changeClass } from './script-runner.js';
+import { findByClass } from './ds-memory.js';
+import { targetDistance } from './enemy.js';
 
 const MAP = 0x4200;
 const S = { X: 0x8c1f, Y: 0x8c21, X2: 0x8c27, Y2: 0x8c29, CX: 0x8c1b, CY: 0x8c1d, OX: 0x8c23, OY: 0x8c25 };
@@ -310,8 +313,9 @@ function snapLateral(m, si, bx) {
     let di = m.u16(R.D7);
     if (m.u16(bx + 0x14) === 4) {
       m.w8(R.E7, m.u8(ef + m.u8(di + 0x7f)));
-      if (m.u8(ef + m.u8(di)) !== 0 && m.u8(R.CA) === 1) m.w8(R.CA, 0);
-      if (m.u8(ef + m.u8(di)) === 0) return finishSnap(m, si, bx);
+      if (m.u8(ef + m.u8(di)) === 0) return finishSnap(m, si, bx); // F9D9
+      if (m.u8(R.CA) !== 1) return finishSnap(m, si, bx); // F9E0: only a floor sum of exactly 1 goes on to the second block
+      m.w8(R.CA, 0); // F9E2
     }
     di = m.u16(R.D7);
     m.w8(R.E7, m.u8(ef + m.u8(di - 1)));
@@ -566,7 +570,14 @@ function floorProjectile(m, bx, ctx) {
     if (m.u8(tile) === 0x3c) { m.w8(tile, -m.u8(tile)); broke = true; }
     else if (m.u8(0x8be8) !== 0 && m.u8(tile + 0x80) === 0x3c) { m.w8(tile + 0x80, -m.u8(tile + 0x80)); broke = true; }
     if (broke) { // sound 1CCF skipped; F1F6 decides what the shot becomes
-      if (cls === 0xa) { kill(); } else ctx.unported.add(`F1F6 class 0x${cls.toString(16)}`);
+      // F1F6: a shot that breaks a block loses strength (class 0xD -> 0xC -> 0xB -> 0xA -> gone)
+      if (cls === 0xa) kill();
+      else {
+        const vy = m.u16(bx + 0x26);
+        changeClass(m, bx, cls - 1);
+        m.w16(bx + 0x26, vy);
+        m.w16(bx + 6, m.u16(bx + 6) + 3); m.w16(bx + 8, m.u16(bx + 8) + 6);
+      }
     }
   } else if (cls === 0x10) { // ED32
     if (m.u8(bx + 1) === 0x5c) return;
@@ -653,7 +664,32 @@ function floorEnemy(m, bx, ctx) {
   if (m.s8(bx + 0x26) >= 0) return;
   if (m.u8(R.E7) !== 0) return;
   m.w16(bx + 0x26, 0);
-  if (cls === 0x14 || cls === 0x20 || cls === 0x2c) { ctx.unported.add(`F290 class 0x${cls.toString(16)}`); return; }
+  const stateBefore = m.u8(bx + 1);
+  if (cls === 0x14) { // F30B
+    m.w8(bx + 1, 0x88); m.w16(bx + 0xc, 0xcf3e); m.w16(bx + 0x24, m.u16(bx + 0x24) | 2);
+    return;
+  }
+  if (cls === 0x2c) { // F2E1
+    m.w8(bx + 1, 0); m.w16(bx + 0x24, m.u16(bx + 0x24) | 2);
+    if (m.u16(bx + 0xa) === 0xf6) { m.w8(bx + 1, 0xa0); m.w16(bx + 0xc, 0xd106); }
+    m.w16(bx + 0x2a, m.u16(bx + 0x14) === 4 ? 0xd117 : 0xd122);
+    return;
+  }
+  if (cls === 0x20) { // F319: the digging enemy lands
+    m.w8(bx + 1, 0);
+    m.w16(bx + 6, m.u16(bx + 6) & 0xfffe);
+    m.w16(bx + 0x24, m.u16(bx + 0x24) | 2);
+    m.w16(bx + 0xa, 0xc4);
+    if (stateBefore !== 0x8d || m.u8(bx + 0x39) !== 5) return;
+    if (((m.u8(bx + 0x36) + m.u8(bx + 0x37) + m.u8(bx + 0x38)) & 0xff) !== 0x1b) return;
+    const di = m.u16(R.D7);
+    if (m.u8(di) !== 0x3c) return;
+    m.w8(di, -m.u8(di)); // the block it landed on breaks (sound 1CCF skipped)
+    m.w8(bx + 1, 0x8d); m.w16(bx + 0xc, 0xcfd1);
+    const prize = findByClass(m, 0x15); // 721F with the enemy as the reference
+    m.w16(bx + 0x14, (prize === 0 ? 0x15 : targetDistance(m, bx, prize)) & 0xc);
+    return;
+  }
   if (m.u8(bx + 1) === 0x8d) {
     m.w16(bx + 0xa, m.u16(bx + 0x10)); m.w8(bx + 1, 0);
     m.w16(bx + 6, m.u16(bx + 6) & 0xfffc);

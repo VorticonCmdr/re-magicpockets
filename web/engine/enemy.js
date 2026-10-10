@@ -135,12 +135,12 @@ function aiOpcodes(m, si, ctx) {
         aiTurn(m, si, di, ctx);
         return;
       }
-      if (set === 5 && cls !== 0x2c && cls !== 0x14) { // 64C2 (set 5 or not, but only the set-5 world-1 case is ported)
+      if (set === 5 && cls !== 0x2c) { // 64C2 (set 5 or not, but only the set-5 world-1 case is ported)
         const r = aiNoticeHero(m, si, di, ctx);
         if (r === 'end') return;
         continue;
       }
-      if (cls === 0x2c || set === 5 || (cls === 0x14 && set === 0)) { ctx.unported.add(`AI opcode 's' class 0x${cls.toString(16)} set ${set}`); return; }
+      if (cls === 0x2c) { ctx.unported.add(`AI opcode 's' class 0x${cls.toString(16)} set ${set}`); return; }
       continue; // 6555 -> 6320
     }
     if (op === 0x70) { // 6379: look down for a ledge to jump to
@@ -691,7 +691,7 @@ function aiNoticeHero(m, si, di, ctx) {
       if (m.u8(si + 0x39) !== 0) set(0x9a, 0xd09c);
       return 'end';
     }
-    if (cls === 0x14) { ctx.unported.add('AI 6C75'); return 'end'; }
+    if (cls === 0x14) { const al = (m.u8(si + 0x3d) - 1) & 0xff; if ((al & 0x80) === 0) m.w8(si + 0x3d, al); return 'end'; } // 6C75
     return 'next';
   };
   if (flags === 0) return attack();

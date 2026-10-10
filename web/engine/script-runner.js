@@ -542,7 +542,7 @@ function aimGlow(m, si) {
   if (m.s16(si + 6) < m.s16(bx + 6)) flags |= 8;
   if (m.s16(bx + 8) < m.s16(si + 8)) flags |= 1;
   if (m.s16(bx + 6) < m.s16(si + 6)) flags |= 4;
-  const ax = Math.abs(sx - tx), bxd = Math.abs(sy - ty);
+  const ax = Math.abs(m.s16(si + 6) - m.s16(bx + 6)), bxd = Math.abs(m.s16(si + 8) - m.s16(bx + 8)); // signed 16-bit differences
   m.w16(0x8c29, flags);
   m.w16(0x8c1b, Math.floor(ax / 0x20));
   m.w16(0x8c1d, Math.floor(bxd / 0x10));

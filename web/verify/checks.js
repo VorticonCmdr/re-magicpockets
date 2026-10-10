@@ -368,6 +368,22 @@ export async function checkConformance(ctx) {
       const f5 = runLiveFree(env, live5.rows, { start: fb5.m, from: 0, entitiesOnly: true, force: [[0x8b96, 0x32]], demoScript });
       check('a free run reproduces every captured entity record up to the end of level 1, where the main loop hands over to the code screen', f5.firstBad === null && f5.matched === 3111, `${f5.matched} rows, first mismatch ${f5.firstBad ?? 'none'}`);
     }
+    // World 1, sub-level 2 (level1a.pap): reached by poking the level words while CONTINUE? is up (capture-live-drive.lua style, see
+    // docs/dosbox-debugging.md); the capture script's own writes are replayed (hearts at row 60, level words at the switch row, the
+    // hurt timer pinned 40 rows later).
+    let live6 = null;
+    try { live6 = await loadGzJson(ctx, 'tools/attract-capture/live6-sub2.capture.json.gz'); } catch { /* absent */ }
+    if (live6) {
+      const ex6 = expandRows(live6.rows);
+      const word = (r, o) => { const b = Uint8Array.from(r.g.match(/../g), (h) => parseInt(h, 16)); return b[o - 0x8b50] | (b[o - 0x8b50 + 1] << 8); };
+      const sw = ex6.findIndex((r) => word(r, 0x8b8b) === 2);
+      const grid = rncUnpack(await ctx.fetchRaw('data/level1a.pap')).data;
+      const map2 = new Uint8Array(128 * 128);
+      for (let r = 0; r < 128; r++) for (let c = 0; c < 128; c++) map2[c * 128 + r] = grid[r * 128 + c];
+      const fb6 = bootFromFiles(env, world1, { world: 1, sub: 1, demo: false });
+      const f6 = runLiveFree(env, live6.rows, { start: fb6.m, from: 0, entitiesOnly: true, force: [[0x8b96, 50, sw + 40]], pokes: [{ row: 60, addr: 0x94aa, bytes: [0x7b, 0] }, { row: sw, addr: 0x8b89, bytes: [1, 0, 2, 0] }], levelFiles: () => ({ script: world1, map: map2 }) });
+      check('a free run reproduces every captured entity record of world 1 sub-level 2 (a different map, reached by the level words), from the files alone', sw > 0 && f6.firstBad === null && f6.matched >= 2150, `${f6.matched} rows, first mismatch ${f6.firstBad ?? 'none'}, level words written at row ${sw}`);
+    }
     note('live-play unported branches still hit', [...lr.unportedHist].map(([k, n]) => `${k} x${n}`).join(', ') || 'none');
   }
   const top = [...all.unportedHist].sort((a, b) => b[1] - a[1]).slice(0, 6).map(([k, n]) => `${k} x${n}`).join(', ');
