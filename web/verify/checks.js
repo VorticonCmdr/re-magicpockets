@@ -600,6 +600,9 @@ export async function checkConformance(ctx) {
       // 37 live retypes: every 40 rows the capture script rewrote the class word of one on-screen enemy to another entity type (0x10..0x5F), so the class
       // dispatch of the AI/touch/shot code ran on classes the level never spawns there (god mode, the hurt timer pinned). 1498 of 1500 rows reproduce.
       ['live36-retype', [[1, 0, 1499, 1490, true]], 1, false, false, 'live36-retype.pokes.json'],
+      // The same retype campaign in worlds 3 and 2 (god mode, hurt timer pinned); the capture script made 24 class rewrites in all.
+      ['live37-retype-w3w2', [[1, 52, 596, 520, true]], 3, false, false, 'live37-retype-w3w2.pokes.json'],
+      ['live37-retype-w3w2', [[1, 610, 1579, 955, true]], 2, false, false, 'live37-retype-w3w2.pokes.json'],
       ['live20-w1c', [[5, 52, 726, 600], [3, 740, 1414, 650], [4, 1427, 2011, 570]], 1, false], // sub-level 5 from a clean warp: the side handler's DI carries over to the ceiling handler
     ]) {
       let cap = null;

@@ -334,7 +334,10 @@ export function runLiveFree(env, rows, o = {}) {
   let m = o.start ?? loadRow(env, rows[from]);
   let matched = 0, midDone = false; // midDone: the previous row was polled between a roll and call #13; our state is already past it
   for (let k = from + 1; k <= to; k++) {
-    if (mid.has(k)) continue;
+    if (mid.has(k)) { // a row sampled between a roll and call #13 is not stepped, but a poke the capture script made after it still lands before the next iteration
+      for (const p of o.pokes || []) if (p.row === k) p.bytes.forEach((v, i) => m.w8(p.addr + i, v));
+      continue;
+    }
     const b = rows[k];
     const g = hexBytes(b.g);
     m.w8(0x8b5d, g[0x8b67 - GLOBALS_BASE]); m.w8(0x8b58, g[0x8b68 - GLOBALS_BASE]);
