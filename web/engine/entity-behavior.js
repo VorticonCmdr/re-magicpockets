@@ -218,21 +218,7 @@ function downPressed(m, si, bx, ctx) {
     m.w16(0x8c5d, m.u16(0x8c5d) + 1); m.w8(0x8c04, 0x45); m.w8(item + 0x40, 0x19);
     return;
   }
-  if (t === 0x1a) { // 40C1: put the carried class-0x1a (or, failing that, class-0x41) item down
-    let it = 0x9398;
-    do it = nextByClass(m, it, 0x1a); while (it !== 0 && m.u8(it + 0x40) !== 0xf6);
-    if (it === 0) {
-      it = 0x9398;
-      do it = nextByClass(m, it, 0x41); while (it !== 0 && m.u8(it + 0x40) !== 0xf6);
-      if (it === 0) return;
-      m.w16(it + 0xa, 0xe1); // 4119 (the screen call that follows is graphics-side)
-    }
-    if (m.u8(it + 1) === 0 && m.u8(0x8b98) !== 0x41) {
-      m.w8(it + 0x40, 0); m.w8(it + 0x3e, 0); m.w8(it + 1, 0); m.w8(0x8b98, 0); m.w16(it + 6, 0x90);
-      if (m.u8(0x8c04) === 0x1d) m.w8(0x8c04, 0);
-    }
-    return;
-  }
+  if (t === 0x1a) { putDownLight(m); return; } // 40C1
   if (ax === 0x41) { takeItem(m, si, bx, item); return; } // 4014
   if (ax === 0x15) { // 3FB3
     if (m.u8(bx + 1) !== 0) return;
@@ -269,6 +255,23 @@ function skateMove(m, si, bx, ax) {
   if (m.u8(si + 1) !== 0) return;
   const q = Math.floor(((0xc - m.s8(0x8b97)) & 0xffff) / 4) & 0xff;
   advanceAnim(m, bx, q); // 3178 with SI = the hero
+}
+
+/** 1000:40C1: put the carried class-0x1a (or, failing that, class-0x41) item down. */
+export function putDownLight(m) {
+  let it = 0x9398;
+  do it = nextByClass(m, it, 0x1a); while (it !== 0 && m.u8(it + 0x40) !== 0xf6);
+  if (it === 0) {
+    it = 0x9398;
+    do it = nextByClass(m, it, 0x41); while (it !== 0 && m.u8(it + 0x40) !== 0xf6);
+    if (it === 0) return;
+    m.w16(it + 0xa, 0xe1); // 4119 (the screen call that follows is graphics-side)
+  }
+  if (m.u8(it + 1) === 0 && m.u8(0x8b98) !== 0x41) {
+    m.w8(it + 0x40, 0); m.w8(it + 0x3e, 0); m.w8(it + 1, 0); m.w8(0x8b98, 0); m.w16(it + 6, 0x90);
+    if (m.u8(0x8c04) === 0x1d) m.w8(0x8c04, 0);
+  }
+  return;
 }
 
 /** 1000:D8D8 (target 0x43): the hero carries a burden; walking turns and shuffles, A-press sets the throw state. [STATIC] */

@@ -9,9 +9,9 @@
 import { pushSpawnEvent, pushEvent3, pushEvent5, pushEntityEvent } from './fire.js';
 import { findByClass } from './ds-memory.js';
 import { changeClass } from './script-runner.js';
-import { crateGrab, freeSlot } from './entity-behavior.js';
+import { crateGrab, freeSlot, putDownLight } from './entity-behavior.js';
 import { levelListPointer, levelLoadEntities } from './spawn.js';
-import { moveHorizontalByFlags, advanceAnimDir } from './enemy.js';
+import { moveHorizontalByFlags, advanceAnimDir, nextByClass } from './enemy.js';
 import { projectileRunsOut } from './ground-collision.js';
 
 /** @returns {boolean} true when the original `pop ax; ret` abandons the whole interaction scan */
@@ -725,21 +725,65 @@ function enemyTouchesPlayer(m, si, bx, ctx) {
     return true;
   }
   if (cls === 0x2b) return levelPortal(m, si, bx, ctx); // 49A8
-  if (m.u8(0x8c04) === 0x40) return false;
+  if (m.u8(0x8c04) === 0x40) return carryingTouch(m, si, bx, ctx); // 482B
   if (cls === 0x53 && m.u16(bx + 0xa) === 0x104) return false;
+  return touchGeneral(m, si, bx, ctx);
+}
+
+/** 1000:466E: the common touch rules once the early outs are past. */
+function touchGeneral(m, si, bx, ctx) {
+  const cls = m.u16(bx + 2);
   if (m.u8(0x8b96) !== 0 || m.u16(si + 0xa) === 0x4c) return true;
   const t = m.u8(0x8b98);
   if (t === 0xff) return true;
   if (t === 0x21 || t === 0x41) return heroLosesHeart(m, si, ctx); // 4A50
-  if (t === 0x15 || t === 0x43 || t === 0x1a) return false;
+  if (t === 0x15) { // 47E1
+    if (m.u8(bx + 0x39) === 0x15) return true;
+    if (m.u16(bx + 0xa) === 0xc) {
+      m.w8(0x8b97, 4); m.w16(si + 0x10, 0x8a); m.w16(si + 0x12, 0x8d); m.w16(si + 0xa, 0x8a); m.w8(0x8b94, 0);
+      return killTouched(m, bx, ctx);
+    }
+    if (m.u16(0x8b8b) === 6 || m.u16(bx + 4) === 6 || m.u8(bx + 0x40) === 0x19) return true;
+    return killTouched(m, bx, ctx);
+  }
+  if (t === 0x43) return carriedBurdenTouch(m, si, bx, ctx); // 4915
+  if (t === 0x1a) { // 474D
+    let it = 0x9398;
+    do it = nextByClass(m, it, 0x1a); while (it !== 0 && m.u8(it + 0x40) !== 0xf6);
+    if (it === 0 || m.u8(it + 1) !== 0) return heroHitOrHold(m, si, bx, ctx);
+    const f = m.u16(it + 0xa) & 0xfffe;
+    if (f === 0xe6) { // 477B
+      if (m.u16(bx + 4) === 6 || m.u8(bx + 0x40) === 0x19) return true;
+      m.w16(0x8c1f, 0x12); m.w16(0x8c1d, 0); m.w16(0x8c27, m.u16(bx + 6) + 8); m.w16(0x8c25, m.u16(bx + 8) + 8);
+      scoreBurst(m, si, ctx);
+      return die(m, bx, ctx);
+    }
+    if (f === 0xec) { putDownLight(m); return true; } // 47AF -> 40C1
+    return hurtEnemyTouch(m, si, bx, ctx); // 46B6
+  }
   if (t === 1 || t === 3) { // 4725: carrying a crate or in the hit state, the player kills what he touches
     if (cls === 0x2b || cls === 0x42 || m.u16(bx + 4) === 6 || m.u8(bx + 0x40) === 0x19) return true;
     m.w16(0x8b75, m.u16(0x8b75) + m.u8(bx + 0x36) + 1);
     return die(m, bx, ctx);
   }
-  // 46B6: the player is hurt; the world entity and the player enter their knock-back states
+  return hurtEnemyTouch(m, si, bx, ctx);
+}
+
+function killTouched(m, bx, ctx) { // 473D
+  m.w16(0x8b75, m.u16(0x8b75) + m.u8(bx + 0x36) + 1);
+  return die(m, bx, ctx);
+}
+
+/** 1000:471B..: after the lookup at 46B6 failed the hit is the common one. */
+function heroHitOrHold(m, si, bx, ctx) {
+  if (m.u8(si + 1) === 0x5d) return hurtEnemyTouch(m, si, bx, ctx, true);
+  return heroLosesHeart(m, si, ctx);
+}
+
+/** 1000:46B6: the player is hurt; the world entity and the player enter their knock-back states */
+function hurtEnemyTouch(m, si, bx, ctx, skipGuard = false) {
   const world = findByClass(m, 1);
-  if ((m.u8(world + 1) !== 0 || m.u8(si + 1) !== 0) && m.u8(si + 1) !== 0x5d) return heroLosesHeart(m, si, ctx); // 471B -> 4A50
+  if (!skipGuard && (m.u8(world + 1) !== 0 || m.u8(si + 1) !== 0) && m.u8(si + 1) !== 0x5d) return heroLosesHeart(m, si, ctx); // 471B -> 4A50
   m.w16(si + 0x14, m.u16(bx + 0x14));
   if (m.u16(bx + 4) !== 6 && m.u16(bx + 2) !== 0x42) m.w16(si + 0x14, m.u16(si + 0x14) ^ 0xc);
   m.w8(world + 1, 0x44); m.w16(world + 0xc, 0xc92c);
@@ -748,6 +792,49 @@ function enemyTouchesPlayer(m, si, bx, ctx) {
   m.w16(si + 0x30, 0); m.w16(world + 0x30, 0);
   m.w8(world + 0x3e, 0); m.w8(si + 0x3e, 0);
   m.w16(si + 0x10, 0x41); m.w16(si + 0x12, 0x48);
+  return true;
+}
+
+/** 1000:482B: the hero carries a class-0x40 item (c04 == 0x40) and is touched. */
+function carryingTouch(m, si, bx, ctx) {
+  const isThrow = m.u8(si + 1) === 0x5d || m.u8(si + 1) === 0x5b;
+  const strong = isThrow && (m.u16(0x8c38) === 0x6b || m.u16(si + 0xa) === 0x77);
+  if (!strong) return m.u16(bx + 2) === 0x42 ? touchGeneral(m, si, bx, ctx) : true;
+  if (m.u16(bx + 2) === 0x42) { // 486B
+    if (m.u16(bx + 0xa) === 0x5c) return touchGeneral(m, si, bx, ctx);
+    const st = m.u8(bx + 1);
+    if (st === 0xd8 || st === 0xd6 || st === 0xd9) return true;
+    m.w8(bx + 0x3f, m.u8(bx + 0x3f) - 1);
+    if (m.u8(bx + 0x3f) === 0) { m.w8(bx + 1, 0xd9); m.w16(bx + 0xc, 0xd60d); return true; }
+    m.w8(bx + 1, 0xd8); m.w16(bx + 0xc, 0xd602);
+    return true;
+  }
+  const k = m.u16(bx + 4);
+  if (k !== 2 && k !== 4) return true;
+  // 48B2 (+ sound 1CCF(0x4a)): the enemy is knocked away and bursts
+  m.w16(bx + 0x14, m.u16(si + 0x14)); m.w8(bx + 1, 0xa9); m.w16(bx + 0xc, 0xd167); m.w8(bx + 0x40, 0x65);
+  m.w16(bx + 0xa, m.u8(0xee20 + ((m.u16(bx + 2) - 0x48) & 0xffff)));
+  m.w8(bx + 0x3d, 0xff);
+  m.w16(0x8c1f, 0x12); m.w16(0x8c29, 0xe);
+  m.w16(0x8c27, m.u16(bx + 6) + 8); m.w16(0x8c25, m.u16(bx + 8) + 8);
+  m.w16(0x8c21, 0x14); m.w16(0x8c23, m.u16(bx + 0x14));
+  pushSpawnEvent(m);
+  return true;
+}
+
+/** 1000:4915: the hero carries the class-0x43 burden and touches an enemy. */
+function carriedBurdenTouch(m, si, bx, ctx) {
+  if (m.u16(bx + 4) === 6) return false; // EE60 is not ported
+  if (m.u8(bx + 0x40) === 0x19) return true;
+  const world = findByClass(m, 1);
+  if (m.s8(world + 0x28) <= 0x10) return killTouched(m, bx, ctx);
+  // 493B (+ sound 1CCF(0x4a))
+  m.w16(bx + 0x14, m.u16(si + 0x14)); m.w8(bx + 1, 0xc2); m.w16(bx + 0xc, 0xd3bd); m.w8(bx + 0x40, 0x65);
+  m.w16(bx + 0xa, m.u8(0xee20 + ((m.u16(bx + 2) - 0x48) & 0xffff)));
+  m.w8(bx + 0x3d, 0xff);
+  m.w16(0x8c1f, (m.u8(0x8c05) % 10) * 2); m.w8(0x8c05, 0); m.w16(0x8c1d, 0x14);
+  m.w16(0x8c27, m.u16(bx + 6) + 8); m.w16(0x8c25, m.u16(bx + 8) + 8);
+  scoreBurst(m, si, ctx);
   return true;
 }
 
