@@ -10,6 +10,7 @@
  */
 
 import { rncUnpack, crc16arc, RNC_HEADER_SIZE } from '../core/rnc.js';
+import { levelFilesFor } from '../engine/level-registry.js';
 import { decodePap } from '../core/pap.js';
 import { decodePinSoundBank } from '../core/pin-sound.js';
 import { decodeLevelScript } from '../core/pin-level-script.js';
@@ -475,6 +476,26 @@ export async function checkConformance(ctx) {
       check('a free run with the generator checked reproduces world 2 sub-level 2 (level2b.pap) until the capture script itself types the next code', s2 > 0 && f2.firstBad === null && f2.matched >= 640, `${f2.matched} rows from row ${s2}, first mismatch ${f2.firstBad ?? 'none'}`);
       const f4 = await seg(4, 'level2a.pap', s4, ex11.length - 1);
       check('a free run with the generator checked reproduces every row of world 2 sub-level 4 (level2a.pap)', s4 > 0 && f4.firstBad === null && f4.matched >= 690, `${f4.matched} rows from row ${s4}, first mismatch ${f4.firstBad ?? 'none'}`);
+    }
+    // The level table: every (world, sub-level) the game can warp to, as dumped from DOSBox, against the files the registry names.
+    let levelEvidence = null;
+    try { levelEvidence = JSON.parse(new TextDecoder().decode(await ctx.fetchRaw('tools/attract-capture/level-files.json'))); } catch { /* absent */ }
+    if (levelEvidence) {
+      const bad = [];
+      for (const lv of levelEvidence.levels) {
+        const files = levelFilesFor(lv.world, lv.sub);
+        if (!files) { bad.push(`${lv.world}.${lv.sub} has no registry entry`); continue; }
+        const pin = rncUnpack(await ctx.fetchRaw('data/' + files.pin)).data;
+        if (crc16arc(pin.subarray(0, lv.pinLen)) !== lv.pinCrc || pin.length !== lv.pinLen) bad.push(`${lv.world}.${lv.sub} script ${files.pin}`);
+        if (lv.papCellsDiffering === 0) {
+          const g = rncUnpack(await ctx.fetchRaw('data/' + files.pap)).data;
+          const mp = new Uint8Array(128 * 128);
+          for (let r = 0; r < 128; r++) for (let c = 0; c < 128; c++) mp[c * 128 + r] = g[r * 128 + c];
+          if (crc16arc(mp) !== lv.papCrc) bad.push(`${lv.world}.${lv.sub} map ${files.pap}`);
+        }
+      }
+      check('the level registry names the same script and map files the game had in memory after each level-code warp (all four worlds, 24 levels)', levelEvidence.levels.length >= 24 && bad.length === 0, bad.length ? bad.join('; ') : `${levelEvidence.levels.length} levels`);
+      note('levels whose real map differs from the file by a few cells (runtime tile changes)', levelEvidence.levels.filter((l) => l.papCellsDiffering > 0).map((l) => `${l.world}.${l.sub}: ${l.papCellsDiffering}`).join(', '));
     }
     note('live-play unported branches still hit', [...lr.unportedHist].map(([k, n]) => `${k} x${n}`).join(', ') || 'none');
   }
