@@ -40,9 +40,9 @@ const VIEW_W = 320, VIEW_H = 192;
 const SCANCODES = { Digit1: 2, Digit2: 3, Digit3: 4, Digit4: 5, Digit5: 6, Digit6: 7, Digit7: 8, Digit8: 9, Digit9: 10, Digit0: 11, Enter: 0x1c, Backspace: 0x0e, Delete: 0x53, ArrowUp: 0x48, ArrowDown: 0x50, ArrowLeft: 0x4b, ArrowRight: 0x4d };
 const KEYS = { ArrowUp: 'up', KeyW: 'up', ArrowDown: 'down', KeyS: 'down', ArrowLeft: 'left', KeyA: 'left', ArrowRight: 'right', KeyD: 'right', Space: 'fire', ControlLeft: 'fire', KeyZ: 'fire' };
 
-export async function startGame({ exe, fetchBytes, canvas, setStatus }) {
+export async function startGame({ exe, fetchBytes, canvas, setStatus, params: givenParams }) {
   const ctx2d = canvas.getContext('2d');
-  const params = new URLSearchParams(location.search);
+  const params = givenParams || new URLSearchParams(location.search); // index.html passes its own (intro and sound on by default)
   const hold = +(params.get('hold') || 0);
   const loadTicks = +(params.get('load') || 165);
   const timing = FE.introTiming(exe);

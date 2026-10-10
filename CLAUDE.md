@@ -28,7 +28,7 @@ only. Never assume they're present; code must tolerate their absence (folder-pic
 
 ```sh
 npm install
-npm run dev          # Vite dev server at 127.0.0.1, default page is viewer.html
+npm run dev          # Vite dev server at 127.0.0.1; index.html is the playable port (see below), viewer.html the asset explorer
 npm run build        # builds dist/ (index.html, viewer.html, level.html, web/index.html, tools/midi-player.html)
 npm run preview      # preview the built dist/ with local game assets
 npm run extract      # node tools/build-all.js -- regenerates build/ from data/ (legacy pipeline, see below)
@@ -147,3 +147,6 @@ The method is gods-web's: port one original function at a time, and check each a
 - **Power-up frames** `[PROVEN]` live (poke campaigns `live39`/`live40`): 0x1F (`[8C04]` = 0x1B), 0x66 (extra continue), 0x1E (`[8C5F]/[8C61]` = 0x90/0x50) and 0x67 (`[8BA4]` = 1) take effect in DOSBox exactly as the port does. Frames 0x17 and 0x20 were also reached in `live40` (a temporary hook on `powerUp` counted 0x17 five times with a non-zero state byte and 0x20 five times) and every row, entity and watched global, still reproduces; the correction to an earlier claim is that they are **not** untested. What stays unexercised is the open-cell branch of `5DBA` (the mutant with nine instead of ten cells survived because every probed cell was solid).
 - **Mutation test of the suite** (`node tools/mutate-engine.mjs [--only N,M]`, about 1 minute per mutant; idea from `../gods-web/tools/mutate-actions.mjs`, written fresh here): 22 plausible mis-ports of ported code are applied one at a time and `npm run verify` must go red. First run (2026-10-10): 9 of 20 killed, 11 survived - the survivors are exactly the statements no live capture reaches (`5DBA` reward shower, the `59B5` doorway, cart ride `D7FA`, burden/carry touch states `482B`/`4915`, `40C1` put-down, `3E15` class 0x40, pair class 2, HUD extra-life frame, opcode 68 boss script) plus the power-up frames 0x1E/0x67, which survived because the ratchet compared entity records only. Fix made: poke-based ratchets now also compare the globals in `POKE_WATCH` row by row; those power-up mutants are killed. The remaining survivors are the work queue for the next targeted captures; **a statement is only `[PROVEN]` here if a mutant of it is killed**.
 
+## Playing the port (`index.html`)
+
+`index.html` is the playable page (the same idea as gods-web): `web/play/main.js` + `web/play/files.js` around `startGame` in `web/demo/game.js`. It starts with the launcher's logo and intro and AdLib sound on (`?nointro`, `?mute` turn them off; `?debug` shows a side panel; `?pick` forces the folder picker). The game files are never bundled: the dev server serves `game/` and `data/`, anything else shows **Load folder…** (a `webkitdirectory` pick of the install folder; files are matched by base name). `[PROVEN]` in Chrome 2026-10-10: served mode plays from the logo; the picker path (simulated by filling the input) starts the same game. Real-time pacing in a visible tab was not measured (the automation tab throttles `requestAnimationFrame`).
