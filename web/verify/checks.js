@@ -586,6 +586,17 @@ export async function checkConformance(ctx) {
         { row: 701, addr: 0x8b98, bytes: [0x43] },
         { row: 801, addr: 0x8b98, bytes: [0] }, { row: 801, addr: 0x8c04, bytes: [0] },
       ]],
+      // More targeted setups on world 1 level 1 (rows are `row` = the logged row + 1): [8C04] = 0x45, then 0x2A with a timer; hero mode [8B98] = 1 (the crate), 0x15 (skates), 0x41 (float);
+      // [8C04] = 0x1B with a count; the hurt timer [8B96]. Two segments (a game over and the demo sit between them); both reproduce row for row.
+      ['live35-pokes2', [[1, 0, 577, 560, true], [1, 664, 949, 280, true]], 1, false, true, [
+        { row: 101, addr: 0x8c04, bytes: [0x45] },
+        { row: 221, addr: 0x8c04, bytes: [0x2a] }, { row: 221, addr: 0x8bef, bytes: [0xf4, 0x01] },
+        { row: 341, addr: 0x8c04, bytes: [0] }, { row: 341, addr: 0x8b98, bytes: [1] },
+        { row: 461, addr: 0x8b98, bytes: [0x15] }, { row: 461, addr: 0x8b97, bytes: [0] },
+        { row: 581, addr: 0x8b98, bytes: [0x41] },
+        { row: 701, addr: 0x8b98, bytes: [0] }, { row: 701, addr: 0x8c04, bytes: [0x1b] }, { row: 701, addr: 0x8c0a, bytes: [2] },
+        { row: 821, addr: 0x8b96, bytes: [0x30] },
+      ]],
       ['live20-w1c', [[5, 52, 726, 600], [3, 740, 1414, 650], [4, 1427, 2011, 570]], 1, false], // sub-level 5 from a clean warp: the side handler's DI carries over to the ceiling handler
     ]) {
       let cap = null;
