@@ -9,6 +9,7 @@
 local SEED, END_ITER = 20261010, 4000
 local GOD = false   -- keep the hurt timer [8B96] topped up: the hero is never hurt, so the run gets further (the writes show up
                     -- as [8B96] differences in the captured rows; treat [8B96] as scratch when replaying such a capture)
+local ENTER_AFTER = nil -- after this many logged rows, also tap Enter now and then (to leave the end-of-level code screen)
 local RIGHT = 45    -- percent of segments that hold Right (the rest: left 17, down 8, idle)
 local DS = 0x5FD8
 local rb, rw, wf, fmt, byte, mr = dosbox.mem_read_byte, dosbox.mem_read_word, dosbox.wait_frames, string.format, string.byte, dosbox.mem_read
@@ -26,9 +27,10 @@ local function rnd(n) -- small LCG, independent of the host's math.random
   return (state // 65536) % n
 end
 
+local n_rows = 0
 local held = {}
 local function setkeys(want)
-  for _, k in ipairs({ 'KBD_right', 'KBD_left', 'KBD_up', 'KBD_down', 'KBD_leftctrl', 'KBD_space' }) do
+  for _, k in ipairs({ 'KBD_right', 'KBD_left', 'KBD_up', 'KBD_down', 'KBD_leftctrl', 'KBD_space', 'KBD_enter' }) do
     local w = want[k] or false
     if (held[k] or false) ~= w then dosbox.key(k, w); held[k] = w end
   end
@@ -42,15 +44,13 @@ local function pick()
   if rnd(100) < 30 then want['KBD_up'] = true end
   if rnd(100) < 25 then want['KBD_leftctrl'] = true end
   if rnd(100) < 15 then want['KBD_space'] = true end
+  if ENTER_AFTER and n_rows >= ENTER_AFTER and rnd(100) < 40 then want['KBD_enter'] = true end
   return want, 4 + rnd(40) -- hold for 4..43 frames
 end
 
 dosbox.output['state'] = 'menu'
-local waited = 0
 while not (rb(DS, 0x8BAA) == 0xFF and rw(DS, 0x8B71) ~= 0) do
   wf(1)
-  waited = waited + 1
-  if waited % 120 == 60 then dosbox.key('KBD_enter', true) elseif waited % 120 == 66 then dosbox.key('KBD_enter', false) end
 end
 dosbox.output['state'] = 'run'
 local n, lastrng, left = 0, -1, 0
@@ -59,7 +59,7 @@ while n < END_ITER do
   wf(1)
   -- the API writes a string's bytes (a number would be written as its decimal digits)
   if GOD then dosbox.mem_write(DS, 0x8B96, string.char(0x32)) end
-  if rb(DS, 0x8BA1) == 0 then -- the player is in control (not frozen by READY / a fade)
+  if rb(DS, 0x8BA1) == 0 or (ENTER_AFTER and n_rows >= ENTER_AFTER) then -- the player is in control (not frozen by READY / a fade)
     if left <= 0 then want, left = pick(); setkeys(want) end
     left = left - 1
   else
@@ -75,6 +75,7 @@ while n < END_ITER do
     local qu = fmt(FQ, byte(mr(DS, 0x9270, 300), 1, -1))
     dosbox.log('ROW ' .. n .. ' 0,0 G:' .. g .. ' P:' .. pa .. ' L:' .. vl .. ' Q:' .. qu .. ' B:' .. bl)
     n = n + 1
+    n_rows = n
     if n % 100 == 0 then dosbox.output['n'] = n end
   end
 end

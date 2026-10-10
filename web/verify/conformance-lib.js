@@ -242,25 +242,16 @@ export function runLiveConformance(env, rows, o = {}) {
   // globals are the only ones it changes.
   // (also [8C38], which call #3 consumes, and [8B60]; the scroll words [8C13]-[8C18] are recomputed by call #1.)
   const RACE = (a) => a === 0x8b69 || a === 0x8b60 || a === 0x8c38 || (a >= 0x8bb7 && a <= 0x8bba) || (a >= 0x8c13 && a <= 0x8c18);
-  // The poll can land between an iteration's call #8 and its call #13. Every iteration's last RNG call is
-  // call #13 with carry 1, so a row whose RNG state cannot be reached from the previous row by a run of
-  // calls ending in carry 1 is such a mid-iteration sample; it and the transition after it are half
-  // iterations that a whole-iteration model cannot reproduce.
-  const rngOf = (row) => hexBytes(row.g).reduce((v, byte, i) => (i === 0x8b71 - GLOBALS_BASE ? byte : i === 0x8b72 - GLOBALS_BASE ? v | (byte << 8) : v), 0);
-  const reaches = (a, b) => {
-    for (let len = 1; len <= 6; len++) for (let mask = 0; mask < (1 << (len - 1)); mask++) {
-      let s2 = a;
-      for (let i = 0; i < len - 1; i++) s2 = new Rng(s2).next((mask >> i) & 1);
-      if (new Rng(s2).next(1) === b) return true;
-    }
-    return false;
-  };
-  const rng = rows.map(rngOf);
+  // The poll can land between an iteration's call #8 and its call #13 (iterationCounts == 0), or a row can follow its
+  // predecessor by more than one iteration. Neither transition is a whole iteration, so they are skipped.
+  const counts = iterationCounts(rows);
   const mid = new Set();
-  for (let k = Math.max(from, 1); k <= to; k++) if (!reaches(rng[k - 1], rng[k]) && rng[k] !== 0x3141) mid.add(k);
+  for (let k = Math.max(from, 1); k <= to + 1 && k < rows.length; k++) if (counts[k] === 0) mid.add(k);
+  const multi = new Set();
+  for (let k = Math.max(from, 1); k < rows.length; k++) if (counts[k] > 1) multi.add(k);
   r.midRows = [...mid];
   for (let k = from; k < to; k++) {
-    if (mid.has(k) || mid.has(k + 1)) { r.skipped = (r.skipped || 0) + 1; continue; }
+    if (mid.has(k) || mid.has(k + 1) || multi.has(k + 1)) { r.skipped = (r.skipped || 0) + 1; continue; }
     const b = rows[k + 1];
     const m = loadRow(env, rows[k]);
     const g = hexBytes(b.g);
@@ -287,20 +278,38 @@ export function runLiveConformance(env, rows, o = {}) {
   return r;
 }
 
-/** Row indices sampled between an iteration's call #8 and call #13 (see runLiveConformance). */
+/**
+ * Does the RNG step from `a` to `b` fit one whole iteration? An iteration's RNG calls are some carry-0 calls (AI rolls,
+ * effects) and, last, call #13 with carry 1; a few other call sites use other carries, so runs of up to 6 calls with any
+ * carries are accepted too. Longer mixed runs would explain too many random pairs, so they are not. A step that fits
+ * none is a row sampled between call #8 and call #13.
+ * @returns {number} 1, or 0
+ */
+function iterationsBetween(a, b) {
+  const run = (s, a0) => { for (let i = 0; i < a0; i++) s = new Rng(s).next(0); return new Rng(s).next(1); };
+  for (let a0 = 0; a0 <= 14; a0++) if (run(a, a0) === b) return 1;
+  for (let len = 1; len <= 6; len++) for (let mask = 0; mask < (1 << (len - 1)); mask++) {
+    let s2 = a;
+    for (let i = 0; i < len - 1; i++) s2 = new Rng(s2).next((mask >> i) & 1);
+    if (new Rng(s2).next(1) === b) return 1;
+  }
+  return 0;
+}
+
+/**
+ * For every row, the iterations since the previous one (see iterationsBetween). Rows with 0 were sampled between
+ * call #8 and call #13; the two transitions around such a row are half iterations.
+ */
+export function iterationCounts(rows) {
+  const rng = rows.map((row) => { const g = hexBytes(row.g); return g[0x8b71 - GLOBALS_BASE] | (g[0x8b72 - GLOBALS_BASE] << 8); });
+  return rows.map((row, k) => (k === 0 || rng[k] === 0x3141 ? 1 : iterationsBetween(rng[k - 1], rng[k])));
+}
+
+/** Row indices sampled between an iteration's call #8 and call #13. */
 export function midIterationRows(rows) {
-  const rngOf = (row) => { const g = hexBytes(row.g); return g[0x8b71 - GLOBALS_BASE] | (g[0x8b72 - GLOBALS_BASE] << 8); };
-  const reaches = (a, b) => {
-    for (let len = 1; len <= 6; len++) for (let mask = 0; mask < (1 << (len - 1)); mask++) {
-      let s2 = a;
-      for (let i = 0; i < len - 1; i++) s2 = new Rng(s2).next((mask >> i) & 1);
-      if (new Rng(s2).next(1) === b) return true;
-    }
-    return false;
-  };
-  const rng = rows.map(rngOf);
+  const counts = iterationCounts(rows);
   const mid = new Set();
-  for (let k = 1; k < rows.length; k++) if (!reaches(rng[k - 1], rng[k]) && rng[k] !== 0x3141) mid.add(k);
+  counts.forEach((c, k) => { if (c === 0) mid.add(k); });
   return mid;
 }
 
@@ -313,7 +322,8 @@ export function midIterationRows(rows) {
 export function runLiveFree(env, rows, o = {}) {
   rows = expandRows(rows);
   const from = o.from ?? 0, to = Math.min(o.to ?? rows.length - 1, rows.length - 1);
-  const mid = midIterationRows(rows);
+  const counts = iterationCounts(rows);
+  const mid = new Set(); counts.forEach((c, k) => { if (c === 0) mid.add(k); });
   const RACE = (a) => a === 0x8b69 || a === 0x8b60 || a === 0x8c38 || (a >= 0x8bb7 && a <= 0x8bba) || (a >= 0x8c13 && a <= 0x8c18);
   let m = o.start ?? loadRow(env, rows[from]);
   let matched = 0;
@@ -324,7 +334,7 @@ export function runLiveFree(env, rows, o = {}) {
     m.w8(0x8b5d, g[0x8b67 - GLOBALS_BASE]); m.w8(0x8b58, g[0x8b68 - GLOBALS_BASE]);
     for (const [a, v] of o.force || []) m.w8(a, v); // bytes the capture script itself kept rewriting
     const ctx = { unported: new Set(), events: [] };
-    stepIterationAfterRng(m, ctx, null);
+    for (let rep = 0; rep < Math.max(counts[k], 1) && !ctx.levelStart && !ctx.gameRestart; rep++) stepIterationAfterRng(m, ctx, null);
     if (ctx.gameRestart === 'demo' && o.demoScript) { // CONTINUE? timed out: the game starts over with the attract demo
       m = bootFromFiles(env, o.demoScript).m;
       ctx.gameRestart = null;

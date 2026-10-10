@@ -16,12 +16,13 @@ export const VISIBLE_LIST = 0x91be; // rebuilt every frame, terminated by 0xFFFF
 export class DsMemory {
   /** @param {Uint8Array} exeBytes the whole GAMEU.EXE */
   constructor(exeBytes) {
+    this.exe = exeBytes; // the other code/data segments (read-only tables)
     this.b = new Uint8Array(DS_SIZE);
     const avail = Math.min(DS_SIZE, exeBytes.length - DS_FILE_OFFSET);
     this.b.set(exeBytes.subarray(DS_FILE_OFFSET, DS_FILE_OFFSET + avail));
   }
 
-  clone() { const m = Object.create(DsMemory.prototype); m.b = this.b.slice(); return m; }
+  clone() { const m = Object.create(DsMemory.prototype); m.b = this.b.slice(); m.exe = this.exe; return m; }
 
   u8(o) { return this.b[o & 0xffff]; }
 

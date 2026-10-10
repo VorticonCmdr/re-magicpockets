@@ -359,6 +359,15 @@ export async function checkConformance(ctx) {
       const f4 = runLiveFree(env, live4.rows, { start: fb4.m, from: 0, entitiesOnly: true, demoScript });
       check('a free run reproduces every captured entity record of the capture with two deaths, CONTINUE? accepted and the level restarted twice', f4.firstBad === null && f4.matched === 2579, `${f4.matched} rows, first mismatch ${f4.firstBad ?? 'none'}`);
     }
+    // A fifth capture: the invulnerable run again with Enter taps added, so it also holds the end-of-level code letters
+    // (opcode 68 -> 25A5/25C8). Rows after 3225 are the code screen's own loop (one RNG call with carry 0 per tick, no call #13), not main-loop iterations.
+    let live5 = null;
+    try { live5 = await loadGzJson(ctx, 'tools/attract-capture/live5.capture.json.gz'); } catch { /* absent */ }
+    if (live5) {
+      const fb5 = bootFromFiles(env, world1, { world: 1, sub: 1, demo: false });
+      const f5 = runLiveFree(env, live5.rows, { start: fb5.m, from: 0, entitiesOnly: true, force: [[0x8b96, 0x32]], demoScript });
+      check('a free run reproduces every captured entity record up to the end of level 1, where the main loop hands over to the code screen', f5.firstBad === null && f5.matched === 3111, `${f5.matched} rows, first mismatch ${f5.firstBad ?? 'none'}`);
+    }
     note('live-play unported branches still hit', [...lr.unportedHist].map(([k, n]) => `${k} x${n}`).join(', ') || 'none');
   }
   const top = [...all.unportedHist].sort((a, b) => b[1] - a[1]).slice(0, 6).map(([k, n]) => `${k} x${n}`).join(', ');

@@ -783,9 +783,31 @@ function levelEvent(m, si, di, ctx) {
     return startSequence(0xd2ee);
   }
   // 288C: call 25A5
-  if (m.u8(0x8bac) === 0) {
-    ctx.unported.add('opcode 68 25A5 (bonus screen letters)');
-    return ABORT;
+  if (m.u8(0x8bac) !== 0) return di;
+  m.w8(marker + 0x40, 0); // BX is still the class-0x2D marker (0 when there is none: the byte at DS:0x40)
+  if (m.u8(0x8c33) === 0) {
+    m.w8(marker + 1, 0xf); m.w16(marker + 0xc, 0xc5f5);
+    levelCode(m, ctx);
   }
-  return di;
+  return ABORT; // 25C3: pop ax; jmp 2663
+}
+
+/**
+ * 1000:25C8: pick the letters of the level code shown after the level. Two random digits and the clock's
+ * count index a table in another segment (ES = 0x2BA9, file offset 0x29E80); the word read is mixed with the
+ * index. The glyph writes into the screen buffers are graphics only.
+ */
+function levelCode(m, ctx) {
+  ctx.rng(m, 0); // 11FC
+  const rnd = m.u16(0x8b6b);
+  let ah = ((rnd >> 8) & 0xf) + (rnd & 7);
+  ah = (ah + (m.u8(0x8bad) & 3)) & 0xff;
+  m.w8(0x8bbf, ah);
+  m.w8(0x8bc0, rnd & 7);
+  const idx = ah * 8 + m.u8(0x8bc0);
+  const word = m.exe[0x29e80 + 2 * idx] | (m.exe[0x29e80 + 2 * idx + 1] << 8);
+  m.w16(0x8bc1, ((word ^ ((idx + 0xaab) & 0xffff)) & 0xffff) >> 1);
+  m.w8(0x8bbf, (m.u8(0x8bbf) + 0x41) & 0xff);
+  m.w8(0x8bc0, (m.u8(0x8bc0) + 1) & 0xff);
+  m.w8(0x8c33, 1);
 }
