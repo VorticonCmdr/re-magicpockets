@@ -1000,6 +1000,18 @@ function levelEvent(m, si, di, ctx) {
 }
 
 /**
+ * Page convenience (not in the original, which edits the code with Up/Down/Left/Right only): a digit key on the code screen writes that digit into
+ * the cell under the cursor and moves one cell right, exactly the state change of the Right action (24EB..: the next cell is marked 0xC8).
+ */
+export function typeCodeDigit(m, d) {
+  const BUF = 0xe70f;
+  let bx = m.u8(0x8c33);
+  if (bx < 1 || bx > 4) return;
+  m.w8(BUF + bx, d * 2);
+  if (bx !== 4) { bx += 1; m.w8(BUF + bx, 0xc8); m.w8(0x8c33, bx); }
+}
+
+/**
  * Opcode 38 (1000:2474): the level-code entry screen. The original loops inside the opcode, polling the joystick/keyboard
  * (18A4 -> [8B5D], [8B60]) once per vertical retrace until something happens. The port runs one pass per call of
  * the script runner with [8B5D]/[8B60] already set by the host (the keyboard path of 18A4 is `[8B5D] = [8C91]`);
@@ -1070,4 +1082,10 @@ function levelCode(m, ctx) {
   m.w8(0x8bbf, (m.u8(0x8bbf) + 0x41) & 0xff);
   m.w8(0x8bc0, (m.u8(0x8bc0) + 1) & 0xff);
   m.w8(0x8c33, 1);
+  // 2626..2655: the entry buffer the code screen edits (cursor cell, four blank digits, end marker) and the two letters shown ([PROVEN]: the
+  // buffer a live DOSBox read held right after this routine was c8 bb bb bb bb c8). Without it the buffer kept the HUD's score digits and no code
+  // typed on the screen could ever match.
+  m.w8(0xe70f, 0xc8); for (let k = 1; k <= 4; k++) m.w8(0xe70f + k, 0xbb); m.w8(0xe70f + 5, 0xc8);
+  m.w8(0xdff2 + 0xb, (m.u8(0x8bbf) - 0x41 + 0xa0) & 0xff);
+  m.w8(0xdff2 + 0xc, (m.u8(0x8bc0) + 0xbc) & 0xff);
 }

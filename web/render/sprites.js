@@ -72,12 +72,32 @@ export function collectDraws(m, o = {}) {
     }
     const first = cmds.length;
     drawEntity(m, p, type, cls, pan, cmds, o);
+    if (type === 3 && cls === 3 && m.u16(0x8c38) !== 0) heldOverlay(m, p, pan, cmds); // 1000:772C, drawn right after the hero
     // The entity is blitted at x + ([8B69]&15) into the 352-wide buffer, and the hardware pan shifts the
     // visible window by the same [8B69]&15, so the on-screen x is the record's x. [PROVEN]: with [8B69]=0x1C
     // a live DOSBox frame matches only for a net offset of 0 (2681 of 2764 sprite pixels; pan 4/8/12 match ~450).
     for (let i = first; i < cmds.length; i++) cmds[i].dx -= pan;
   }
   return cmds;
+}
+
+/**
+ * 1000:772C: the second sprite layer over the hero while [8C38] is non-zero: the hero's own descriptor (bank 2, one column of two 32x16 half tiles) is
+ * drawn again from the tile stream of frame [8C38] (table E4FA), at the hero's x and y + the second byte of the pair F4F9[(frame - 0x1F) * 2]
+ * (`[PROVEN]` on the fire-release frame: hero frame 97, [8C38] = 73 -> bank 2 tile 36 at (144, 81), 394 of 394 pixels equal the DOSBox frame).
+ * The branch for [hero+0x10] == 0x2B (the carry pose, 7739) is not ported: it positions the layer differently and no live frame of it was fitted.
+ */
+function heldOverlay(m, p, pan, cmds) {
+  if (m.u16(p + 0x10) === 0x2b) return;
+  const frame = m.u16(p + 0xa);
+  const dy = m.u8(0xf4f9 + (frame - 0x1f) * 2 + 1);
+  const bx = m.u16(TABLE_E4FA + 2 * m.u16(0x8c38));
+  const x = s16(m, p + 6), y = s16(m, p + 8);
+  const mirror = m.u16(p + 0x14) !== 8; // B42E: the player's mirrored bank when facing left
+  for (let r = 0; r < 2; r++) {
+    const b = m.u8(bx + r);
+    if (b !== 0) cmds.push({ bank: 2, tile: b >> 1, half: b & 1, dx: x, dy: y + dy + 0x10 * r, w: 32, h: 16, mirror, ent: p, type: 3, mode: 0xa, overlay: true });
+  }
 }
 
 function drawEntity(m, p, type, cls, pan, cmds, o) {

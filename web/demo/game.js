@@ -24,6 +24,7 @@ import { rncUnpack } from '../core/rnc.js';
 import { buildBackgroundCanvas } from '../render/canvas.js';
 import { prepare, bootFromFiles } from '../verify/conformance-lib.js';
 import { startLevel, startWorld } from '../engine/boot.js';
+import { typeCodeDigit } from '../engine/script-runner.js';
 import { stepIteration } from '../engine/iteration.js';
 import { INPUT_BITS } from '../core/demo-tape.js';
 import { findByClass } from '../engine/ds-memory.js';
@@ -97,11 +98,13 @@ export async function startGame({ exe, fetchBytes, canvas, setStatus, params: gi
   };
   // ?sound: AdLib sound (web/demo/sound.js). The main loop's sound requests reach g.sim.sound; absent = silent, engine behaviour unchanged.
   if (params.has('sound')) { try { await (await import('./sound.js')).enableSound(g.sim, fetchBytes); setStatus('sound on: press a key or click once to start audio'); } catch (err) { setStatus(`?sound: ${err.message}`); } }
+  let jump = null; { const mm = /^(\d)\.(\d+)$/.exec(params.get('level') || ''); if (mm) jump = { world: +mm[1], sub: +mm[2] }; }
   const held = new Set();
   const down = new Set(); // every key currently down (KLOGOPOU ends its hold on any key)
-  let scan = 0;
+  let scan = 0, typedDigit = -1;
   addEventListener('keydown', (e) => {
     down.add(e.code);
+    const dg = /^(?:Digit|Numpad)([0-9])$/.exec(e.code); if (dg) typedDigit = +dg[1];
     if (KEYS[e.code]) { held.add(KEYS[e.code]); e.preventDefault(); }
     if (SCANCODES[e.code]) { scan = SCANCODES[e.code]; if (e.code.startsWith('Arrow') || e.code === 'Enter') e.preventDefault(); }
     if (g.mode === 'ending' && (e.code === 'Enter' || e.code === 'Space')) toIntro({ world: 1, reason: 'newGame' });
@@ -128,6 +131,10 @@ export async function startGame({ exe, fetchBytes, canvas, setStatus, params: gi
       g.world = boot.world; g.map = files.pap;
     }
     g.sim.unported.clear(); g.mode = 'play'; g.iterations = 0;
+    if (jump) { // ?level=W.S (testing): start at that level instead of world 1 level 1
+      const j = jump; jump = null;
+      if (j.world > 1 && j.sub === 1) toIntro({ world: j.world, sub: 1, reason: 'world', hardMode: false }); else onLevelStart({ world: j.world, sub: j.sub });
+    }
   }
 
   function onLevelStart(next) { // opcode 37 (31F5): 03FF's dispatch, or 00CA when the map stays
@@ -141,7 +148,13 @@ export async function startGame({ exe, fetchBytes, canvas, setStatus, params: gi
 
   function playTick() {
     const m = g.m;
-    if (!g.demo) { m.w8(0x8b5d, keyState()); m.w8(0x8b58, keyState()); if (scan && m.u8(0x8c33) !== 0) { m.w8(0x8b60, scan); } scan = 0; }
+    if (!g.demo) {
+      if (m.u8(0x8c33) !== 0) { // the level-code screen: one action per key press (the scancode path), digit keys type into the cell
+        m.w8(0x8b5d, 0); m.w8(0x8b58, 0);
+        if (typedDigit >= 0) typeCodeDigit(m, typedDigit); else if (scan) m.w8(0x8b60, scan);
+      } else { m.w8(0x8b5d, keyState()); m.w8(0x8b58, keyState()); }
+      scan = 0; typedDigit = -1;
+    }
     stepIteration(m, g.sim, null); g.iterations++;
     if (g.sim.levelStart) { const next = g.sim.levelStart; g.sim.levelStart = null; onLevelStart(next); return; }
     if (g.sim.gameRestart) { const why = g.sim.gameRestart; g.sim.gameRestart = null; toIntro({ world: 1, reason: why === 'demo' ? 'demo' : 'newGame' }); return; }
@@ -223,7 +236,7 @@ export async function startGame({ exe, fetchBytes, canvas, setStatus, params: gi
     } else {
       drawPlay();
       const m = g.m;
-      setStatus(`${g.demo ? 'attract demo' : 'playing'}: world ${m.u16(0x8b89)} sub-level ${m.u16(0x8b8b)}  iteration ${g.iterations}  score ${m.u16(0x8b75)}  unported: ${[...g.sim.unported].join(', ') || 'none'}`);
+      setStatus(m.u8(0x8c33) !== 0 && !g.demo ? `LEVEL CODE: type the four digits (or Up/Down to change a digit, Left/Right to move), then Enter  -  world ${m.u16(0x8b89)} sub-level ${m.u16(0x8b8b)}` : `${g.demo ? 'attract demo' : 'playing'}: world ${m.u16(0x8b89)} sub-level ${m.u16(0x8b8b)}  iteration ${g.iterations}  score ${m.u16(0x8b75)}  unported: ${[...g.sim.unported].join(', ') || 'none'}`);
     }
   }
 
@@ -232,12 +245,19 @@ export async function startGame({ exe, fetchBytes, canvas, setStatus, params: gi
   const frame = (now) => {
     if (!running) return;
     acc += Math.min(now - last, 250); last = now;
-    for (;;) {
-      const ms = 1000 / (g.mode === 'logo' ? KL.KLOGO_HZ : (g.mode === 'intro' || g.mode === 'prelude' || g.mode === 'loading') ? VSYNC_HZ : DEFAULT_TICK_HZ);
-      if (acc < ms) break;
-      acc -= ms; tick();
+    try {
+      for (;;) {
+        const ms = 1000 / (g.mode === 'logo' ? KL.KLOGO_HZ : (g.mode === 'intro' || g.mode === 'prelude' || g.mode === 'loading') ? VSYNC_HZ : DEFAULT_TICK_HZ);
+        if (acc < ms) break;
+        acc -= ms; tick();
+      }
+      draw();
+    } catch (err) { // a failure in the engine must not leave a frozen page without a word: say what happened and stop
+      running = false;
+      console.error(err);
+      setStatus(`The game stopped: ${err && err.message ? err.message : err} (level ${g.m ? g.m.u16(0x8b89) + '.' + g.m.u16(0x8b8b) : '-'}; reload to start again, the browser console has the stack)`, true);
+      return;
     }
-    draw();
     requestAnimationFrame(frame);
   };
   requestAnimationFrame(frame);

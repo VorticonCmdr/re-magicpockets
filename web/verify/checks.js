@@ -671,9 +671,9 @@ export async function checkSpriteWorlds(ctx) {
   const { results, check } = makeChecker();
   const exe = await ctx.fetchRaw('game/GAMEU.EXE');
   const hexBytes = (h) => Uint8Array.from(h.match(/../g), (x) => parseInt(x, 16));
-  for (const [world, opaqueLiteral, cmdsLiteral] of [[2, 4502, 19], [3, 2198, 41], [4, 4329, 32]]) {
+  for (const [world, opaqueLiteral, cmdsLiteral, name = `world${world}`] of [[2, 4502, 19], [3, 2198, 41], [4, 4329, 32], [1, 3243, 18, 'world1-overlay']]) {
     let ref;
-    try { ref = await loadGzJson(ctx, `tools/sprite-video/world${world}.json.gz`); } catch { check(`world ${world} video frame (not available)`, true, 'skipped'); continue; }
+    try { ref = await loadGzJson(ctx, `tools/sprite-video/${name}.json.gz`); } catch { check(`world ${world} video frame (not available)`, true, 'skipped'); continue; }
     const raw = {};
     for (const b of Object.values(BANKS)) for (const f of b.files) { const n = f.replace('%', world); raw[n] = rncUnpack(await ctx.fetchRaw(`data/${n}`)).data; }
     const m = new DsMemory(exe);
@@ -683,8 +683,8 @@ export async function checkSpriteWorlds(ctx) {
     const vid = Uint8Array.from(atob(ref.rgb), (c) => c.charCodeAt(0));
     let opaque = 0, same = 0;
     for (let i = 0; i < img.length; i++) if (img[i] >= 0) { opaque++; if (((vid[i * 3] << 16) | (vid[i * 3 + 1] << 8) | vid[i * 3 + 2]) === img[i]) same++; }
-    check(`world ${world}: ${cmdsLiteral} draw commands for the live entity block`, cmds.length === cmdsLiteral, `${cmds.length}`);
-    check(`world ${world}: all ${opaqueLiteral} sprite pixels equal the DOSBox frame`, opaque === opaqueLiteral && same === opaqueLiteral, `${same}/${opaque}`);
+    check(`${name}: ${cmdsLiteral} draw commands for the live entity block`, cmds.length === cmdsLiteral, `${cmds.length}`);
+    check(`${name}: all ${opaqueLiteral} sprite pixels equal the DOSBox frame`, opaque === opaqueLiteral && same === opaqueLiteral, `${same}/${opaque}`);
   }
   return results;
 }
