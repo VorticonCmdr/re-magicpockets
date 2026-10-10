@@ -241,7 +241,7 @@ function pickUp(m, si, bx, ctx) {
   if (cls === 0x14) m.w8(si + 0x3d, 0);
   m.w8(bx + 0x40, 0x19);
   m.w8(si + 0x3c, m.u8(si + 0x3c) + 1);
-  m.w8(0x8c09, m.u8(0x8c09) + 1); // + sound 1CCF
+  m.w8(0x8c09, m.u8(0x8c09) + 1); m.sound?.(0x2b); // 6AD5: sound 1CCF(0x2b)
   return 'end';
 }
 
@@ -681,7 +681,7 @@ function carriedItem(m, si, bx, ctx) {
   if (m.s8(0x8ba2) < 0 || m.u8(si + 1) === 0x33) return;
   const drop = () => { // D1AB: the item is spent
     m.w8(si + 0x40, 0x19); m.w8(si + 1, 0); m.w8(si + 0x3e, 0);
-    m.w8(0x8b98, 0); m.w8(0x8c04, 0); // + sound 1CCF(0x43)
+    m.w8(0x8b98, 0); m.w8(0x8c04, 0); m.sound?.(0x43); // D1C5: sound 1CCF(0x43)
   };
   const hold = () => { m.w16(si + 6, 0x90); m.w16(si + 8, 0xffe0); }; // D1C9
   if (m.u8(bx + 1) === 0x2f) { hold(); return; }

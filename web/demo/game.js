@@ -95,6 +95,8 @@ export async function startGame({ exe, fetchBytes, canvas, setStatus }) {
     mode: prelude ? 'logo' : 'intro', fs: FE.newGame({ hold }), logo: prelude ? KL.createLogo(prelude.logo, { seconds: 5 }) : null, pre: null, loadLeft: 0, dac: null, m: null, sim: { unported: new Set(), events: [] }, world: 1, map: 'pcmap.pap', ticks: 0, iterations: 0,
     note: '', demo: false, drawn: null,
   };
+  // ?sound: AdLib sound (web/demo/sound.js). The main loop's sound requests reach g.sim.sound; absent = silent, engine behaviour unchanged.
+  if (params.has('sound')) { try { await (await import('./sound.js')).enableSound(g.sim, fetchBytes); setStatus('sound on: press a key or click once to start audio'); } catch (err) { setStatus(`?sound: ${err.message}`); } }
   const held = new Set();
   const down = new Set(); // every key currently down (KLOGOPOU ends its hold on any key)
   let scan = 0;

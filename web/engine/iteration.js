@@ -88,6 +88,7 @@ function rngWithCarry(m, carry) {
 }
 
 export function stepIteration(m, ctx, only = null) {
+  m.sound = ctx.sound || null; // sound requests (1CCF/1D4C/1DAE) reach `ctx.sound(id, kind)` through `m`; absent = no-op, touches no DS byte
   ctx.rng = rngWithCarry;
   ctx.modalWait = false;
   // Call 6 of the previous iteration comes after the capture sample (calls 1-3) and before this
@@ -109,6 +110,7 @@ export function stepIteration(m, ctx, only = null) {
  * iteration, then 5-8, 12 and 13. Input comes from the key bytes [8B5D]/[8B58] that call #7 copies.
  */
 export function stepIterationAfterRng(m, ctx, only = null) {
+  m.sound = ctx.sound || null;
   ctx.rng = rngWithCarry;
   ctx.modalWait = false;
   cameraUpdateScroll(m); // call 1

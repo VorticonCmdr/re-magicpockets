@@ -336,11 +336,11 @@ function skate(m, si, bx, ctx) {
       if (m.u16(bx + 0x10) !== 0x76) m.w16(0x8bfb, 0);
       skateMove(m, si, bx, speed()); // DA10
       if (m.u8(si + 1) === 0) {
-        if (m.u8(0x8b97) !== 0xc) m.w8(0x8b97, m.u8(0x8b97) + 2); // + sound 1CCF(0x39)
+        if (m.u8(0x8b97) !== 0xc) { m.w8(0x8b97, m.u8(0x8b97) + 2); m.sound?.(0x39); } // DA35: sound 1CCF(0x39)
         else {
           m.w8(0x8b94, m.u8(0x8b94) + 1);
           if (m.s8(0x8b94) >= 0x14 && m.u16(bx + 0x10) !== 0x76) { // + sound 1CCF(0x50)
-            m.w16(bx + 0x10, 0x76); m.w16(bx + 0x12, 0x79); m.w16(bx + 0xa, 0x76); m.w8(0x8b94, 0);
+            m.sound?.(0x50); /* DA50 */ m.w16(bx + 0x10, 0x76); m.w16(bx + 0x12, 0x79); m.w16(bx + 0xa, 0x76); m.w8(0x8b94, 0);
           }
         }
       }
@@ -384,7 +384,7 @@ function floatControls(m, si, bx, ctx) {
   floatMove(m, si, bx, ctx);
   m.w16(0x8c5b, m.u16(0x8c5b) + 1);
   if (m.u16(0x8c5b) === 0x11) {
-    const r = m.u8(0x8b6b) & 3; // the matching sound (1CCF) is graphics-side
+    const r = m.u8(0x8b6b) & 3; m.sound?.([0x36, 0x37, 0x38, 0x35][r]); // D6CA: the matching sound 1CCF(0x36/37/38/35)
     m.w16(0x8c1f, r === 1 ? 0x101 : r === 2 ? 0x102 : r === 3 ? 0xff : 0x100);
     m.w16(0x8c5b, 0);
     m.w16(0x8c21, 0x32); m.w16(0x8c23, 4); m.w16(0x8c25, 0x50); m.w16(0x8c27, 0x98); m.w16(0x8c29, 0x55);
@@ -449,7 +449,7 @@ function handleCollisionOrStateDispatch(m, si, ctx) {
       m.w8(bx + 0x3e, 0);
       m.w8(si + 1, 0x10); m.w16(si + 0xc, 0xc601);
       m.w8(bx + 1, 0x12); m.w16(bx + 0xc, 0xc60a);
-      if ((m.u16(G.RNG_OUT) & 3) === 0) ctx.events.push({ op: 'sound', id: 8 });
+      if ((m.u16(G.RNG_OUT) & 3) === 0) { ctx.events.push({ op: 'sound', id: 8 }); m.sound?.(8); } // 3DD3
     }
   }
   m.w16(0x8bfd, 0);

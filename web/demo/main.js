@@ -64,6 +64,7 @@ async function main() {
   let playing = new URLSearchParams(location.search).has('play');
   let m, ticks, step;
   const sim = { unported: new Set(), events: [] };
+  if (new URLSearchParams(location.search).has('sound')) await (await import('./sound.js')).enableSound(sim, fetchBytes); // AdLib sound for the main loop's requests; see web/demo/sound.js
   const demoScript = rncUnpack(script).data, world1 = rncUnpack(world1Script).data;
   // Watching boots the attract demo's level (level0.pin + the tape); playing boots world 1, level 1 as the
   // game's own start does (new1.pin). Both use pcmap.pap and are parity-checked in `npm run verify`.

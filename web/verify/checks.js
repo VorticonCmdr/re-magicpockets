@@ -19,7 +19,7 @@ import { RAW_BANKS, WORLD_PALETTES } from '../core/palette.js';
 import { rasterize, buildBanks } from '../render/sprite-raster.js';
 import { decodeDemoTape, DemoPlayback, INPUT_BITS, DEMO_RNG_SEED } from '../core/demo-tape.js';
 import { FRAME_ORDER, DEFAULT_TICK_HZ } from '../engine/frame.js';
-import { stepIterationAfterRng } from '../engine/iteration.js';
+import { stepIteration, stepIterationAfterRng } from '../engine/iteration.js';
 import { Rng } from '../engine/rng.js';
 import { codeEntry } from '../engine/script-runner.js';
 import { prepare, runConformance, runFreeRun, runLiveConformance, runLiveFree, bootFromFiles, diffBootEntities, expandRows, midConsumeParticles, loadRow } from './conformance-lib.js';
@@ -31,6 +31,9 @@ import { lzhufDecode } from '../core/lzhuf.js';
 import { fnv64 } from '../core/hash.js';
 import { DsMemory } from '../engine/ds-memory.js';
 import { collectDraws, mirrorTile32, BANKS } from '../render/sprites.js';
+import { parseTrace, replay } from '../audio/trace-replay.js';
+import { PinDriver, TICK_HZ } from '../audio/pin-driver.js';
+import { CODE_FILE_OFFSET } from '../core/exe-data.js';
 
 export function makeChecker() {
   const results = [];
@@ -860,8 +863,98 @@ export async function checkPrelude(ctx) {
   return results;
 }
 
+/** Decode cue `id` of an adlib.pin-style bank (data/player.pin `1348`/`130F`): 'c' (0x63) / 'C' (0x43) cues are a 256-word digram dictionary plus one index byte per output pair. */
+function decodeCue(bank, id) {
+  const dv = new DataView(bank.buffer, bank.byteOffset, bank.byteLength);
+  const o = dv.getUint32(2 + 4 * id, true), flag = bank[o];
+  if (flag !== 0x63 && flag !== 0x43) return { flag, smf: bank.subarray(o) };
+  const out = new Uint8Array(Math.min(bank.length - o - 0x201, 4000) * 2);
+  for (let i = 0; i < out.length; i++) { const w = dv.getUint16(o + 1 + 2 * bank[o + 0x201 + (i >> 1)], true); out[i] = (i & 1) ? w >> 8 : w & 255; }
+  return { flag, smf: out.subarray(flag === 0x63 ? 1 : 0) };
+}
+
+/**
+ * The AdLib sound driver (data/player.pin + data/adlib.pin; docs/formats/pin-sound.md). The strong claim: the original
+ * driver code, run in web/audio/x86-lite.js and driven by the commands and tick count of a
+ * DOSBox-X capture (tools/adlib-capture/chain.trace.gz: INIT, every one of the 82 cues, plus the commands the game issues
+ * itself during the attract demo), writes the same OPL2 registers in the same order as the real driver did.
+ */
+export async function checkAdlibDriver(ctx) {
+  const { results, check, note } = makeChecker();
+  const player = (await unpackData(ctx, 'player.pin')).r.data;
+  const bank = (await unpackData(ctx, 'adlib.pin')).r.data;
+  const exe = await ctx.fetchRaw('game/GAMEU.EXE');
+  const dv = new DataView(bank.buffer, bank.byteOffset, bank.byteLength);
+  // ---- the bank
+  const count = dv.getUint16(0, true);
+  const kinds = { smf: [], packed: [] };
+  for (let i = 0; i < count; i++) {
+    const o = dv.getUint32(2 + 4 * i, true);
+    if (String.fromCharCode(...bank.subarray(o, o + 4)) === 'MThd') kinds.smf.push(i); else if (bank[o] === 0x63 || bank[o] === 0x43) kinds.packed.push(i);
+  }
+  check('adlib.pin is an 82-entry cue table', count === 82);
+  check('78 cues are plain SMFs and exactly ids 11, 52, 59, 69 start with the compression flag 0x63/0x43', kinds.smf.length === 78 && kinds.packed.join() === '11,52,59,69', `${kinds.smf.length} SMF, packed ${kinds.packed}`);
+  const packed = kinds.packed.map((i) => decodeCue(bank, i));
+  const mthd = (a) => String.fromCharCode(...a.smf.subarray(0, 4));
+  check('digram decoding turns each of the four packed cues into an SMF (MThd at byte 1 for the 0x63 flag, byte 0 for 0x43)', packed.every((c) => mthd(c) === 'MThd') && packed.map((c) => c.flag).join() === '99,99,99,67', packed.map((c) => c.flag).join());
+  // ---- the timing constants
+  const c16 = (o) => exe[CODE_FILE_OFFSET + o] | (exe[CODE_FILE_OFFSET + o + 1] << 8);
+  check('GAMEU reloads PIT channel 0 with 0x5CEC at 1000:204B-2051 (mov al,0xEC / mov al,0x5C after out 0x43,0x36)', exe[CODE_FILE_OFFSET + 0x2047] === 0xb0 && exe[CODE_FILE_OFFSET + 0x2048] === 0x36 && exe[CODE_FILE_OFFSET + 0x204c] === 0xec && exe[CODE_FILE_OFFSET + 0x2050] === 0x5c);
+  check('the timer ISR (1000:2132) adds 0x5CEC to its 16-bit accumulator and chains the BIOS tick on carry, so the driver tick rate is 1193181.8 / 0x5CEC = 50.159 Hz', c16(0x2137) === 0x5cec && Math.abs(TICK_HZ - 50.159) < 0.001, TICK_HZ.toFixed(4));
+  check('the driver counts delays in units of 0x5D38 PIT counts (= 20 ms, i.e. it assumes 50.000 Hz) at player.pin:0D22', player[0xd22] === 0xb9 && (player[0xd23] | (player[0xd24] << 8)) === 0x5d38);
+  // ---- the DOSBox capture
+  let text = null;
+  try {
+    const raw = await ctx.fetchRaw('tools/adlib-capture/chain.trace.gz');
+    text = await new Response(new Blob([raw]).stream().pipeThrough(new DecompressionStream('gzip'))).text();
+  } catch { /* absent */ }
+  if (!text) { note('AdLib capture not found', 'tools/adlib-capture/chain.trace.gz is missing; the register-stream comparison was skipped'); return results; }
+  const tokens = parseTrace(text);
+  const r = replay(tokens, player, bank);
+  check('replaying the DOSBox capture through the original driver code reproduces every one of its 21678 stream tokens (INIT, 82 cues, the demo\'s own commands, 5080 ticks)', r.first === -1 && r.n === 21678, `${r.n} tokens, first mismatch ${r.first}`);
+  const ticks = r.dos.filter((t) => t === 'T').length;
+  const writes = r.dos.filter((t) => /^[0-9a-f]{4}$/.test(t)).length;
+  check('the capture holds 5080 driver ticks and 16431 register writes', ticks === 5080 && writes === 16431, `${ticks} ticks, ${writes} writes`);
+  const played = new Set(r.plays);
+  check('the capture plays all 82 cues (0-81)', played.size === 82 && [...played].every((id) => id >= 0 && id <= 81));
+  // ---- driver state really is carried between commands (the reason the capture starts at a fresh INIT)
+  const regs = (pre) => { const w = []; const d = new PinDriver(player, bank, (a, b) => w.push(a, b)); d.init(); if (pre) { d.play(16); for (let i = 0; i < 40; i++) d.tick(); } w.length = 0; d.play(12); for (let i = 0; i < 3; i++) d.tick(); return w.join(); };
+  check('the registers written for a cue depend on what played before it (driver state persists between cues)', regs(false) !== regs(true));
+  // ---- the engine's sound requests against the commands the real game issued during the attract demo
+  const game = []; // game-originated commands in the capture: everything that is not the capture script's own cue sequence
+  { let next = 0, tick = 0;
+    for (let j = 0; j < tokens.length; j++) {
+      const hi = tokens[j].w >> 8, lo = tokens[j].w & 255;
+      if (hi === 0xfe) { const slot = tokens[j + 1].w & 255; if (lo === next && slot === next % 8) { next++; continue; } tick = tokens[j].tick; if (tick >= 3700) game.push(`P${lo}`); }
+      else if (hi === 0xfd && tokens[j].tick >= 3700) game.push(`S${lo}`);
+      else if (hi === 0xfc && tokens[j].tick >= 3700) game.push('SA');
+    } }
+  let eng = [];
+  try {
+    const cap = await loadGzJson(ctx, 'tools/attract-capture/entities-full.capture.json.gz');
+    const rows = expandRows(cap.rows);
+    const env = prepare(exe, await ctx.fetchRaw('data/autoplay.pin'), await ctx.fetchRaw('data/pcmap.pap'));
+    let m = loadRow(env, rows[0]);
+    const key = (mm) => (mm.u16(0x8ba6) << 8 | mm.u8(0x8ba8)) & 0xffffff;
+    const lim = 600; // iterations are enough to cover the capture window
+    let iter = 0;
+    for (let k = 0; k < rows.length - 1 && iter < lim; k++) {
+      const want = (0x8200 + 2 * rows[k + 1].rec) << 8 | rows[k + 1].rem;
+      let buf = [];
+      const c = { unported: new Set(), events: [], sound: (id, kind) => buf.push(kind === 'stop' ? `S${id}` : kind === 'stopAll' ? 'SA' : `P${id}`) };
+      stepIteration(m, c, null); iter++; eng.push(...buf);
+      for (let extra = 0; extra < 400 && key(m) === want; extra++) { const next = m.clone(); buf = []; stepIteration(next, c, null); if (key(next) !== want) break; iter++; eng.push(...buf); m = next; }
+    }
+  } catch (e) { eng = []; note('attract-demo sound comparison error', String(e && e.stack || e)); }
+  if (eng.length) {
+    const n = game.length;
+    check('the ported engine\'s sound requests (ctx.sound) during the attract demo equal, command for command, the 68 the real driver received in the captured demo window', n === 68 && eng.slice(0, n).join(' ') === game.join(' '), `${n} captured, first engine/capture mismatch at ${eng.findIndex((e, i) => i < n && e !== game[i])}`);
+  } else note('attract-demo capture not found', 'the engine-vs-capture sound-request comparison was skipped');
+  return results;
+}
+
 export async function runAllChecks(ctx) {
-  const groups = [checkRncCorpus, checkPap, checkCollisionTable, checkPalettes, checkSoundBanks, checkLevelScripts, checkDemoTape, checkFrameOrder, checkCaptureRng, checkSprites, checkSpriteWorlds, checkCodeEntry, checkFrontend, checkPrelude, checkConformance];
+  const groups = [checkRncCorpus, checkPap, checkCollisionTable, checkPalettes, checkSoundBanks, checkLevelScripts, checkDemoTape, checkFrameOrder, checkCaptureRng, checkSprites, checkSpriteWorlds, checkCodeEntry, checkFrontend, checkPrelude, checkConformance, checkAdlibDriver];
   const results = [];
   for (const g of groups) results.push(...await g(ctx));
   return { results };

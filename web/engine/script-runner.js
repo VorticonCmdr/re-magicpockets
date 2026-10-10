@@ -128,7 +128,7 @@ function handler(m, si, di, op, ctx) {
       const a = m.u8(di); di += 1;
       return a < 128 ? m.u16(STATE_SCRIPTS + 2 * a) : m.u16(NEG_STATE_SCRIPTS + 2 * (a & 0x7f));
     }
-    case 15: ctx.events.push({ op: 'sound', id: m.u8(di) }); return di + 1; // PlaySound
+    case 15: ctx.events.push({ op: 'sound', id: m.u8(di) }); if (m.sound) m.sound(m.u8(di), m.u8(di) === 0 ? 'stopAll' : undefined); /* 2670: operand 0 = 1DAE (stop all), else 1CCF(operand) */ return di + 1; // PlaySound
     case 17: { // WaitOrLoopBack
       const n = m.u8(di); di += 1;
       if (n === m.u8(si + 0x3e)) { m.w8(si + 0x3e, 0); return di + 1; }
@@ -361,14 +361,15 @@ function handler(m, si, di, op, ctx) {
       const other = m.u16(si + 0x2c);
       m.w16(si + 0x2c, 0);
       m.w16(other + 0x2c, 0);
-      return di; // the sound call (1D4C) touches only the sound driver's own state
+      m.sound?.(4, 'stop'); // 2751: 1D4C(4)
+      return di;
     }
     case 52: { // 2CEA: the CONTINUE? screen waits for the fire key, counting [8C57] up in steps of 0x80
       if (m.u16(0x8b8b) === 0) { ctx.unported.add('opcode 52 sub-level 0 (2D8D)'); return ABORT; }
       m.w16(0x8c57, (m.u16(0x8c57) + 0x80) & 0xffff);
       if (m.u16(0x8c57) === 0) { ctx.gameRestart = 'demo'; return ABORT; } // 2D20: CONTINUE? timed out; the game starts over with the attract demo (jmp 0089)
       if ((m.u8(0x8b5d) & 0x80) === 0) return ABORT; // 2663: try again next iteration
-      m.w16(0x8c57, 0); // 2D0B: the player accepted CONTINUE?; the sound request (1CCF) is graphics-side
+      m.w16(0x8c57, 0); m.sound?.(0); // 2D0B: the player accepted CONTINUE?; sound 1CCF(0) at 2D15
       if (m.u8(0x8c0b) === 0) { ctx.gameRestart = 'newgame'; return ABORT; } // 2D4F: no continues left: GAME OVER, then a new game starts at world 1 level 1 (B56B, jmp 00C1)
       return di;
     }
@@ -385,6 +386,7 @@ function handler(m, si, di, op, ctx) {
       if (m.u16(si + 2) === 0x42) { if (m.u16(si + 0xa) === 0x5c) { m.w16(si + 0x1c, 0); m.w16(si + 0x20, 0x40); } else { m.w16(si + 0x1c, 0x10); m.w16(si + 0x20, 0x20); } }
       return di;
     case 73: { // 272D: the entity tracked in [+0x2e] is killed and the link cleared (+ sound 1CCF(0x2b))
+      m.sound?.(0x2b);
       m.w8(m.u16(si + 0x2e) + 0x40, 0x19); m.w16(si + 0x2e, 0);
       return di;
     }
@@ -967,7 +969,7 @@ function levelEvent(m, si, di, ctx) {
   if (m.s8(0x8bb4) >= 0) { // 29FA: the clock's last count decides the time bonus
     const count = m.u8(0x8bb4);
     m.w8(0x8bb4, 0xff);
-    if (count === 0) return startSequence(0xd31f); // the sound (1CCF) is graphics-side
+    if (count === 0) { m.sound?.(0x3b); return startSequence(0xd31f); } // 2A05: sound 1CCF(0x3b)
     const ax = count + 0xf;
     if (ax >= 0x14) return ABORT;
     m.w8(si + 0x3e, ax);
@@ -976,7 +978,7 @@ function levelEvent(m, si, di, ctx) {
   if (m.u8(0x8c06) !== 0) { // 2976: the kill count decides a second bonus
     let found = false;
     for (let bx = 0x9398; bx < 0xb918; bx += 0x42) if (m.u16(bx + 2) !== 0 && (m.u16(bx + 4) === 2 || m.u16(bx + 4) === 4)) { found = true; break; }
-    if (!found) m.w8(0x8c06, 0x64);
+    if (!found) { m.sound?.(0x13); m.w8(0x8c06, 0x64); } // 298F: sound 1CCF(0x13)
     m.w8(si + 0x3e, (-(m.u8(0x8c06) - 0xc8)) & 0xff);
     m.w8(0x8c06, 0);
     return startSequence(0xd2cf);

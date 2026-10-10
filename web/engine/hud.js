@@ -1,6 +1,6 @@
 // Call #12, Hud_UpdateScoreDisplay (1000:0B92): mirrors the score, triggers the kill-bonus meter
 // and the 1000-point extra-life burst, and converts the score to the digit bytes of the HUD text
-// buffer at 0xE70E. Sound requests (1000:1CCF) are skipped; they write nothing compared yet.
+// buffer at 0xE70E. Its sound requests (1000:1CCF at 0BEC and 0C72) go to `m.sound`.
 
 'use strict';
 
@@ -12,6 +12,7 @@ const s16 = (v) => ((v & 0xffff) >= 0x8000 ? (v & 0xffff) - 0x10000 : v & 0xffff
 
 /** 1000:0C6E: the extra-life burst (a row of 8 event sprites). */
 function extraLife(m) {
+  m.sound?.(0x13); // 0C72: sound 1CCF(0x13)
   m.w8(0x8c03, 4);
   const life = findByClass(m, 0x18);
   m.w16(life + 0xa, 0x7f);
@@ -32,7 +33,7 @@ export function hudUpdateScoreDisplay(m, ctx) {
   if (s16(score - m.u16(0x8b7f)) >= 0x3e8 && m.u8(0x8ba1) === 0) {
     m.w16(0x8b7f, m.u16(0x8b7f) + 0x3e8);
     extraLife(m);
-    if (m.u16(0x8b7f) === 0x2710) m.w8(0x8c0b, m.u8(0x8c0b) + 1);
+    if (m.u16(0x8b7f) === 0x2710) { m.w8(0x8c0b, m.u8(0x8c0b) + 1); m.sound?.(0x3c); } // 0BEC: sound 1CCF(0x3c)
   }
   // 0BEF: the digits (table of place values at 0xEE14..0xEE1E, most significant first)
   let di = 0xe70e;

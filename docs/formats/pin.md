@@ -1,5 +1,8 @@
 # `.pin` sound-driver / music / sound-effect files
 
+> ⚠️ **2026-10-10: the AdLib driver is now decoded, see `docs/formats/pin-sound.md`.** Corrections to what follows: (1) the AdLib path is the SMF sequencer behind `1348`/`0CB0`, not the `231F`/`2384` stream interpreter; (2) the non-MIDI table entries (adlib.pin ids 11, 52, 59, 69) are digram-compressed SMFs (flag `0x63`/`0x43`), not OPL2 reset sequences, and they are jingles, not only the ending fanfare; (3) `1CCF` has no priority argument (`AH` is forced to 1; `BL` is a 0..7 channel base); (4) `1D4C` is "stop cue AL" (command 4) and `1DAE` "stop all" (command 3). Everything below is kept as written.
+
+
 Loaded and invoked as described in `docs/memory-map.md`'s "`pockets.ini` parsing and
 sound-driver loading" section: `Config_ParseIniAndLoadSoundDriver` (`1000:1af6`) reads the
 driver-selector char from `pockets.ini` (`'A'`=Adlib, `'R'`=Roland, `'S'`=SoundBlaster,

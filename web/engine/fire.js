@@ -161,7 +161,8 @@ export function fireAndCharge(m, si, bx, ctx) {
     if (m.u8(0x8c0a) === 0) m.w8(0x8c04, 0);
     return m.u16(bx + 0xa) === 0x40;
   }
-  if (c04 === 0x27) { // 4564 (the sound call 1CCF is graphics-side)
+  if (c04 === 0x27) { // 4564
+    m.sound?.(0x32); // 4569: sound 1CCF(0x32)
     m.w16(0x8c69, 0x27); m.w16(0x8bf7, ax);
     if (m.u16(0x8bef) === 0) m.w8(0x8c04, 0);
     checkTimerEvent(m, bx);

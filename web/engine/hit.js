@@ -181,6 +181,7 @@ function playerTouchesProp(m, si, bx, ctx) {
     return true;
   }
   if (cls === 0x2e) { // 5B8B: time bonus (the seconds counter [8BAE] gains 15, 60 carry into the minutes [8BAF])
+    m.sound?.(0x14); // 5B8F
     m.w8(bx + 0x40, 0x19);
     m.w8(0x8bae, m.u8(0x8bae) + 0xf);
     if (m.s8(0x8bae) > 0x3c) { m.w8(0x8bae, m.u8(0x8bae) - 0x3c); m.w8(0x8baf, m.u8(0x8baf) + 1); }
@@ -216,8 +217,9 @@ function crate(m, si, bx, ctx) {
   return true;
 }
 
-/** 1000:596B: turn a touched pickup into a floating score of `ax` (sound ax+0x28 skipped). */
+/** 1000:596B: turn a touched pickup into a floating score of `ax` (+ sound 1CCF(ax + 0x28) at 596F). */
 function awardScore(m, bx, ax, ctx) {
+  m.sound?.((ax + 0x28) & 0xff);
   if (m.u16(bx + 0x10) === 0x50) ax = 9;
   m.w16(bx + 0xa, ax);
   m.w16(bx + 0xa, m.u16(bx + 0xa) + 0x3c);
@@ -361,7 +363,7 @@ export function hurt(m, bx, si, ctx, ax = 0) {
       al = cls === 0x4e ? 0xcf : 0xdf;
       m.w16(0x8c1f, 0x101); m.w16(0x8c21, 0x32); m.w16(0x8c23, 4); m.w16(0x8c29, 0x55);
       m.w16(0x8c25, (m.u16(bx + 8) + 8) & 0xffff); m.w16(0x8c27, (m.u16(bx + 6) + 8) & 0xffff);
-      pushSpawnEvent(m); // + sound request 1CCF
+      pushSpawnEvent(m); m.sound?.(0x35); // 529A: sound 1CCF(0x35)
     } else return spark(m, bx);
   } else { // 5170
     const to = { 0x57: 0xeb, 0x58: 0xee, 0x59: 0xe8, 0x5d: 0xf1, 0x5a: 0xfb }[cls];
@@ -375,8 +377,9 @@ export function hurt(m, bx, si, ctx, ax = 0) {
   return true;
 }
 
-/** 1000:523E: a hit spark event attached to the enemy (sound request skipped). */
+/** 1000:523E: a hit spark event attached to the enemy (+ sound 1CCF(4) at 5260). */
 function spark(m, enemy) {
+  m.sound?.(4);
   m.w16(0x8c29, 0x11);
   m.w16(0x8c27, m.u16(enemy + 6));
   m.w16(0x8c25, (m.u16(enemy + 8) - 8) & 0xffff);
@@ -391,7 +394,7 @@ function die(m, bx, ctx) {
   m.w8(bx + 1, 1); m.w16(bx + 0xc, 0xc45b);
   const link = m.u16(bx + 0x2c);
   if (link !== 0) { m.w8(link + 1, 1); m.w16(link + 0xc, 0xc45b); }
-  // sound requests 1D4C(4) and 1D4C(0x45) write nothing this model compares yet
+  m.sound?.(4, 'stop'); m.sound?.(0x45, 'stop'); // 54C5/54CA: 1D4C(4), 1D4C(0x45)
   const drop = m.u8(bx + 0x39) === 0x15 ? 0x15 : m.u8(bx + 0x40) === 0x40 ? 0x40 : m.u8(bx + 0x39) === 0x41 ? 0x41 : m.u8(bx + 0x40) === 0x43 ? 0x43 : 0;
   if (drop === 0 && m.u16(bx + 2) === 0x5b) { // 55DF: a class-0x5b enemy leaves a class-0x49 item
     m.w16(0x8c1f, 0); m.w16(0x8c21, 0); m.w16(0x8c23, m.u16(bx + 0x14));
@@ -407,11 +410,12 @@ function die(m, bx, ctx) {
   m.w16(0x8c29, 0xf); // 572A: four debris particles
   m.w16(0x8c21, 9);
   for (const [a, b] of [[9, 4], [9, 8], [8, 4], [8, 8]]) { m.w16(0x8c21, a); m.w16(0x8c23, b); pushEvent5(m); }
-  // 5517: a random death sound (1CCF) is requested here
+  m.sound?.([0x46, 0x47, 0x48, 6][m.u8(0x8b6b) & 3]); // 5517: a random death sound 1CCF(0x46/47/48/6)
   if (m.u8(0x8b98) === 0x41) {
     m.w16(0x8c1f, 0x102); m.w16(0x8c21, 0x32); m.w16(0x8c23, 4); m.w16(0x8c29, 0x55);
     m.w16(0x8c25, m.u16(bx + 8) + 8); m.w16(0x8c27, m.u16(bx + 6) + 8);
     pushSpawnEvent(m);
+    m.sound?.(0x35); // 5579: sound 1CCF(0x35)
   }
   return bonus(m, ctx);
 }
@@ -458,7 +462,7 @@ function strongHit(m, si, bx, ctx) {
   kill(m, bx);
   const link = m.u16(bx + 0x2c);
   if (link !== 0) kill(m, link);
-  // sounds 1D4C(4), 1D4C(0x45) and 1CCF(0x25) are skipped
+  m.sound?.(4, 'stop'); m.sound?.(0x45, 'stop'); m.sound?.(0x25); // 52B8/52BD/52C4: 1D4C(4), 1D4C(0x45), 1CCF(0x25)
   m.w16(0x8c27, 0x100 | m.u8(0x8c05)); // AH is left at 1 by the sound request
   m.w16(0x8c23, m.u8(bx + 0x3c));
   const world = m.u16(0x8b89) || m.u16(0x8b8b);
@@ -513,7 +517,7 @@ function rewardTouched(m, si, bx, ctx) {
   }
   m.w16(0x8c1f, m.s8(bx + 0x3f) & 0xffff);
   m.w8(bx + 0x40, 0x65);
-  // 4E24: a random pickup sound (1CCF) is requested here
+  m.sound?.([0x26, 0x4b, 0x4c, 0x4d][m.u8(0x8b6b) & 3]); // 4E24: a random pickup sound 1CCF(0x26/4B/4C/4D)
   m.w8(0x8c05, 0);
   m.w8(0x8c07, m.u8(0x8c07) + 1);
   m.w8(0x8c08, m.u8(0x8c08) + (m.u16(0x8c1f) & 0xff));
@@ -563,52 +567,53 @@ function particles(m) {
 function powerUp(m, si, bx, ctx) {
   if (m.u8(bx + 0x3e) === 0) return true;
   const frame = m.u16(bx + 0xa);
+  const done = () => m.sound?.((m.u16(bx + 0xa) + 7) & 0xff); // 5DAD: sound 1CCF(frame - 0x14 + 0x1b)
   if (frame === 0x16) { // 5C23
     if (m.u8(0x8c04) !== 0) return true;
-    m.w8(bx + 0x40, 0x19); m.w8(0x8c04, 0xe);
+    m.w8(bx + 0x40, 0x19); m.w8(0x8c04, 0xe); done();
     return true;
   }
   const maxed = () => { awardScore(m, bx, m.u16(bx + 0xa) - 0x14, ctx); return true; }; // 5D6A
   if (frame === 0x1b) { // 5C5E
     if (m.u8(0x8bb2) === 3) return maxed();
-    m.w8(0x8bb2, m.u8(0x8bb2) + 1); m.w8(bx + 0x40, 0x19);
+    m.w8(0x8bb2, m.u8(0x8bb2) + 1); m.w8(bx + 0x40, 0x19); done();
     return true;
   }
   if (frame === 0x1a) { // 5C74
     if (m.u16(0x8b89) !== 3 && m.u8(0x8c03) !== 0) return maxed();
-    m.w8(0x8c03, m.u8(0x8c03) + 5); m.w8(bx + 0x40, 0x19);
+    m.w8(0x8c03, m.u8(0x8c03) + 5); m.w8(bx + 0x40, 0x19); done();
     return true;
   }
   if (frame === 0x19) { // 5D47
     if (m.u8(0x8b93) === 3) return maxed();
-    m.w8(0x8b93, 3); m.w8(bx + 0x40, 0x19);
+    m.w8(0x8b93, 3); m.w8(bx + 0x40, 0x19); done();
     return true;
   }
   if (frame === 0x18) { // 5D30
     if (m.u8(0x8b90) === 2) return maxed();
-    m.w8(0x8b90, 2); m.w8(bx + 0x40, 0x19);
+    m.w8(0x8b90, 2); m.w8(bx + 0x40, 0x19); done();
     return true;
   }
   if (frame === 0x14) { // 5C36
     if (m.u16(0x8bff) === 6) return maxed();
     m.w16(0x8bff, m.u16(0x8bff) + 1);
-    m.w8(bx + 0x40, 0x19);
+    m.w8(bx + 0x40, 0x19); done();
     return true;
   }
   if (frame === 0x20) { m.w16(bx + 0xa, m.u16(0x8b6b) & 0xf); return crate(m, si, bx, ctx); } // 5D5E -> 58D5
   if (frame === 0x1d) { // 5C4C
-    if (m.u8(bx + 1) !== 0x28) { m.w8(bx + 1, 0x28); m.w16(bx + 0xc, 0xc6e5); }
+    if (m.u8(bx + 1) !== 0x28) { m.w8(bx + 1, 0x28); m.w16(bx + 0xc, 0xc6e5); done(); }
     return true;
   }
   if (frame === 0x15 || frame === 0x1c) { // 5CC6 / 5CAC: a life icon
     const icon = findByClass(m, 0x18);
     if (m.u16(icon + 0xa) === 0x7f) return maxed();
     m.w16(icon + 0xa, frame === 0x15 ? m.u16(icon + 0xa) + 1 : 0x7f);
-    m.w8(bx + 0x40, 0x19);
+    m.w8(bx + 0x40, 0x19); done();
     return true;
   }
   if (frame === 0x17) { // 5CE3: the bonus meter reward
-    m.w8(bx + 0x40, 0x19);
+    m.w8(bx + 0x40, 0x19); done(); // 5D2E
     const units = m.u8(0x8c05) % 10;
     m.w8(0x8c05, 0);
     m.w16(0x8c1f, units * 2);
@@ -621,9 +626,9 @@ function powerUp(m, si, bx, ctx) {
     m.w8(0x8c04, 0x1b); m.w8(bx + 0x40, 0x19); m.w8(0x8c0a, m.u8(0x8c0a) + 1);
     return true;
   }
-  if (frame === 0x66) { m.w8(0x8c0b, m.u8(0x8c0b) + 1); m.w8(bx + 0x40, 0x19); return true; } // 5D73: an extra continue
-  if (frame === 0x1e) { m.w16(0x8c5f, 0x90); m.w16(0x8c61, 0x50); m.w8(bx + 0x40, 0x19); return true; } // 5D84
-  if (frame === 0x67) { m.w8(0x8ba4, 1); m.w8(bx + 0x40, 0x19); return true; } // 5D9C
+  if (frame === 0x66) { m.w8(0x8c0b, m.u8(0x8c0b) + 1); m.w8(bx + 0x40, 0x19); m.sound?.(0x3c); return true; } // 5D73: an extra continue
+  if (frame === 0x1e) { m.w16(0x8c5f, 0x90); m.w16(0x8c61, 0x50); m.w8(bx + 0x40, 0x19); m.sound?.(0x3c); return true; } // 5D84
+  if (frame === 0x67) { m.w8(0x8ba4, 1); m.w8(bx + 0x40, 0x19); m.sound?.(0x3c); return true; } // 5D9C
   return true; // 5C22: any other frame does nothing
 }
 
@@ -693,10 +698,11 @@ export function heroLosesHeart(m, si, ctx) {
   m.w16(0x8c27, m.u16(si + 6));
   m.w16(0x8c25, (m.u16(si + 8) - 8) & 0xffff);
   pushEntityEvent(m, si);
+  m.sound?.(4); // 4A6C: sound 1CCF(4)
   m.w8(0x8bb4, m.u8(0x8bb4) + 1);
   m.w8(0x8b96, 0x32);
   const bar = findByClass(m, 0x18);
-  if (m.u16(bar + 0xa) === 0x7b) { gameOverBody(m); return true; } // 4A8C
+  if (m.u16(bar + 0xa) === 0x7b) { m.sound?.(4, 'stop'); gameOverBody(m); return true; } // 4A8C: 1D4C(4) at 4A8F
   m.w16(bar + 0xa, m.u16(bar + 0xa) - 1);
   return true;
 }
@@ -723,9 +729,10 @@ function enemyTouchesPlayer(m, si, bx, ctx) {
   const cls = m.u16(bx + 2);
   if (cls === 0x2c) { // 47B2: a coin-like pickup bursts into a reward
     if (m.u8(bx + 1) !== 0) return true;
+    m.sound?.(0x52); // 47BF: sound 1CCF(0x52)
     m.w16(0x8c1f, 0x12); m.w16(0x8c1d, 0x20); m.w8(bx + 0x40, 0x19);
     m.w16(0x8c27, m.u16(bx + 6)); m.w16(0x8c25, m.u16(bx + 8));
-    scoreBurst(m, si, ctx); // 53A5 (+ sound 1CCF(0x52))
+    scoreBurst(m, si, ctx); // 53A5
     return true;
   }
   if (cls === 0x2b) return levelPortal(m, si, bx, ctx); // 49A8
@@ -815,7 +822,7 @@ function carryingTouch(m, si, bx, ctx) {
   }
   const k = m.u16(bx + 4);
   if (k !== 2 && k !== 4) return true;
-  // 48B2 (+ sound 1CCF(0x4a)): the enemy is knocked away and bursts
+  m.sound?.(0x4a); // 48B2: the enemy is knocked away and bursts (sound 1CCF(0x4a))
   m.w16(bx + 0x14, m.u16(si + 0x14)); m.w8(bx + 1, 0xa9); m.w16(bx + 0xc, 0xd167); m.w8(bx + 0x40, 0x65);
   m.w16(bx + 0xa, m.u8(0xee20 + ((m.u16(bx + 2) - 0x48) & 0xffff)));
   m.w8(bx + 0x3d, 0xff);
@@ -832,7 +839,7 @@ function carriedBurdenTouch(m, si, bx, ctx) {
   if (m.u8(bx + 0x40) === 0x19) return true;
   const world = findByClass(m, 1);
   if (m.s8(world + 0x28) <= 0x10) return killTouched(m, bx, ctx);
-  // 493B (+ sound 1CCF(0x4a))
+  m.sound?.(0x4a); // 493B (sound 1CCF(0x4a))
   m.w16(bx + 0x14, m.u16(si + 0x14)); m.w8(bx + 1, 0xc2); m.w16(bx + 0xc, 0xd3bd); m.w8(bx + 0x40, 0x65);
   m.w16(bx + 0xa, m.u8(0xee20 + ((m.u16(bx + 2) - 0x48) & 0xffff)));
   m.w8(bx + 0x3d, 0xff);

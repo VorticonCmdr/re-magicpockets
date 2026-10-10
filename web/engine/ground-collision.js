@@ -224,7 +224,7 @@ function land(m, si, bx, ctx) {
     m.w16(0x8c38, 0);
     m.w8(bx + 1, 0);
     m.w16(bx + 0x24, 0);
-    ctx.events.push({ op: 'sound', id: 0x4e });
+    ctx.events.push({ op: 'sound', id: 0x4e }); m.sound?.(0x4e); // F53D
     return;
   }
   m.w16(bx + 0xc, 0xc62d);
@@ -277,7 +277,7 @@ function landTarget1(m, si, bx, ctx) {
 
 /** 1000:F5AE: the landing sound, then the bounce or the stop. */
 function bounce(m, si, bx, ctx) {
-  ctx.events.push({ op: 'sound', id: 9 });
+  ctx.events.push({ op: 'sound', id: 9 }); m.sound?.(9); // F5B2
   const settle = () => { // F5DF
     m.w16(si + 0x26, 0); m.w8(si + 1, 0); m.w8(si + 0x3e, 0);
     if (m.u8(0x8b98) === 1) {
@@ -492,8 +492,7 @@ function sideProjectile(m, bx, di, face, probe, ctx) {
   const world = m.u16(0x8b89) || m.u16(0x8b8b);
   const cls = m.u16(bx + 2);
   if (world === 1 && [0xa, 0xb, 0xc, 0xd, 0x27].includes(cls)) { // EAA5
-    // The 1CCF sound request writes nothing this model compares yet.
-    const breakTile = (o) => { m.w8(di + o, -m.u8(di + o)); m.w8(bx + 0x40, 0x19); };
+    const breakTile = (o) => { m.w8(di + o, -m.u8(di + o)); m.w8(bx + 0x40, 0x19); m.sound?.(2); }; /* EAB7/EAD4/EAF3: sound 1CCF(2) */
     ax &= 0xffff;
     if (m.u8(di) === 0x3c) { breakTile(0); ax = 1; if (cls !== 0xd) return di; }
     if (m.u8(di + 1) === 0x3c) { breakTile(1); ax = 2; }
@@ -540,7 +539,11 @@ function floorProp(m, bx, ctx) { // kind 5/6: E703 -> F3EA; E6A4/E6D5 -> E734/E7
     if (m.u8(bx + 1) === 0) idleProp(m, bx, cls);
     return;
   }
-  // E74D: bounce. The sound requests (1CCF) write nothing this model compares yet.
+  // E74D: bounce, with its sound request (E75F/E76C/E77B/E788/E79B).
+  if (cls === 0x1a) m.sound?.(0x19);
+  else if (cls === 0xe) m.sound?.(m.s16(bx + 0xa) >= 0x50 ? 0xe : 3);
+  else if (cls === 0x41) { if (m.u8(bx + 1) !== 0x2e) m.sound?.(0x19); }
+  else m.sound?.(3);
   if (cls === 0xe) m.w8(bx + 0x3e, 1);
   else if (cls === 0x41) { if (m.u8(bx + 1) === 0x2e) m.w8(bx + 1, 0); }
   else if (cls !== 0x1a) m.w8(bx + 0x3e, 1);
@@ -652,7 +655,8 @@ function floorProjectile(m, bx, ctx) {
     let broke = false;
     if (m.u8(tile) === 0x3c) { m.w8(tile, -m.u8(tile)); broke = true; }
     else if (m.u8(0x8be8) !== 0 && m.u8(tile + 0x80) === 0x3c) { m.w8(tile + 0x80, -m.u8(tile + 0x80)); broke = true; }
-    if (broke) { // sound 1CCF skipped; F1F6 decides what the shot becomes
+    if (broke) { // F354: sound 1CCF(2); F1F6 decides what the shot becomes
+      m.sound?.(2);
       // F1F6: a shot that breaks a block loses strength (class 0xD -> 0xC -> 0xB -> 0xA -> gone)
       if (cls === 0xa) kill();
       else {
@@ -693,7 +697,12 @@ function floorProjectile(m, bx, ctx) {
         m.w16(0x8c23, 8); pushEvent5(m);
       }
     }
-    if (m.s8(bx + 0x26) > 3) return; // ED19: only the bounce sound
+    if (m.s8(bx + 0x26) > 3) { // ED19: only the bounce sound
+      if (cls === 0x28 || cls === 0x5f) m.sound?.(3); // ED5C
+      else if (cls === 0x44) m.sound?.(0x1a); // ED64
+      else if (m.u16(bx + 4) === 7) m.sound?.(3); // ED6C
+      return;
+    }
   }
   projectileRunsOut(m, bx, ctx, world, cls, kill);
 }
@@ -820,7 +829,7 @@ function floorEnemy(m, bx, ctx) {
     if (((m.u8(bx + 0x36) + m.u8(bx + 0x37) + m.u8(bx + 0x38)) & 0xff) !== 0x1b) return;
     const di = m.u16(R.D7);
     if (m.u8(di) !== 0x3c) return;
-    m.w8(di, -m.u8(di)); // the block it landed on breaks (sound 1CCF skipped)
+    m.w8(di, -m.u8(di)); m.sound?.(2); // the block it landed on breaks (ECDE: sound 1CCF(2))
     m.w8(bx + 1, 0x8d); m.w16(bx + 0xc, 0xcfd1);
     const prize = findByClass(m, 0x15); // 721F with the enemy as the reference
     m.w16(bx + 0x14, (prize === 0 ? 0x15 : targetDistance(m, bx, prize)) & 0xc);
