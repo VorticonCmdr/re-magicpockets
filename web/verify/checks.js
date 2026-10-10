@@ -573,6 +573,8 @@ export async function checkConformance(ctx) {
       ['live30-w4w1', [[6, 54, 558, 500, true], [8, 571, 1075, 455, true]], 4, false, true], // non-god, fresh seed: world 4 sub-levels 6 and 8
       ['live30-w4w1', [[6, 1087, 1939, 730, true]], 1, false, true], // non-god: the world 1 boss level
       ['live31-w1w2', [[2, 52, 556, 500, true]], 1, false, true], // non-god, fresh seed: world 1 sub-level 2
+      ['live33-w3w4', [[2, 52, 546, 470, true], [3, 559, 1053, 470, true]], 3, false, true], // non-god, fresh seed, aggressive fire: world 3 sub-levels 2 and 3
+      ['live33-w3w4', [[2, 1066, 1899, 820, true]], 4, false, true], // non-god: world 4 sub-level 2
       ['live20-w1c', [[5, 52, 726, 600], [3, 740, 1414, 650], [4, 1427, 2011, 570]], 1, false], // sub-level 5 from a clean warp: the side handler's DI carries over to the ceiling handler
     ]) {
       let cap = null;
