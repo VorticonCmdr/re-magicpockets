@@ -816,6 +816,31 @@ const DESCRIPTORS = [ // [type, columns, rows, bank, cell width, cell height, fr
   [95, 1, 1, 6, 16, 16, 1],
 ];
 
+const LEVEL_CENSUS = [ // [file, per sub-level [entity records, control markers]]
+  ['level0.pin', [[112,2],[109,1],[22,1],[13,1],[11,1],[13,1],[8,1],[8,1],[9,1],[8,1],[0,0],[0,0],[0,0],[0,0],[0,0]]],
+  ['level2.pin', [[143,2],[140,1],[130,1],[129,1],[140,1],[117,1],[139,1],[22,1]]],
+  ['level3a.pin', [[91,2],[88,1],[108,1],[136,1],[6,1]]],
+  ['level3b.pin', [[114,2],[111,1],[111,1],[111,1],[111,1],[89,1],[140,1],[109,1]]],
+  ['level3c.pin', [[74,2],[71,1],[71,1],[71,1],[71,1],[71,1],[71,1],[71,1],[71,1],[68,1],[52,1],[65,1],[65,1]]],
+  ['level4.pin', [[84,2],[81,1],[88,1],[107,1],[106,1],[128,1],[128,1],[104,1],[57,1],[91,1],[0,0],[0,0],[0,0],[0,0],[0,0]]],
+  ['new1.pin', [[112,2],[115,1],[10,2],[109,1],[108,1],[101,1],[40,1],[98,1],[91,1],[81,1],[73,1],[46,1],[106,1]]],
+];
+
+/** Per level-script file: entity-record and control-marker counts of every sub-level slot, as the decoder reads them. */
+export async function checkLevelCensus(ctx) {
+  const { results, check } = makeChecker();
+  for (const [name, want] of LEVEL_CENSUS) {
+    let raw = null;
+    try { raw = await ctx.fetchRaw(`data/${name}`); } catch { /* absent */ }
+    if (!raw) continue;
+    const r = decodeLevelScript(rncUnpack(raw).data);
+    const subs = r.sublevels || r.levels || [];
+    const got = subs.map((x) => [x.entities.length, x.events.length]);
+    check(`${name}: ${want.length} sub-level slots, ${want.reduce((a, x) => a + x[0], 0)} entity records`, JSON.stringify(got) === JSON.stringify(want), `${got.length} slots`);
+  }
+  return results;
+}
+
 /** The 96 sprite descriptors of GAMEU.EXE (near pointers at DS:C39A, words +0xA columns, +0xC rows, +0xE bank, +0x12/+0x14 cell size, +0x16 frameSourceMode), pinned as read. */
 export async function checkDescriptors(ctx) {
   const { results, check } = makeChecker();
@@ -1164,7 +1189,7 @@ export async function checkAdlibDriver(ctx) {
 }
 
 export async function runAllChecks(ctx) {
-  const groups = [checkRncCorpus, checkPap, checkCollisionTable, checkPalettes, checkSoundBanks, checkLevelScripts, checkDemoTape, checkFrameOrder, checkCaptureRng, checkSprites, checkSpriteWorlds, checkDataCensus, checkDescriptors, checkCodeEntry, checkFrontend, checkPrelude, checkConformance, checkAdlibDriver];
+  const groups = [checkRncCorpus, checkPap, checkCollisionTable, checkPalettes, checkSoundBanks, checkLevelScripts, checkDemoTape, checkFrameOrder, checkCaptureRng, checkSprites, checkSpriteWorlds, checkDataCensus, checkDescriptors, checkLevelCensus, checkCodeEntry, checkFrontend, checkPrelude, checkConformance, checkAdlibDriver];
   const results = [];
   for (const g of groups) results.push(...await g(ctx));
   return { results };
