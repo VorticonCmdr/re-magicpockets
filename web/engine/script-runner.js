@@ -379,6 +379,10 @@ function handler(m, si, di, op, ctx) {
     case 69: // 268E: the type-0x42 enemy's hit box depends on its frame
       if (m.u16(si + 2) === 0x42) { if (m.u16(si + 0xa) === 0x5c) { m.w16(si + 0x1c, 0); m.w16(si + 0x20, 0x40); } else { m.w16(si + 0x1c, 0x10); m.w16(si + 0x20, 0x20); } }
       return di;
+    case 73: { // 272D: the entity tracked in [+0x2e] is killed and the link cleared (+ sound 1CCF(0x2b))
+      m.w8(m.u16(si + 0x2e) + 0x40, 0x19); m.w16(si + 0x2e, 0);
+      return di;
+    }
     case 67: m.w8(si + 0x3d, m.u8(di)); return di + 1; // SetAnimLockFlag
     case 71: m.w8(0x8c0c, m.u8(di)); return di + 1; // SetGlobalEventTrigger
     case 76: m.w8(0x8c0e, 0); return di; // clears [8C0E]
@@ -770,7 +774,44 @@ function spawnOtherEffect(m, si, di, type, ctx) {
     pushSpawnEvent(m); // C035
     return di;
   }
-  const special = [0xe, 0x1b, 0x28, 0x5f, 0x30, 0x21, 0x4d];
+  if (type === 0x21) { // 34AE: like the generic effect but with unsigned offsets; a left-facing one sits 0x10 further left
+    m.w16(0x8c27, (m.u8(di) + m.u16(si + 6)) & 0xffff);
+    m.w16(0x8c25, (m.u8(di + 1) + m.u16(si + 8)) & 0xffff);
+    m.w16(0x8c23, m.u16(si + 0x14));
+    if (m.u16(0x8c23) === 4) m.w16(0x8c27, (m.u16(0x8c27) - 0x10) & 0xffff);
+    pushEvent4(m);
+    return di + 2;
+  }
+  if (type === 0x30) { // 342B: a five-word event from four unsigned bytes (x, y offsets, then two parameters)
+    m.w16(0x8c27, (m.u8(di) + m.u16(si + 6)) & 0xffff);
+    m.w16(0x8c25, (m.u8(di + 1) + m.u16(si + 8)) & 0xffff);
+    m.w16(0x8c23, m.u8(di + 2)); m.w16(0x8c21, m.u8(di + 3));
+    pushEvent5(m);
+    return di + 4;
+  }
+  if (type === 0x4d) { // 36CD
+    m.w16(0x8c23, m.u16(si + 0x14)); m.w16(0x8c27, m.u16(si + 6) - 5); m.w16(0x8c25, m.u16(si + 8) + 4);
+    if (m.u16(0x8c23) !== 4) m.w16(0x8c27, m.u16(0x8c27) + 0x20);
+    pushEvent4(m);
+    return di;
+  }
+  if (type === 0x28 || type === 0x5f) { // 36FB
+    m.w16(0x8c21, m.u8(0xeef1 + m.u8(si + 0x32)));
+    m.w16(0x8c23, m.u16(si + 0x14)); m.w16(0x8c27, m.u16(si + 6)); m.w16(0x8c25, m.u16(si + 8));
+    if (m.u16(0x8c23) !== 8) m.w16(0x8c27, m.u16(0x8c27) + 0x10);
+    pushEvent5(m);
+    return di;
+  }
+  if (type === 0xe || type === 0x1b) { // 34E0: a spark at the entity's corner; the random byte is rotated left once (it is a 16-bit rol of [8B6B])
+    m.w16(0x8c27, m.u16(si + 6) + 8); m.w16(0x8c25, m.u16(si + 8) - 8);
+    const r = m.u16(0x8b6b), rol = ((r << 1) | (r >> 15)) & 0xffff;
+    m.w16(0x8b6b, rol);
+    m.w16(0x8c1f, (rol & 0xf) + (rol & 3));
+    m.w16(0x8c23, m.u8(di)); m.w16(0x8c21, m.u8(di + 1));
+    pushSpawnEvent(m);
+    return di + 2;
+  }
+  const special = [];
   if (special.includes(type)) { ctx.unported.add(`opcode 13 type 0x${type.toString(16)}`); return ABORT; }
   // 3406: the generic effect: two signed offsets from the entity, facing as the entity
   m.w16(0x8c27, (sb(di) + m.u16(si + 6)) & 0xffff);

@@ -161,8 +161,22 @@ function downPressed(m, si, bx, ctx) {
   }
   if (t !== 0x1a) {
     if (ax === 0x29) { unp('class 0x29'); return; }
-    if (t === 0x43) { unp('target 0x43'); return; }
-    if (c04 === 0x40) { unp('c04 0x40'); return; }
+    if (t === 0x43) { // 4233: the hero lets go of the class-0x43 burden once the world entity is slow enough
+      if (m.s16(si + 0x26) > 4) return;
+      m.w8(0x8b98, 0); m.w16(0x8c38, 0);
+      m.w16(bx + 0x10, 0x41); m.w16(bx + 0x12, 0x48); m.w16(bx + 0xa, 0x40);
+      m.w16(0x8c29, 0x43); m.w16(0x8c27, m.u16(bx + 6)); m.w16(0x8c25, m.u16(bx + 8));
+      pushEvent3(m);
+      return;
+    }
+    if (c04 === 0x40) { // 41CE: put the carried class-0x40 item down
+      if (m.u8(bx + 1) !== 0) return;
+      let it = 0x9398 - 0x42;
+      do it = nextByClass(m, it, 0x40); while (it !== 0 && m.u8(it + 0x40) !== 0xf6);
+      if (it === 0) return;
+      m.w16(it + 0xa, 8); m.w16(it + 0x2c, 0); m.w8(it + 0x40, 0); m.w8(it + 0x3e, 0); m.w8(0x8c04, 0);
+      return;
+    }
     if (ax === 0x24) { // 4144: the lift / door prop (frames 0xBB, 0xBC, else the sealed chest)
       const frame = m.u16(item + 0xa);
       if (frame === 0xbb) {
@@ -214,7 +228,17 @@ function downPressed(m, si, bx, ctx) {
     m.w8(findByClass(m, 0x1c) + 0x3e, 0x1d);
     return;
   }
-  if (ax === 0x40 || ax === 0x43) unp(`class 0x${ax.toString(16)}`);
+  if (ax === 0x40) { // 41B6: pick the item up
+    if (m.u8(item + 1) === 0) { m.w8(0x8c04, 0x40); m.w8(item + 0x40, 0xf6); m.w16(item + 0x2c, bx); m.w16(item + 0xa, 6); }
+    return;
+  }
+  if (ax === 0x43) { // 41FD
+    if (m.u8(bx + 1) !== 0) return;
+    m.w8(0x8b98, 0x43); m.w8(item + 0x40, 0x19);
+    m.w16(bx + 0xa, 0x2d); m.w16(bx + 0x10, 0x2b); m.w16(bx + 0x12, 0x2e);
+    m.w16(0x8c38, 0x2d); m.w8(bx + 0x3e, 0); m.w8(bx + 0x3d, 1);
+    m.w8(si + 1, 0x75); m.w16(si + 0xc, 0xccb1);
+  }
 }
 
 /** 1000:D984: the hero skates with speed `ax` (signed); 0 parks him in the idle skate pose. */

@@ -9,14 +9,27 @@
 import { pushSpawnEvent, pushEvent3, pushEvent5, pushEntityEvent } from './fire.js';
 import { findByClass } from './ds-memory.js';
 import { changeClass } from './script-runner.js';
-import { crateGrab } from './entity-behavior.js';
+import { crateGrab, freeSlot } from './entity-behavior.js';
+import { levelListPointer, levelLoadEntities } from './spawn.js';
 import { moveHorizontalByFlags, advanceAnimDir } from './enemy.js';
 import { projectileRunsOut } from './ground-collision.js';
 
 /** @returns {boolean} true when the original `pop ax; ret` abandons the whole interaction scan */
 export function pairEvent(m, si, bx, cl, ctx) {
   const tag = `45F8 pair ${cl} class 0x${m.u16(si + 2).toString(16)}/0x${m.u16(bx + 2).toString(16)} kinds ${m.u16(si + 4)}/${m.u16(bx + 4)}`;
-  if (cl === 1) { if (!enemyTouchesPlayer(m, si, bx, ctx)) ctx.unported.add(tag); return false; }
+  if (cl === 2) { m.w8(si + 0x40, 0x19); return false; } // 5E18
+  if (cl === 3) { m.w8(bx + 0x40, 0x19); return false; } // 5E1D
+  if (cl === 10 || cl === 14) return false; // 57A2 is a RET
+  if (cl === 11) { // 57A3
+    if (m.u16(si + 2) === 6) { m.w16(bx + 0x14, m.u16(bx + 0x14) ^ 0xc); return false; }
+    if (m.u8(bx + 0x39) !== 0x49) return false;
+    if (m.u16(bx + 2) === 0x12) { m.w8(si + 0x40, 0xf6); m.w16(si + 0x2c, bx); return false; }
+    if (m.u16(bx + 2) === 0x14) { m.w8(bx + 0x3d, 2); m.w8(si + 0x40, 0x19); return false; }
+    m.w8(si + 0x40, 0x19);
+    return false;
+  }
+  if (cl === 12 && m.u16(bx + 2) !== 0x25) m.w8(bx + 0x40, 0x19); // 462C falls into 4639
+  if (cl === 1 || cl === 12) { if (!enemyTouchesPlayer(m, si, bx, ctx)) ctx.unported.add(tag); return false; }
   if (cl === 5) { if (!playerTouchesProjectile(m, si, bx, ctx)) ctx.unported.add(tag); return false; }
   if (cl === 7) { if (!playerTouchesProp(m, si, bx, ctx)) ctx.unported.add(tag); return false; }
   if (cl === 4) { if (!weaponHitsEnemy(m, si, bx, ctx)) ctx.unported.add(tag); return false; }
@@ -115,6 +128,40 @@ function crateGrabTail(m, si) {
 
 const PICKUP_STAY = [0x15, 0x40, 0x41, 0x43, 0x1a, 0x24, 0x2a, 0x45, 0x22, 0x29];
 
+/**
+ * 1000:59B5: the hero stands in a world-1 doorway (frame 0x9E at the screen centre): the moving entities are cleared and the bonus
+ * room's entity list (picked by the camera position) is loaded, the room's wall tiles opened. [STATIC: not yet checked against a capture]
+ */
+function bonusDoorway(m, ctx) {
+  let di = 0x9090;
+  for (;;) { // C961 removes every kind 2/4/5/6 entity (the array closes up behind each)
+    const e = m.u16(di); di += 2;
+    if (e === 0) break;
+    const k = m.u16(e + 4);
+    if (k === 2 || k === 6 || k === 4 || k === 5) { freeSlot(m, e); di -= 2; }
+  }
+  const cx = m.u16(0x8bbb), cy = m.u16(0x8bbd);
+  let list, table;
+  if (cx === 0xf800 && cy === 0xfc60) { list = 0xc; m.w16(0x8bb9, 0xa0); table = 0xf6ad; }
+  else if (cx === 0xf190 && cy === 0xfc00) { list = 7; m.w8(0x7f47, 5); m.w8(0x7f48, 5); table = 0xf6c5; }
+  else if (cx === 0xf8d0 && cy === 0xfa20) { list = 8; m.w8(0x61dc, 5); m.w8(0x625c, 5); table = 0xf6d7; }
+  else if (cx === 0xfc20 && cy === 0xf970) { list = 9; table = 0xf6f5; }
+  else if (cx === 0xfe30 && cy === 0xfb20) { list = 0xa; table = 0xf701; }
+  else if (cx === 0xf930 && cy === 0xfb30) { list = 0xb; m.w8(0x6249, 5); m.w8(0x624a, 5); table = 0xf713; }
+  else if (cx === 0xf740 && cy === 0xfe90) { list = 0xb; m.w16(0x8bb7, 0xfe10); m.w16(0x8bb9, 0x360); m.w8(0x6249, 5); m.w8(0x624a, 5); table = 0xf713; }
+  else return;
+  m.w16(0x8c63, table);
+  levelLoadEntities(m, levelListPointer(m, list), ctx); // C1C0, C1E6
+  for (let p = 0x9090; ; p += 2) { // CA2C: shift the moving entities by the scroll
+    const e = m.u16(p);
+    if (e === 0xffff) break;
+    if (e === 0) continue;
+    const k = m.u16(e + 4);
+    if (k === 2 || k === 6 || k === 4 || k === 5) { m.w16(e + 6, m.u16(e + 6) + m.u16(0x8bb7)); m.w16(e + 8, m.u16(e + 8) + m.u16(0x8bb9)); }
+  }
+  if (m.u8(0x8b98) === 0x1a) m.w8(0x8b98, 0);
+}
+
 /** 1000:57D6: the player overlaps a kind-5 prop. @returns {boolean} handled */
 function playerTouchesProp(m, si, bx, ctx) {
   const cls = m.u16(bx + 2);
@@ -124,7 +171,7 @@ function playerTouchesProp(m, si, bx, ctx) {
   if (cls === 0x1c) return levelGoal(m, si, bx); // 5851
   if (cls === 6) { // 59A9: remember the prop's frame; the frame-0x9E doorway at the screen centre is not ported
     m.w8(0x8bb1, m.u16(bx + 0xa) & 0xff);
-    if (m.u16(bx + 0xa) === 0x9e && m.u16(bx + 6) === 0x90 && m.u16(bx + 8) === 0x50) { ctx.unported.add('59B5 class 6 doorway'); return false; }
+    if (m.u16(bx + 0xa) === 0x9e && m.u16(bx + 6) === 0x90 && m.u16(bx + 8) === 0x50) { bonusDoorway(m, ctx); return true; }
     return true;
   }
   if (cls === 0x56) { // 5B70: a clock pickup flips to its collected frame
@@ -235,7 +282,7 @@ export function weaponHitsEnemy(m, si, bx, ctx) {
     m.w16(0x8b75, m.u16(0x8b75) + m.u8(bx + 0x36) + 1);
     kill(m, si);
     m.w8(bx + 0x3f, m.u8(bx + 0x3f) - 1);
-    if (m.s8(bx + 0x3f) > 0) return hurt(m, bx, si, ctx);
+    if (m.s8(bx + 0x3f) > 0) return hurt(m, bx, si, ctx, m.u8(bx + 0x36) + 1);
     return die(m, bx, ctx);
   };
   if (cls === 0x14 && m.u16(bx + 0xa) === 0xc) { // 5019 -> 5022
@@ -256,7 +303,7 @@ export function weaponHitsEnemy(m, si, bx, ctx) {
     const al = (m.u8(si + 0x3f) + 1) & 0xff;
     const hp = byte(m.u8(bx + 0x3f) - al);
     m.w8(bx + 0x3f, hp);
-    if ((hp & 0x80) === 0) return hurt(m, bx, si, ctx);
+    if ((hp & 0x80) === 0) return hurt(m, bx, si, ctx, al);
     return score();
   }
   const world = m.u16(0x8b89) || m.u16(0x8b8b);
@@ -266,7 +313,7 @@ export function weaponHitsEnemy(m, si, bx, ctx) {
   if (dmg === 5) return true;
   const hp = byte(m.u8(bx + 0x3f) - dmg);
   m.w8(bx + 0x3f, hp);
-  if ((hp & 0x80) === 0) { kill(m, si); return hurt(m, bx, si, ctx); } // 4FC2 -> 50AE
+  if ((hp & 0x80) === 0) { kill(m, si); return hurt(m, bx, si, ctx, dmg); } // 4FC2 -> 50AE
   // 4FC9: the enemy's health ran out
   if (m.u8(bx + 0x39) === 0x41 || m.u8(bx + 0x40) === 0x40 || m.u8(bx + 0x39) === 0x15 || m.u8(bx + 0x40) === 0x43) return die(m, bx, ctx);
   if (target === 0x2b) return breakBox(m, bx, ctx); // 5033
@@ -278,9 +325,9 @@ export function weaponHitsEnemy(m, si, bx, ctx) {
 }
 
 /** 1000:50AE: the enemy `bx` survives a hit from `si`. */
-export function hurt(m, bx, si, ctx) {
+export function hurt(m, bx, si, ctx, ax = 0) {
   const cls = m.u16(bx + 2);
-  if (cls === 0x2b) return false;
+  if (cls === 0x2b) { m.w16(0x8c6b, (m.u16(0x8c6b) + ax * 5) & 0xffff); return true; } // 50E8: the damage is tallied (x5) in [8C6B]
   if (cls === 0x23) { // 51A6: the companion-bound enemy
     const link = m.u16(bx + 0x2c);
     if (m.u8(bx + 1) === 0x9a && link !== 0) { // the bound marker is released and the enemy takes the hit state
@@ -565,14 +612,34 @@ function powerUp(m, si, bx, ctx) {
     m.w16(0x8c21, 0); m.w16(0x8c29, 0xe);
     return burst5DBA(m, bx, ctx);
   }
-  ctx.unported.add(`power-up frame 0x${frame.toString(16)}`);
-  return false;
+  if (frame === 0x1f) { // 5C96
+    if (m.u8(0x8c04) !== 0) return true;
+    m.w8(0x8c04, 0x1b); m.w8(bx + 0x40, 0x19); m.w8(0x8c0a, m.u8(0x8c0a) + 1);
+    return true;
+  }
+  if (frame === 0x66) { m.w8(0x8c0b, m.u8(0x8c0b) + 1); m.w8(bx + 0x40, 0x19); return true; } // 5D73: an extra continue
+  if (frame === 0x1e) { m.w16(0x8c5f, 0x90); m.w16(0x8c61, 0x50); m.w8(bx + 0x40, 0x19); return true; } // 5D84
+  if (frame === 0x67) { m.w8(0x8ba4, 1); m.w8(bx + 0x40, 0x19); return true; } // 5D9C
+  return true; // 5C22: any other frame does nothing
 }
 
 /** 1000:5DBA: scan the 10 tiles above the player and push a spawn event for each empty one (the reward shower). */
 function burst5DBA(m, bx, ctx) {
-  ctx.unported.add('5DBA reward shower');
-  return false;
+  // 5DBA: ten reward events down the screen column left of the scroll, one per open cell (the clamp bit of the tile class is 0)
+  const table = m.u16(0xef23);
+  let di = (m.u16(0x8c13) - 1) & 0xffff;
+  m.w16(0x8c23, 0);
+  m.w16(0x8c25, (m.u16(0x8c17) - 0x10) & 0xffff);
+  m.w16(0x8c27, (m.u16(0x8c15) + 8) & 0xffff);
+  for (let cx = 0; cx < 10; cx++) {
+    if ((m.u8(table + m.u8(di)) & 1) === 0) {
+      if (m.u8(0x8bb2) !== 0 && m.u16(0x8c29) === 0xe) m.w16(0x8c1f, m.u16(0x8c1f) + 2);
+      pushSpawnEvent(m);
+    }
+    m.w16(0x8c27, (m.u16(0x8c27) + 0x20) & 0xffff);
+    di = (di + 0x80) & 0xffff;
+  }
+  return true;
 }
 
 /**
