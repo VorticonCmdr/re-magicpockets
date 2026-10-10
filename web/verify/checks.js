@@ -527,11 +527,16 @@ export async function checkConformance(ctx) {
     }
     // World 4 (one session, warps 8498 -> sub 1, then sub 2 and sub 5 by the level codes): three full segments, the generator checked every row.
     // Rows polled between a roll and call #13 (call #13 has carry 0 in world 4) are recognised by the generator alone (see runLiveFree).
-    let live13 = null;
-    try { live13 = await loadGzJson(ctx, 'tools/attract-capture/live13-w4.capture.json.gz'); } catch { /* absent */ }
-    if (live13) {
-      const ex13 = expandRows(live13.rows);
-      const w13 = (r, o) => { const b = Uint8Array.from(r.g.match(/../g), (h) => parseInt(h, 16)); return b[o - 0x8b50] | (b[o - 0x8b50 + 1] << 8); };
+    for (const [file, segs] of [
+      ['live13-w4', [[1, 52, 726, 660], [2, 739, 1413, 660], [5, 1426, 2100, 640]]],
+      ['live14-w4b', [[3, 52, 726, 630], [4, 739, 1413, 640]]],
+      ['live15-w4c', [[6, 52, 726, 660], [7, 739, 1413, 650], [8, 1426, 2278, 780]]],
+    ]) {
+      let cap = null;
+      try { cap = await loadGzJson(ctx, `tools/attract-capture/${file}.capture.json.gz`); } catch { /* absent */ }
+      if (!cap) continue;
+      const exc = expandRows(cap.rows);
+      const wc = (r, o) => { const b = Uint8Array.from(r.g.match(/../g), (h) => parseInt(h, 16)); return b[o - 0x8b50] | (b[o - 0x8b50 + 1] << 8); };
       const seg4 = async (sub, from, to) => {
         const files = levelFilesFor(4, sub);
         const script = rncUnpack(await ctx.fetchRaw('data/' + files.pin)).data;
@@ -541,11 +546,11 @@ export async function checkConformance(ctx) {
         const e = { ...env, map: mp };
         const b = bootFromFiles(e, script, { world: 4, sub, demo: false });
         stepIterationAfterRng(b.m, { unported: new Set(), events: [] }, null);
-        b.m.w16(0x8b71, w13(ex13[from], 0x8b71)); b.m.w16(0x8b6b, w13(ex13[from], 0x8b6b));
-        return runLiveFree(e, live13.rows, { start: b.m, from, to, entitiesOnly: true, checkRng: true, force: [[0x8b96, 50]], levelFiles: () => ({ script, map: e.map }) });
+        b.m.w16(0x8b71, wc(exc[from], 0x8b71)); b.m.w16(0x8b6b, wc(exc[from], 0x8b6b));
+        return runLiveFree(e, cap.rows, { start: b.m, from, to, entitiesOnly: true, checkRng: true, force: [[0x8b96, 50]], levelFiles: () => ({ script, map: e.map }) });
       };
-      for (const [sub, from, to, min] of [[1, 52, 726, 660], [2, 739, 1413, 660], [5, 1426, 2100, 640]]) {
-        const ok = ex13[from] && w13(ex13[from], 0x8b89) === 4 && w13(ex13[from], 0x8b8b) === sub;
+      for (const [sub, from, to, min] of segs) {
+        const ok = exc[from] && wc(exc[from], 0x8b89) === 4 && wc(exc[from], 0x8b8b) === sub;
         const f = ok ? await seg4(sub, from, to) : { matched: 0, firstBad: 'start row is not this level' };
         check(`a free run with the generator checked reproduces world 4 sub-level ${sub} from a clean start until the capture script types the next code`, ok && f.firstBad === null && f.matched >= min, `${f.matched} rows from row ${from}, first mismatch ${f.firstBad ?? 'none'}`);
       }

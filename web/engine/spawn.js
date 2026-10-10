@@ -178,6 +178,17 @@ function spawn(m, slot, type, tag, data, ctx) {
     m.w8(si + 0x3f, m.u16(0x8bf9) & 0xff);
     return finishSpawn(m, si, slot, bx, tpl);
   }
+  if (type === 0x2f) { // C71A: a marker riding above another entity (given as a raw pointer; the pointer is left in [8C29])
+    m.w16(si + 2, type);
+    const parent = m.u16(bx); bx += 2;
+    m.w16(0x8c29, parent);
+    m.w16(si + 6, m.u16(parent + 6));
+    m.w16(si + 8, m.u16(parent + 8) - 0x10);
+    m.w16(si + 0x14, m.u16(parent + 0x14));
+    m.w16(si + 0x2c, parent); m.w16(parent + 0x2c, si);
+    m.w8(si + 0x40, 0xf6);
+    return finishSpawn(m, si, slot, bx, tpl);
+  }
   if (type === 0x44) { // C66C: a falling pickup with a random initial speed
     m.w16(si + 2, type);
     m.w16(si + 6, be16(m, bx)); bx += 2;
@@ -202,7 +213,7 @@ function spawn(m, slot, type, tag, data, ctx) {
   }
   if (type === 0x2b) { // C707: presets, then the generic placement
     m.w8(si, 0); m.w8(si + 0x3f, 0x14); m.w8(si + 0x36, 0x32); m.w16(si + 0x14, 4);
-  } else if (SPECIAL_TYPES.has(type) && type !== 0x1f && type !== 0x53) { ctx.unported.add(`spawn type 0x${type.toString(16)}`); return none; }
+  } else if (SPECIAL_TYPES.has(type) && type !== 0x1f && type !== 0x53 && type !== 0x2f) { ctx.unported.add(`spawn type 0x${type.toString(16)}`); return none; }
   // C40C: generic placement from the event data
   m.w16(si + 2, type);
   m.w16(si + 6, be16(m, bx)); bx += 2;

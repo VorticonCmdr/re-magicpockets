@@ -205,7 +205,7 @@ export function weaponHitsEnemy(m, si, bx, ctx) {
 }
 
 /** 1000:50AE: the enemy `bx` survives a hit from `si`. */
-function hurt(m, bx, si, ctx) {
+export function hurt(m, bx, si, ctx) {
   const cls = m.u16(bx + 2);
   if (cls === 0x2b) return false;
   if (cls === 0x23) { // 51A6: the companion-bound enemy
@@ -351,7 +351,7 @@ function strongHit(m, si, bx, ctx) {
 const s16 = (v) => ((v & 0xffff) >= 0x8000 ? (v & 0xffff) - 0x10000 : v & 0xffff);
 
 /** 1000:53A5: pop a score-style burst of events for the reward whose value is in [8C1F]. */
-function scoreBurst(m, si, ctx) {
+export function scoreBurst(m, si, ctx) {
   m.w16(0x8c29, 0xe);
   if (m.u16(0x8c1f) !== 0x12) m.w16(0x8c1f, m.u16(0x8c1f) + (m.u16(0x8b8b) & 1));
   ctx.rng(m, 0); // 11FC; CF is the compare/add carry, 0 here

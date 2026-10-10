@@ -155,7 +155,10 @@ function downPressed(m, si, bx, ctx) {
   if (m.u16(0x8c01) !== 0) { item = m.u16(0x8c01); ax = m.u16(item + 2); m.w16(0x8c01, 0); }
   const t = m.u8(0x8b98), c04 = m.u8(0x8c04);
   const unp = (n) => ctx.unported.add(`3E15 ${n}`);
-  if (ax === 0x22) { unp('class 0x22'); return; }
+  if (ax === 0x22) { // 3EE8: the prop starts its pressed state
+    if (m.u8(item + 1) !== 6) { m.w8(item + 1, 6); m.w16(item + 0xc, 0xc4cb); }
+    return;
+  }
   if (t !== 0x1a) {
     if (ax === 0x29) { unp('class 0x29'); return; }
     if (t === 0x43) { unp('target 0x43'); return; }

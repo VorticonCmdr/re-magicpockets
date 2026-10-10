@@ -11,6 +11,8 @@
 import { findByClass } from './ds-memory.js';
 import { terrainCollision } from './ground-collision.js';
 import { interactions } from './entity-behavior.js';
+import { pushEntityEvent, pushSpawnEvent } from './fire.js';
+import { hurt, scoreBurst } from './hit.js';
 
 const AI_TABLES = { floor: 0xec68, wall: 0xec7c, ledge: 0xec90 };
 
@@ -440,12 +442,31 @@ function thinkSpitter(m, si, ctx) {
   m.w8(si + 1, 0x46); m.w16(si + 0xc, 0xc961);
 }
 
+/** 1000:CF0E (event 0xe) / CF56 (event 0x14): the level script wipes the screen; every enemy not busy with a prize turns into a reward burst. */
+function wipeEvent(m, si, ctx, event) {
+  if (m.u8(si + 0x39) === 0x41 || m.u8(si + 0x40) === 0x40 || m.u8(si + 0x40) === 0x43 || m.u8(si + 0x39) === 0x15) return;
+  m.w8(si + 0x40, 0x19);
+  m.w16(0x8c1d, 0);
+  if (event === 0xe) {
+    m.w16(0x8c1f, 18);
+    m.w16(0x8c27, m.u16(si + 6) + 8); m.w16(0x8c25, m.u16(si + 8) + 8);
+    scoreBurst(m, si, ctx); // 53A5
+    return;
+  }
+  const ax = (m.u8(si + 0x36) * 2) & 0x1f;
+  m.w16(0x8c1f, ((((ax % 2) << 8) | (ax >> 1)) + 0x14) & 0xffff);
+  m.w16(0x8c27, m.u16(si + 6) + 8); m.w16(0x8c25, m.u16(si + 8) + 8);
+  m.w16(0x8c29, 0x1b); m.w16(0x8c21, 0x15); m.w16(0x8c23, 0);
+  pushSpawnEvent(m); // C035
+}
+
 /** 1000:CE0B: kind 2 behavior. */
 export function behaviorKind2(m, si, ctx) {
   const c0c = m.u8(0x8c0c);
-  if (c0c === 8 || c0c === 0xe || c0c === 0x14) { ctx.unported.add(`kind 2 global event ${c0c}`); return; }
+  if (c0c === 0xe || c0c === 0x14) { wipeEvent(m, si, ctx, c0c); return; }
   const cls = m.u16(si + 2);
-  if (cls === 0x5b) return;
+  if (c0c === 8) hurt(m, si, 0, ctx); // CF04: every enemy takes a hit, then carries on at CE2F
+  else if (cls === 0x5b) return;
   terrainCollision(m, findByClass(m, 1), si, ctx); // D584: collision against the world entity
   thinkByWorld(m, si, ctx); // 5E22
   const ce87 = () => { moveHorizontalByFlags(m, si, 4); advanceAnim(m, si, 0); };
@@ -549,7 +570,8 @@ export function behaviorKind4(m, si, ctx) {
     advanceAnim(m, si, al);
     return;
   }
-  if (c0c === 8 || c0c === 0xe || c0c === 0x14) { ctx.unported.add(`kind 4 global event ${c0c}`); return; }
+  if (c0c === 8) hurt(m, si, 0, ctx); // CCED: the hit, then on to CCB4
+  else if (c0c === 0xe || c0c === 0x14) { wipeEvent(m, si, ctx, c0c); return; }
   if (cls === 0x48 || cls === 0x49) { // CD8E / CD93: the world-2 throwers' charge field, then the usual
     m.w8(si + 0x29, cls === 0x48 ? m.u8(si + 0x36) : 2);
     const al = m.s8(si + 0x3d);
@@ -848,8 +870,10 @@ function aiOpT(m, si, ctx) {
  */
 function aiSeekPrize(m, si, di, ctx) {
   const world = m.u16(0x8b89) || m.u16(0x8b8b);
-  if (world !== 1) { ctx.unported.add(`AI 6642 world ${world}`); return 'end'; }
-  const prize = findByClass(m, 0x15); // 6685: 721F
+  if (world < 1 || world > 4) { ctx.unported.add(`AI 6642 world ${world}`); return 'end'; }
+  const target = [0, 0x15, 0x40, 0x41, 0x43][world];
+  if ((world === 2 || world === 4) && m.u8(si + 0x40) === target) return noticeHero(m, si, di, ctx); // 6669 / 667C -> 64EC
+  const prize = findByClass(m, target); // 6685: 721F
   if (prize === 0) return 'next';
   let flags = targetDistance(m, si, prize);
   if (((m.u16(prize + 8) - 0x10) & 0xffff) === m.u16(si + 8)) flags &= 0xd;
@@ -857,7 +881,23 @@ function aiSeekPrize(m, si, di, ctx) {
   if (m.s16(0x8c1d) > 1) return 'next';
   if (flags !== 0 && (flags & m.u16(si + 0x14)) === 0) { aiTurn(m, si, di, ctx); return 'end'; } // 6B13
   const cls = m.u16(si + 2); // 6A82
-  if (cls !== 0x20) { if (cls === 0x4b || cls === 0x51 || cls === 0x57) ctx.unported.add(`AI 6A82 class 0x${cls.toString(16)}`); return 'end'; }
+  if (cls === 0x57) { // 6E27
+    if (m.u8(si + 0x40) === 0x43) { // 6E66: the speed comes from a table at 0xED08 (the index is not applied: the word at 0xED08 is read)
+      m.w16(si + 0x26, m.u16(0xed08));
+      m.w8(si + 1, 0x7d); m.w16(si + 0xc, 0xcd4b);
+      return 'end';
+    }
+    const item = findByClass(m, 0x43);
+    let dx = (m.u16(item + 6) - m.u16(si + 6)) & 0xffff;
+    if (dx & 0x8000) dx = (-dx) & 0xffff;
+    if ((dx & 0xffe0) !== 0) return 'next';
+    m.w8(si + 0x40, 0x43); m.w16(si + 0x10, 0x38); m.w16(si + 0x12, 0x3b); m.w16(si + 0xa, 0x38);
+    m.w8(item + 0x40, 0x19);
+    m.w16(0x8c29, 0x2f);
+    pushEntityEvent(m, si);
+    return 'end';
+  }
+  if (cls !== 0x20) { if (cls === 0x4b || cls === 0x51) ctx.unported.add(`AI 6A82 class 0x${cls.toString(16)}`); return 'end'; }
   // 6BD0
   let dx = (m.u16(prize + 6) - m.u16(si + 6)) | 0;
   if (dx < 0) dx = -dx;
@@ -914,6 +954,12 @@ function aiNoticeHero(m, si, di, ctx) {
   if ((cls === 0x20 || cls === 0x4b || cls === 0x51 || cls === 0x57) && ((m.u8(si + 0x36) + m.u8(si + 0x37) + m.u8(si + 0x38)) & 0xff) === 0x1b) {
     return aiSeekPrize(m, si, di, ctx); // 6642
   }
+  return noticeHero(m, si, di, ctx);
+}
+
+/** 1000:64EC: the hero is the target (also reached from 6642 for the world 2 and 4 classes that already carry the prize). */
+function noticeHero(m, si, di, ctx) {
+  const cls = m.u16(si + 2);
   const bx = findByClass(m, 3);
   if (bx === 0) return 'next';
   const flags = targetDistance(m, si, bx);
