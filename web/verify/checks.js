@@ -637,7 +637,7 @@ export async function checkConformance(ctx) {
           b.m.w16(0x8b71, wc(exc[from], 0x8b71)); b.m.w16(0x8b6b, wc(exc[from], 0x8b6b));
           start = b.m;
         }
-        return runLiveFree(e, cap.rows, { start, from, to, entitiesOnly: true, checkRng: true, force: noGod ? [] : [[0x8b96, 50]], pinHurtTimer: pinHurt, pokes: pokeList, levelFiles: () => ({ script, map: e.map }) });
+        return runLiveFree(e, cap.rows, { start, from, to, entitiesOnly: true, checkRng: true, force: noGod ? [] : [[0x8b96, 50]], pinHurtTimer: pinHurt, pokes: pokeList, watch: pokeList.length ? POKE_WATCH : [], levelFiles: () => ({ script, map: e.map }) });
       };
       for (const [sub, from, to, min, loadStart] of segs) {
         const ok = exc[from] && wc(exc[from], 0x8b89) === world && wc(exc[from], 0x8b8b) === sub;
@@ -652,6 +652,9 @@ export async function checkConformance(ctx) {
   return results;
 }
 
+
+/** The globals the targeted-setup captures compare row by row besides the entity records (weapon/pickup modes, power-up counters, hero mode, timers). */
+const POKE_WATCH = [0x8c04, 0x8c0a, 0x8c0b, 0x8ba4, 0x8c5f, 0x8c60, 0x8c61, 0x8c62, 0x8bff, 0x8c00, 0x8bb2, 0x8c03, 0x8b98, 0x8bef, 0x8bf0, 0x8bf7, 0x8bf9, 0x8c69, 0x8b97, 0x8b94];
 
 /** Sprite rendering (web/render/sprites.js): frame -> tile-stream -> bank tile, from the shipped bytes.
  *  The 396-byte entity dump below is a live DOSBox read (paused, world 1 level 1, [8B69]=0): the same frame
