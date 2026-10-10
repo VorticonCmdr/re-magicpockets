@@ -23,9 +23,49 @@ export function levelUpdateAnimatedTiles(m, ctx) {
       if (sub === 1) { // 02FE
         const p = (-al) & 0xff;
         m.w8(si - 1, p === 0xa ? p : -(p - 0xa));
-      } else if (sub === 2 || sub === 3) {
-        ctx.unported.add(`animated tile rule, world ${sub}`);
+      } else if (sub === 2) {
+        worldTwoTile(m, si, al);
+      } else if (sub === 3) { // 030C: the water cycle [8C19] and the splash tiles
+        const dl = m.u8(0x8c19), at = (si - 1) & 0xffff;
+        if (al === 0xe1) m.w8(at, 0x1f);
+        else if (al === 0xd4) m.w8(at, 0xd3);
+        else if (al === 0xd3) m.w8(at, 0xd2);
+        else if (al === 0xd2 || (al >= 0xac && al <= 0xaf)) m.w8(at, dl);
+        else m.w8(at, (al + 1) & 0xff);
       }
     }
   }
+}
+
+/**
+ * 1000:034D (world 2): the negative tile byte `al` at si-1 is a block that was hit (the tile value negated); each iteration it either steps
+ * (value - 1) or, for a few tile values, settles into its replacement and sets its neighbours (0x73 is the "pillar" tile).
+ */
+function worldTwoTile(m, si, al) {
+  const at = (si - 1) & 0xffff, left = (si - 2) & 0xffff, up = (si - 0x81) & 0xffff, down = (si + 0x7f) & 0xffff;
+  const p = (-al) & 0xff;
+  if (p === 0x6e) { // 036F
+    if (m.u8(left) === 0x73) { m.w8(at, 0x96); return; }
+    m.w8(at, 0x6e);
+    return;
+  }
+  if (p === 0x6c) { // 0381
+    if (m.u8(up) === 0x73) { m.w8(at, 0xdd); return; }
+    if (m.u8(down) === 0x73) { m.w8(at, 0xdc); return; }
+    m.w8(at, 0x6d);
+    if (m.u8(left) === 0x73) { m.w8(left, 0x96); return; }
+    m.w8(at, 0x6e);
+    return;
+  }
+  if (p === 0x23) { m.w8(up, 0xd7); m.w8(at, 0x2d); m.w8(left, 0x96); return; } // 03EA
+  if (p === 0x24) { m.w8(down, 0xe1); m.w8(at, 0x2e); m.w8(left, 0x96); return; } // 03D6
+  if (p === 0x2b) { // 03AC
+    if (m.u8(up) === 0x73) { m.w8(at, 0x2c); m.w8(up, 0xd7); } else m.w8(at, 0x2b);
+    return;
+  }
+  if (p === 0x21) { // 03C2
+    if (m.u8(down) === 0x73) { m.w8(at, 0x22); m.w8(down, 0xe1); } else m.w8(at, 0x21);
+    return;
+  }
+  m.w8(at, (m.u8(at) - 1) & 0xff); // 036A
 }

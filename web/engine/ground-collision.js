@@ -214,7 +214,7 @@ function land(m, si, bx, ctx) {
   }
   m.w16(bx + 0x24, m.u16(bx + 0x24) | 2);
   snapWorldY(m, si);
-  if (m.u16(0x8b89) === 3) ctx.unported.add('F6F7 world 3');
+  worldThreeSplash(m, si); // F6F7
   m.w16(si + 0x26, 0);
   m.w8(si + 1, 0);
   m.w8(bx + 0x3e, 0);
@@ -230,13 +230,37 @@ function land(m, si, bx, ctx) {
   m.w8(bx + 1, 0x16);
 }
 
+/**
+ * 1000:F6F7 (world 3, after a landing; SI = the world entity): sea tiles (0x1F) under the landing point turn into splash tiles (0xD4):
+ * the cell at [8BD7] (or, failing that, the one below it when the player's box spans two columns) and the run of 0x1F cells above it.
+ * The helper routines F75F / F76D leave DI where they stopped, which the second step starts from, so the down-run begins one cell
+ * below the top of the converted run and stops at once on the cells that were just converted.
+ */
+function worldThreeSplash(m, si) {
+  if (m.u16(0x8b89) !== 3 || m.u8(si + 1) === 0xd || m.u8(si + 1) === 0x11) return;
+  const upRun = (d) => { for (;;) { d = (d - 0x80) & 0xffff; if (m.u8(d) !== 0x1f) return d; m.w8(d, 0xd4); } };
+  const downRun = (d) => { for (;;) { d = (d + 0x80) & 0xffff; if (m.u8(d) !== 0x1f) return; m.w8(d, 0xd4); } };
+  const block = (d) => { m.w8(d, 0xd4); const top = upRun(d); downRun((top + 0x80) & 0xffff); }; // F746 / F713
+  const di = m.u16(0x8bd7);
+  if (m.u8(di) === 0x1f) {
+    block(di);
+    if (m.u8(0x8be8) === 0) return; // F757 (the sound request writes nothing compared)
+    const below = (di + 0x80) & 0xffff;
+    if (m.u8(below) === 0x1f) block(below);
+    return;
+  }
+  if (m.u8(0x8be8) === 0) return;
+  const below = (di + 0x80) & 0xffff;
+  if (m.u8(below) === 0x1f) block(below);
+}
+
 /** 1000:F619 (falling target): land with a bounce. */
 function landTarget1(m, si, bx, ctx) {
   const rest = () => { // F661
     if (m.u8(R.E7) === 1) return;
     m.w16(bx + 0x24, m.u16(bx + 0x24) | 2);
     snapWorldY(m, si);
-    if (m.u16(0x8b89) === 3) ctx.unported.add('F6F7 world 3');
+    worldThreeSplash(m, si); // F6F7
     bounce(m, si, bx, ctx);
   };
   if (m.u8(R.CA) === 0 || m.u16(R.CB) === 0) { if (m.u8(R.E7) === 0) rest(); return; } // F659

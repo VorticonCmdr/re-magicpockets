@@ -20,6 +20,16 @@ function clearEntities(m) {
   fill(m, 0x926a, 0x9396);
 }
 
+/**
+ * What the world loaders do to the freshly loaded map: world 3's (1000:126E, called after 1000:B8B7) replaces every tile 0x51 by 0xAF, a
+ * negative (animating) tile, so the sea starts out animated. `[PROVEN]`: the real map around the player in world 3 sub-level 1 holds 0xAF where
+ * the file has 0x51.
+ */
+function mapFixups(m, world) {
+  if (world !== 3) return;
+  for (let a = 0x4200; a < 0x8200; a++) if (m.u8(a) === 0x51) m.w8(a, 0xaf);
+}
+
 /** 1000:0D19 (falls through into 0D53 and 0D7B). `from` selects where the original is entered. */
 function levelStateInit(m, from) {
   const be = (o) => (m.u8(o) << 8) | m.u8(o + 1);
@@ -81,6 +91,7 @@ function scrollInit(m) {
  */
 export function bootAttractDemo(m, ctx, { world = 0, sub = 1, demo = true } = {}) {
   m.w16(0x8b89, world); m.w16(0x8b8b, sub);
+  mapFixups(m, world);
   clearEntities(m);
   levelStateInit(m, 'd19');
   levelStateInit(m, 'd53');
@@ -103,6 +114,7 @@ export function bootAttractDemo(m, ctx, { world = 0, sub = 1, demo = true } = {}
  */
 export function startLevel(m, ctx, { world, sub }) {
   m.w16(0x8b89, world); m.w16(0x8b8b, sub);
+  mapFixups(m, world);
   clearEntities(m);
   m.w16(0xef23, m.u16(0xef25 + (world - 1) * 2)); // the world's tile-class table (1000:0D53)
   levelStateInit(m, 'd7b');

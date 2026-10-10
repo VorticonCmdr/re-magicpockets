@@ -500,8 +500,7 @@ export async function checkConformance(ctx) {
       note('levels whose real map differs from the file by a few cells (runtime tile changes)', levelEvidence.levels.filter((l) => l.papCellsDiffering > 0).map((l) => `${l.world}.${l.sub}: ${l.papCellsDiffering}`).join(', '));
     }
     // World 3 (one session, three clean warps: 3505 -> sub 1 on level3a, 9877 -> sub 4 on level3b, 3123 -> sub 8 on sea.pap + level3c.pin).
-    // Ratchets: sub 1 reproduces up to the first row where the player's water-flag sum [8BEA] makes ours sink and the real game not
-    // (ledger item 24); the sea level up to the float controls (3CE8 target 0x41). Raise them as those are ported.
+    // Sub 1 reproduces in full; the sea level up to the float controls (3CE8 target 0x41), a ratchet to raise when those are ported.
     let live12 = null;
     try { live12 = await loadGzJson(ctx, 'tools/attract-capture/live12-w3.capture.json.gz'); } catch { /* absent */ }
     if (live12) {
@@ -520,8 +519,8 @@ export async function checkConformance(ctx) {
         return runLiveFree(e, live12.rows, { start: b.m, from, to, entitiesOnly: true, checkRng: true, force: [[0x8b96, 50]], levelFiles: () => ({ script, map: e.map }) });
       };
       const a1 = ex12.findIndex((r) => w12(r, 0x8b89) === 3 && w12(r, 0x8b8b) === 1 && r.e.length > 0);
-      const f3a = await seg3(1, a1, a1 + 470);
-      check('a free run with the generator checked reproduces the first 470 rows of world 3 sub-level 1 (level3a) from a clean start', a1 > 0 && f3a.firstBad === null && f3a.matched >= 440, `${f3a.matched} rows from row ${a1}, first mismatch ${f3a.firstBad ?? 'none'}`);
+      const f3a = await seg3(1, a1, 726);
+      check('a free run with the generator checked reproduces world 3 sub-level 1 (level3a, animated water included) from a clean start until the capture script types the next code', a1 > 0 && f3a.firstBad === null && f3a.matched >= 640, `${f3a.matched} rows from row ${a1}, first mismatch ${f3a.firstBad ?? 'none'}`);
       const a8 = ex12.findIndex((r) => w12(r, 0x8b89) === 3 && w12(r, 0x8b8b) === 8 && r.e.length > 0);
       const f3c = await seg3(8, a8, a8 + 70);
       check('a free run with the generator checked reproduces the first 70 rows of the world 3 sea level (call #13 has carry 0 there)', a8 > 0 && f3c.firstBad === null && f3c.matched >= 65, `${f3c.matched} rows from row ${a8}, first mismatch ${f3c.firstBad ?? 'none'}`);
