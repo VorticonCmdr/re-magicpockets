@@ -383,6 +383,10 @@ function handler(m, si, di, op, ctx) {
       m.w8(m.u16(si + 0x2e) + 0x40, 0x19); m.w16(si + 0x2e, 0);
       return di;
     }
+    case 70: // 3C4B: the horizontal speed word follows the frame (no operand)
+      if (m.u16(si + 0xa) !== 0x77) m.w16(si + 0x1c, 4);
+      else m.w16(si + 0x1c, m.u16(si + 0x14) === 4 ? 0x12 : 0xfff6);
+      return di;
     case 67: m.w8(si + 0x3d, m.u8(di)); return di + 1; // SetAnimLockFlag
     case 71: m.w8(0x8c0c, m.u8(di)); return di + 1; // SetGlobalEventTrigger
     case 76: m.w8(0x8c0e, 0); return di; // clears [8C0E]
