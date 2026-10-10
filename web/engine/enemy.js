@@ -34,6 +34,7 @@ function startAction(m, si, dx, ctx) {
   const set = (state, script) => { m.w8(si + 1, state); m.w16(si + 0xc, script); };
   if (cls === 0x2c) { set(0x15, 0xc625); return; } // 6C4C
   const world = m.u16(0x8b89) || m.u16(0x8b8b);
+  if (worldJumpState(m, si, world)) return; // 67DB / 67F7: the same per-class states as the jumps
   if (world !== 1) { ctx.unported.add(`AI action 677C world ${world}`); return; }
   if (cls === 0x13) set(0x83, 0xced5); // 6C2E
   else if (cls === 0x23) set(0x99, 0xd08d); // 6C42
@@ -222,7 +223,7 @@ function pickUp(m, si, bx, ctx) {
 }
 
 /** 1000:C192: the next record after `from` whose class is `cls`. */
-function nextByClass(m, from, cls) {
+export function nextByClass(m, from, cls) {
   for (let bx = from + 0x42; bx < 0xb918; bx += 0x42) if (m.u16(bx + 2) === cls) return bx;
   return 0;
 }
@@ -298,8 +299,64 @@ function thinkByWorld(m, si, ctx) {
     return;
   }
   // Classes the dispatcher at 5E22 knows per world; anything else does nothing (a plain RET).
-  const handled = { 3: [0x4f, 0x54, 0x50, 0x51], 4: [0x57, 0x58, 0x5a, 0x59, 0x5d] }[w];
+  if (w === 3 && (cls === 0x50 || cls === 0x51)) { // 6147 / 6164: the decision runs against the custom tile table F27B
+    m.w16(0xef23, 0xf27b);
+    const restore = () => m.w16(0xef23, 0xf189);
+    if (cls === 0x50) {
+      if (m.u8(si + 1) === 0 && m.u16(0x8bc7) === 0) aiDecide(m, si, ctx);
+      restore();
+      return;
+    }
+    if (m.u8(si + 0x39) === 0x41) { // 6180: note that the state change returns without restoring the table
+      if (m.u8(si + 1) !== 0xef) { m.w8(si + 1, 0xef); m.w16(si + 0xc, 0xd883); return; }
+    } else if (m.u8(si + 1) === 0) aiDecide(m, si, ctx);
+    restore();
+    return;
+  }
+  if (w === 3 && cls === 0x4f) { thinkClass4f(m, si, ctx); return; } // 6190
+  const handled = { 3: [0x54], 4: [0x57, 0x58, 0x5a, 0x59, 0x5d] }[w];
   if (handled && handled.includes(cls)) ctx.unported.add(`think world ${w} class 0x${cls.toString(16)}`);
+}
+
+/** 1000:6190 (world 3, class 0x4F): rolls to start a dive (state 0xDC), or (set 5) dives at the hero when four cells in a row ahead are clear. */
+function thinkClass4f(m, si, ctx) {
+  let di = m.u16(0x8bd7);
+  const drift = () => { // 61D3
+    rollRandom(m, si, ctx);
+    if (m.u16(0x8be5) === 0) return;
+    const al = m.u8(si + 0x28);
+    if (al !== 6) m.w8(si + 0x28, al + 1);
+  };
+  if (m.u8(si + 0x39) !== 5) {
+    if (m.u8(si + 1) !== 0xdc) {
+      rollRandom(m, si, ctx);
+      if (m.u16(0x8be5) === 0) return;
+      m.w8(si + 1, 0xdc); m.w16(si + 0xc, 0xd64f);
+      if (m.u8(si + 0x39) === 0xf) {
+        rollRandom(m, si, ctx);
+        if (m.u16(0x8be5) !== 0) {
+          if (m.u16(si + 0x26) !== 0) { m.w8(si + 0x26, 0); return; }
+          m.w8(si + 0x26, 1);
+        }
+      }
+    }
+    drift();
+    return;
+  }
+  const hero = findByClass(m, 3);
+  const flags = hero === 0 ? 0 : targetDistance(m, si, hero);
+  m.w16(0x8c27, flags & 1);
+  if ((flags & 1) === 0) { drift(); return; }
+  if (m.s16(0x8c1b) > ((m.u8(si + 0x37) << 1) & 0xff) || m.s16(0x8c1d) > 2) { drift(); return; }
+  rollRandom(m, si, ctx);
+  if (m.u16(0x8be5) === 0) { drift(); return; }
+  const up = m.u16(si + 0x14) === 4; // 4: the four cells above, otherwise below, must each be a water/flag tile (negative)
+  for (let k = 0; k < 4; k++) {
+    if (m.s8((di - 3) & 0xffff) >= 0) { drift(); return; }
+    di = (di + (up ? -0x80 : 0x80)) & 0xffff;
+  }
+  const to = up ? [0xdd, 0xd65e] : [0xde, 0xd6ef];
+  if (m.u8(si + 1) !== to[0]) { m.w8(si + 1, to[0]); m.w16(si + 0xc, to[1]); }
 }
 
 /** 1000:610D (world 2, class 0x4C): like class 0x14, with frame 0xA and state 0x52. */
@@ -494,7 +551,24 @@ export function behaviorKind4(m, si, ctx) {
     common();
     return;
   }
-  if (cls === 0x4f) { ctx.unported.add('kind 4 class 0x4f'); return; } // CDC1
+  if (cls === 0x4f) { // CDC1: a drifting kind-4 enemy (world 3): the horizontal speed counts down, then it bobs when in set 0xF
+    const st = m.u8(si + 1);
+    if (st !== 0xdc && m.s8(si + 0x28) > 1) {
+      m.w8(si + 0x28, m.u8(si + 0x28) - 1);
+      moveHorizontalByFlags(m, si, m.u8(si + 0x28));
+      common();
+      return;
+    }
+    const sp = m.u8(si + 0x28);
+    if (sp !== 0) {
+      moveHorizontalByFlags(m, si, sp);
+      if (m.u8(si + 0x39) === 0xf) {
+        if (m.s16(si + 0x26) > 0) moveUpBy(m, si, 1); else moveDownBy(m, si, 1);
+      }
+    }
+    common();
+    return;
+  }
   if (cls !== 0x12 && cls !== 0x54 && cls !== 0x5d) {
     common();
     return;

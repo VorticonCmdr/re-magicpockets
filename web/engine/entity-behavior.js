@@ -15,6 +15,8 @@ import { terrainCollision, overlapTest } from './ground-collision.js';
 import { fireAndCharge, pushEvent3, pushEvent5 } from './fire.js';
 import { behaviorKind2, behaviorKind4, behaviorKind5, behaviorKind6, behaviorKind7 } from './enemy.js';
 import { Rng } from './rng.js';
+import { nextByClass } from './enemy.js';
+import { heroLosesHeart } from './hit.js';
 
 export const G = {
   INPUT: 0x8b67, EXTRA_FLAGS: 0x8b5e, NO_INPUT: 0x8b5f, WALK_SPEED: 0x8b97, TARGET: 0x8b98,
@@ -262,11 +264,52 @@ function behaviorKind1(m, si, ctx) {
   interactions(m, si, ctx);
 }
 
+/**
+ * 1000:D42C (world 3, the player's tick): the player standing in water. [8BEA] sums the water flags of the four probes; above 0x20 the
+ * player is in the water: he drops what he carries, sinks into state 0xAA (and loses a heart unless invulnerable) and spawns the
+ * two splash events; carrying the float (class 0x41 in state 0xF6, [8B98] = 0x41) he floats instead. `si` is the player, `bx` the world entity.
+ */
+function worldThreeSwim(m, si, bx, ctx) {
+  if (m.u8(si + 1) === 0x47) return;
+  const flags = m.u8(0x8bea);
+  const floatItem = () => { let it = 0x9398; for (;;) { it = nextByClass(m, it, 0x41); if (it === 0) return 0; if (m.u8(it + 0x40) === 0xf6) return it; } };
+  if (m.u8(0x8b98) === 0x41) { // D533: floating
+    if (flags > 0x20 || m.u8(si + 1) === 0x71) return;
+    if (m.u8(bx + 1) === 0xd) { m.w8(0x8b98, 0x1a); return; }
+    m.w8(bx + 1, 0xd); m.w16(bx + 0xc, 0xc5a5); m.w16(bx + 0x26, 0);
+    m.w16(si + 0xa, 0x4f); m.w16(si + 0x10, 0x4f); m.w16(si + 0x12, 0x4f);
+    const it = floatItem(); if (it !== 0) m.w16(it + 0xa, 0xe4);
+    return;
+  }
+  if (flags <= 0x20) return;
+  const it = floatItem();
+  if (it !== 0) { // D4AF: the player takes the float
+    m.w16(it + 0xa, 0xe3);
+    m.w16(si + 0xa, 0x36); m.w16(si + 0x10, 0x36); m.w16(si + 0x12, 0x38);
+    m.w8(0x8b98, 0x41); m.w8(bx + 1, 0); m.w8(si + 1, 0);
+  } else {
+    if (m.u8(0x8b98) === 1 || m.u8(0x8b98) === 0x1a) m.w8(0x8b98, 0);
+    if (m.s8(bx + 0x26) >= 0) return;
+    if (m.u8(si + 1) === 0xaa) return;
+    m.w8(bx + 1, 0); m.w16(bx + 0x26, 0);
+    m.w8(si + 1, 0xaa); m.w16(si + 0xc, 0xd171);
+    if (m.u8(0x8b96) === 0) heroLosesHeart(m, si, ctx); // 4A50
+  }
+  // D4D1: a splash where the water starts, if one of the five cells ahead is a water tile
+  const di = m.u16(0x8bd7);
+  let ax = (m.u16(0x8bd9) - 0x20) & 0xffff;
+  let hit = m.s8(di) < 0;
+  for (let k = 1; k <= 4 && !hit; k++) { ax = (ax - 0x10) & 0xffff; hit = m.s8(di - k) < 0; }
+  if (!hit) return;
+  m.w16(0x8c25, ax); m.w16(0x8c27, 0x90); m.w16(0x8c29, 0x52); pushEvent3(m);
+  m.w16(0x8c27, 0x96); m.w16(0x8c25, (ax + 0x1c) & 0xffff); m.w16(0x8c29, 0x55); pushEvent3(m);
+}
+
 /** Kind 3 (the player), 1000:D2FE. */
 function behaviorKind3(m, si, ctx) {
   if (m.u8(G.TARGET) !== 0xff) {
     const world = updateCameraTarget(m, si); // D3CE; BX = world entity
-    if (m.u16(G.WORLD) === 3) ctx.unported.add('D42C world 3');
+    if (m.u16(G.WORLD) === 3) worldThreeSwim(m, si, world, ctx); // D42C
     m.w16(0x8b9a, m.u16(0x8b9a) - 1);
     if (m.u8(0x8b96) !== 0) m.w8(0x8b96, m.u8(0x8b96) - 1);
     if (m.u8(world + 1) === 0) m.w16(world + 0x28, 0);

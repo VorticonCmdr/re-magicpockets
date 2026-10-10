@@ -376,7 +376,9 @@ export async function checkConformance(ctx) {
     if (live5) {
       const fb5 = bootFromFiles(env, world1, { world: 1, sub: 1, demo: false });
       const f5 = runLiveFree(env, live5.rows, { start: fb5.m, from: 0, entitiesOnly: true, force: [[0x8b96, 0x32]], demoScript });
-      check('a free run reproduces every captured entity record up to the end of level 1, where the main loop hands over to the code screen', f5.firstBad === null && f5.matched === 3111, `${f5.matched} rows, first mismatch ${f5.firstBad ?? 'none'}`);
+      // Rows from 3202 on are real iterations with call #13's carry at 0 ([8C33] is set; see call13Carry); an earlier version of the carry rule
+      // wrongly called them half iterations and skipped them. The first one that needs more is the level-end screen fade (Fx_UpdateTransition state 0x32, ledger item 24).
+      check('a free run reproduces every captured entity record up to the level-end screen fade (row 3203), and nothing before it differs', f5.firstBad === 3203 && f5.matched === 3112 && f5.unported.includes('Fx_UpdateTransition state 0x32'), `${f5.matched} rows, first mismatch ${f5.firstBad ?? 'none'}, unported ${f5.unported.join(', ')}`);
     }
     // World 1, sub-level 2 (level1a.pap): reached by poking the level words while CONTINUE? is up (capture-live-drive.lua style, see
     // docs/dosbox-debugging.md); the capture script's own writes are replayed (hearts at row 60, level words at the switch row, the
@@ -496,6 +498,33 @@ export async function checkConformance(ctx) {
       }
       check('the level registry names the same script and map files the game had in memory after each level-code warp (all four worlds, 24 levels)', levelEvidence.levels.length >= 24 && bad.length === 0, bad.length ? bad.join('; ') : `${levelEvidence.levels.length} levels`);
       note('levels whose real map differs from the file by a few cells (runtime tile changes)', levelEvidence.levels.filter((l) => l.papCellsDiffering > 0).map((l) => `${l.world}.${l.sub}: ${l.papCellsDiffering}`).join(', '));
+    }
+    // World 3 (one session, three clean warps: 3505 -> sub 1 on level3a, 9877 -> sub 4 on level3b, 3123 -> sub 8 on sea.pap + level3c.pin).
+    // Ratchets: sub 1 reproduces up to the first row where the player's water-flag sum [8BEA] makes ours sink and the real game not
+    // (ledger item 24); the sea level up to the float controls (3CE8 target 0x41). Raise them as those are ported.
+    let live12 = null;
+    try { live12 = await loadGzJson(ctx, 'tools/attract-capture/live12-w3.capture.json.gz'); } catch { /* absent */ }
+    if (live12) {
+      const ex12 = expandRows(live12.rows);
+      const w12 = (r, o) => { const b = Uint8Array.from(r.g.match(/../g), (h) => parseInt(h, 16)); return b[o - 0x8b50] | (b[o - 0x8b50 + 1] << 8); };
+      const seg3 = async (sub, from, to) => {
+        const files = levelFilesFor(3, sub);
+        const script = rncUnpack(await ctx.fetchRaw('data/' + files.pin)).data;
+        const g = rncUnpack(await ctx.fetchRaw('data/' + files.pap)).data;
+        const mp = new Uint8Array(128 * 128);
+        for (let r = 0; r < 128; r++) for (let c = 0; c < 128; c++) mp[c * 128 + r] = g[r * 128 + c];
+        const e = { ...env, map: mp };
+        const b = bootFromFiles(e, script, { world: 3, sub, demo: false });
+        stepIterationAfterRng(b.m, { unported: new Set(), events: [] }, null);
+        b.m.w16(0x8b71, w12(ex12[from], 0x8b71)); b.m.w16(0x8b6b, w12(ex12[from], 0x8b6b));
+        return runLiveFree(e, live12.rows, { start: b.m, from, to, entitiesOnly: true, checkRng: true, force: [[0x8b96, 50]], levelFiles: () => ({ script, map: e.map }) });
+      };
+      const a1 = ex12.findIndex((r) => w12(r, 0x8b89) === 3 && w12(r, 0x8b8b) === 1 && r.e.length > 0);
+      const f3a = await seg3(1, a1, a1 + 470);
+      check('a free run with the generator checked reproduces the first 470 rows of world 3 sub-level 1 (level3a) from a clean start', a1 > 0 && f3a.firstBad === null && f3a.matched >= 440, `${f3a.matched} rows from row ${a1}, first mismatch ${f3a.firstBad ?? 'none'}`);
+      const a8 = ex12.findIndex((r) => w12(r, 0x8b89) === 3 && w12(r, 0x8b8b) === 8 && r.e.length > 0);
+      const f3c = await seg3(8, a8, a8 + 70);
+      check('a free run with the generator checked reproduces the first 70 rows of the world 3 sea level (call #13 has carry 0 there)', a8 > 0 && f3c.firstBad === null && f3c.matched >= 65, `${f3c.matched} rows from row ${a8}, first mismatch ${f3c.firstBad ?? 'none'}`);
     }
     note('live-play unported branches still hit', [...lr.unportedHist].map(([k, n]) => `${k} x${n}`).join(', ') || 'none');
   }

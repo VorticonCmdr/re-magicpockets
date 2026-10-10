@@ -285,13 +285,13 @@ export function runLiveConformance(env, rows, o = {}) {
  * none is a row sampled between call #8 and call #13.
  * @returns {number} 1, or 0
  */
-function iterationsBetween(a, b) {
-  const run = (s, a0) => { for (let i = 0; i < a0; i++) s = new Rng(s).next(0); return new Rng(s).next(1); };
+function iterationsBetween(a, b, carry = 1) {
+  const run = (s, a0) => { for (let i = 0; i < a0; i++) s = new Rng(s).next(0); return new Rng(s).next(carry); };
   for (let a0 = 0; a0 <= 14; a0++) if (run(a, a0) === b) return 1;
   for (let len = 1; len <= 6; len++) for (let mask = 0; mask < (1 << (len - 1)); mask++) {
     let s2 = a;
     for (let i = 0; i < len - 1; i++) s2 = new Rng(s2).next((mask >> i) & 1);
-    if (new Rng(s2).next(1) === b) return 1;
+    if (new Rng(s2).next(carry) === b) return 1;
   }
   return 0;
 }
@@ -302,7 +302,13 @@ function iterationsBetween(a, b) {
  */
 export function iterationCounts(rows) {
   const rng = rows.map((row) => { const g = hexBytes(row.g); return g[0x8b71 - GLOBALS_BASE] | (g[0x8b72 - GLOBALS_BASE] << 8); });
-  return rows.map((row, k) => (k === 0 || rng[k] === 0x3141 ? 1 : iterationsBetween(rng[k - 1], rng[k])));
+  return rows.map((row, k) => {
+    if (k === 0 || rng[k] === 0x3141) return 1;
+    const g = hexBytes(row.g); // call #13's carry depends on the level (see iteration.js call13Carry)
+    const w = g[0x8b89 - GLOBALS_BASE] | (g[0x8b8a - GLOBALS_BASE] << 8), sub = g[0x8b8b - GLOBALS_BASE] | (g[0x8b8c - GLOBALS_BASE] << 8);
+    const carry = g[0x8c33 - GLOBALS_BASE] !== 0 ? 0 : w < 3 ? 1 : w === 3 ? (sub < 8 ? 1 : 0) : 0;
+    return iterationsBetween(rng[k - 1], rng[k], carry);
+  });
 }
 
 /** Row indices sampled between an iteration's call #8 and call #13. */
@@ -356,6 +362,7 @@ export function runLiveFree(env, rows, o = {}) {
       for (let off = 0; off < ENTITY_SIZE; off++) if (want[off] !== got[off]) diffs.push(`e${e.ptr.toString(16)} c${want[2]} +0x${off.toString(16)} want ${want[off]} got ${got[off]}`);
     }
     if (o.checkRng && m.u16(0x8b71) !== (g[0x8b71 - GLOBALS_BASE] | (g[0x8b72 - GLOBALS_BASE] << 8))) diffs.push(`RNG [8B71] want ${(g[0x8b71 - GLOBALS_BASE] | (g[0x8b72 - GLOBALS_BASE] << 8)).toString(16)} got ${m.u16(0x8b71).toString(16)}`);
+    for (const a of o.watch || []) if (m.u8(a) !== g[a - GLOBALS_BASE]) diffs.push(`G 0x${a.toString(16)} want ${g[a - GLOBALS_BASE]} got ${m.u8(a)}`);
     const gd = [];
     if (!o.entitiesOnly) for (let off = 0; off < g.length; off++) if (g[off] !== m.u8(GLOBALS_BASE + off) && !isLiveScratch(GLOBALS_BASE + off, o.ignore) && !RACE(GLOBALS_BASE + off)) gd.push(`G 0x${(GLOBALS_BASE + off).toString(16)} want ${g[off]} got ${m.u8(GLOBALS_BASE + off)}`);
     if (diffs.length || gd.length) return { matched, firstBad: b.done, diffs: [...diffs, ...gd].slice(0, 12), unported: [...ctx.unported], state: m };

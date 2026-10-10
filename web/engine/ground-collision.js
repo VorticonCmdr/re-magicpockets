@@ -568,7 +568,7 @@ function floorProjectile(m, bx, ctx) {
     return;
   }
   if (m.u8(R.C6) !== 0) alignToFloor(m, bx); // EB20: FAF5
-  if (world !== 1 && world !== 2) { ctx.unported.add(`EB23 kind 7 world ${world}`); return; }
+  if (world !== 1 && world !== 2 && world !== 3) { ctx.unported.add(`EB23 kind 7 world ${world}`); return; }
   const cls = m.u16(bx + 2);
   const kill = () => m.w8(bx + 0x40, 0x19);
   if (world === 2) { // EB90: the world-2 shots; the classes 0x30-0x33 and 0x27/0x44 bounce (ECE5), the rest end here
@@ -588,6 +588,21 @@ function floorProjectile(m, bx, ctx) {
       m.w8(bx + 0x29, 0xff);
       if (cls < 0x30 || cls > 0x33) { kill(); return; }
     }
+  } else if (world === 3) { // EBDC
+    if (cls === 0x39) { // ED47
+      if (m.u8(bx + 1) === 0x2c) return;
+      m.w16(bx + 0x26, 0); m.w8(bx + 1, 0x2c); m.w16(bx + 0xc, 0xc726);
+      return;
+    }
+    if (cls >= 0x35 && cls <= 0x38) { // EC7D: water tiles 0xAC-0xAF under the shot turn to 0xDC
+      const tile = m.u16(R.D7);
+      const water = (a) => { const v = m.u8(a); if (v >= 0xac && v <= 0xaf) { m.w8(a, 0xdc); m.w8(bx + 0x40, 0x19); } };
+      if (m.s8(tile) < 0) water(tile);
+      if (m.u8(0x8be8) !== 0 && m.s8(tile + 0x80) < 0) water(tile + 0x80);
+      const c03 = m.u8(0x8c03);
+      if (c03 === 0 || m.u8(bx + 0x29) === c03) { projectileRunsOut(m, bx, ctx, 3, cls, kill); return; }
+      m.w8(bx + 0x29, m.u8(bx + 0x29) + 1);
+    } else if (cls !== 0x27 && cls !== 0x44) { kill(); return; }
   } else if ([0xa, 0xb, 0xc, 0xd, 0x27].includes(cls)) { // ECBA: breakable tiles under the shot
     const tile = m.u16(R.D7);
     let broke = false;
@@ -650,6 +665,22 @@ export function projectileRunsOut(m, bx, ctx, world, cls, kill) {
   if (cls === 0x27) { settle(0xca, 0xd4d6, true); return; } // EED8
   if (cls === 0x28 || cls === 0x5f) { settle(0xad, 0xd1fe, true); return; } // EEC4
   if (cls === 0x16) { settle(0xae, 0xd20b, true); return; } // EEEC
+  if (world === 3) { // EF00
+    const to = { 0x35: [0xf5, 0xd8e5, 0], 0x36: [0xf4, 0xd8d8, 4], 0x37: [0xf3, 0xd8cb, 2], 0x38: [0xf2, 0xd8b3, 0] }[cls];
+    if (to) {
+      if (m.u8(bx + 1) === to[0]) return;
+      m.w8(bx + 1, to[0]); m.w16(bx + 0xc, to[1]); m.w16(bx + 0xa, m.u16(bx + 0x10)); m.w8(bx + 0x40, 0x65);
+      m.w16(bx + 8, m.u16(bx + 8) + to[2]);
+      return;
+    }
+    if (cls === 0x39) {
+      if (m.u8(bx + 1) === 0) return;
+      m.w8(bx + 1, 0x2c); m.w16(bx + 0xc, 0xc726); m.w8(bx + 0x40, 0x65);
+      return;
+    }
+    kill();
+    return;
+  }
   if (world === 2) { // F02E
     const to = { 0x30: [0xbe, 0xd35b, true], 0x31: [0xbd, 0xd350, false], 0x32: [0xbc, 0xd345, false], 0x33: [0xa8, 0xd150, false] }[cls];
     if (!to) { kill(); return; }
@@ -789,6 +820,10 @@ function resolveEnemy(m, bx, di, ctx) {
   let dl, dh;
   if (vy > 0) { scanLeft(m, bx, di); dl = m.s8(R.C9); } else { scanFloor(m, bx, di); dl = m.s8(R.CA); }
   if (m.u16(bx + 0x14) === 8) { scanBottom(m, bx, di); ledgeProbe(m, bx); dh = m.s8(R.CC); } else { scanTop(m, bx, di); ledgeProbe(m, bx); dh = m.s8(R.CB); }
+  if (m.u16(0x8b89) === 3) { // E230: world 3 keeps only the low nibble of every class
+    dl &= 0xf; dh &= 0xf;
+    for (const a of [R.C9, R.CA, R.CB, R.CC, R.E7]) m.w8(a, m.u8(a) & 0xf);
+  }
   const side = () => sideEnemy(m, bx, ctx, di);
   const vert = () => verticalEnemy(m, bx, ctx, di);
   const finish = () => { if (m.u8(R.E9) !== 0) m.w16(bx + 0x24, m.u16(bx + 0x24) | 0xc); };
@@ -805,15 +840,36 @@ function resolveEnemy(m, bx, di, ctx) {
   finish();
 }
 
-/** 1000:E14F Entity_ResolveGroundCollision, player (class 3) branch only. */
+/**
+ * 1000:E15B (world 3): eight bytes of the world's tile-class table (DS:F135-F138 and F1DA-F1DD) are rewritten before every
+ * collision: 0x11 for the tiles that are solid from every side for this entity, 0x10 for the ones it can pass (kind 4 keeps
+ * 0x11, kind 7 keeps it unless the class is 0x39/0x27/0x44). The high nibble is a second flag that E57B / E229 split off.
+ */
+function world3TilePatch(m, bx) {
+  const put = (v) => { for (const a of [0xf135, 0xf136, 0xf137, 0xf138, 0xf1da, 0xf1db, 0xf1dc, 0xf1dd]) m.w8(a, v); };
+  put(0x11);
+  const kind = m.u16(bx + 4), cls = m.u16(bx + 2);
+  if (kind === 4) return;
+  if (cls === 0x39 || cls === 0x27 || cls === 0x44 || kind !== 7) put(0x10);
+}
+
+/** 1000:E57B (world 3, player): the high nibbles of the four probes are summed into [8BEA]; the probes keep their low nibbles. */
+function world3SplitClasses(m) {
+  for (const a of [R.C9, R.CA, R.CB, R.CC]) m.w8(R.EA, m.u8(R.EA) + (m.u8(a) & 0xf0));
+  for (const a of [R.C9, R.CB]) m.w16(a, m.u16(a) & 0x0f0f);
+}
+
+/** 1000:E14F Entity_ResolveGroundCollision. */
 function resolveGroundCollision(m, si, bx, di, ctx) {
   m.w16(bx + 0x24, 0);
-  if (m.u16(0x8b89) === 3) { ctx.unported.add('E14F world 3'); return; }
+  const world3 = m.u16(0x8b89) === 3;
+  if (world3) world3TilePatch(m, bx); // E15B
   if (m.u16(bx + 2) !== 3) { resolveEnemy(m, bx, di, ctx); return; }
   scanFloor(m, bx, di);
   scanLeft(m, bx, di);
   scanTop(m, bx, di);
   scanBottom(m, bx, di);
+  if (world3) world3SplitClasses(m); // E57B
   if (m.u16(bx + 0x14) === 8) resolveSide(m, si, bx, R.CC, ctx); else resolveSide(m, si, bx, R.CB, ctx);
   resolveFloor(m, si, bx, ctx);
   resolveC9(m, si, bx, ctx);

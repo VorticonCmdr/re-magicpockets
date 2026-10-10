@@ -22,10 +22,23 @@ import { levelUpdateAnimatedTiles } from './tiles.js';
 const G = { INPUT_A: 0x8b67, INPUT_B: 0x8b68, KEY_A: 0x8b5d, KEY_B: 0x8b58, FREEZE: 0x8ba1, DEMO_FLAG: 0x8baa,
   TAPE_STATE: 0x8ba9, TAPE_LEFT: 0x8ba8, TAPE_PTR: 0x8ba6, RNG_STATE: 0x8b71, RNG_OUT: 0x8b6b };
 
-/** Call #13, Rng_NextValue, with the main loop's carry-in of 1. */
+/**
+ * The carry flag call #13 sees: the flags Hud_UpdateScoreDisplay (1000:0B92) leaves `[STATIC]`, found live because every row of a
+ * world 3 sea level / world 4 capture advances the generator by a carry-0 step. It returns through 1000:0C6D after `cmp [8C33],0`
+ * (carry 0), or after `cmp [8B89],3` (carry 1 below world 3, 0 in world 4), or, in world 3, after `cmp [8B8B],8` (carry 1 below sub-level 8).
+ */
+export function call13Carry(m) {
+  if (m.u8(0x8c33) !== 0) return 0;
+  const world = m.u16(0x8b89);
+  if (world < 3) return 1;
+  if (world === 3) return m.u16(0x8b8b) < 8 ? 1 : 0;
+  return 0;
+}
+
+/** Call #13, Rng_NextValue, with the carry the HUD routine leaves (see call13Carry). */
 export function rngNext(m) {
   const rng = new Rng(m.u16(G.RNG_STATE));
-  const v = rng.next(1);
+  const v = rng.next(call13Carry(m));
   m.w16(G.RNG_OUT, v);
   m.w16(G.RNG_STATE, v);
 }

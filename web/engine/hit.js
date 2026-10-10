@@ -512,7 +512,7 @@ export function gameOverBody(m) {
 }
 
 /** 1000:4A50: the hero is hit while already in a reaction: a spark, and one heart-bar frame is used up. */
-function heroLosesHeart(m, si, ctx) {
+export function heroLosesHeart(m, si, ctx) {
   m.w16(0x8c29, 0x11);
   m.w16(0x8c27, m.u16(si + 6));
   m.w16(0x8c25, (m.u16(si + 8) - 8) & 0xffff);
