@@ -15,7 +15,8 @@ import { decodePap } from '../core/pap.js';
 import { decodePinSoundBank } from '../core/pin-sound.js';
 import { decodeLevelScript } from '../core/pin-level-script.js';
 import { WORLD_GROUND_TABLES, WORLD_GROUND_TABLE_ADDR, TABLE_BYTES } from '../core/tile-collision.js';
-import { RAW_BANKS } from '../core/palette.js';
+import { RAW_BANKS, WORLD_PALETTES } from '../core/palette.js';
+import { rasterize, buildBanks } from '../render/sprite-raster.js';
 import { decodeDemoTape, DemoPlayback, INPUT_BITS, DEMO_RNG_SEED } from '../core/demo-tape.js';
 import { FRAME_ORDER, DEFAULT_TICK_HZ } from '../engine/frame.js';
 import { stepIterationAfterRng } from '../engine/iteration.js';
@@ -601,6 +602,31 @@ export async function checkConformance(ctx) {
  *  rendered by the port matched the DOSBox screenshot on 2681 of 2764 sprite pixels (the rest is the score
  *  digits the HUD pass writes, not part of this DS image). [PROVEN] live; these rows pin the decode. */
 const LIVE_ENTITIES_B64 = '/wABAAEAQP3A/AEAAsYAAAEABAAIAAsAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAEABAAA/wADAAMAkABQAEAAAsgAAEEASAAIAAoAIAAgAAQABAAYABwAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAEIAAAEABAAAAAACAAAAkABkALAAWsQAALAAsAAAAA4AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAEABPYAAAAHAAAAcACoAAIAAAAAAAIAAgAAAA4AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAEABAAAAAAYAAAAAACoAHwAWsQAAH8AfwAAAA4AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAMABAAAAAAZAAAAIAGoAHoAWsQAAHoAegAAAA0AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAEABAAA';
+/** Sprites in worlds 2, 3 and 4 against a live DOSBox video frame each (tools/sprite-video/, made with tools/sprite-video-compare.mjs):
+ *  the entity block dumped from DOSBox is rebuilt through collectDraws and rasterised with the world's banks and palette, and every sprite
+ *  pixel inside the 192-line view must equal the video pixel. The literals are the number of sprite pixels in that frame. [PROVEN] live. */
+export async function checkSpriteWorlds(ctx) {
+  const { results, check } = makeChecker();
+  const exe = await ctx.fetchRaw('game/GAMEU.EXE');
+  const hexBytes = (h) => Uint8Array.from(h.match(/../g), (x) => parseInt(x, 16));
+  for (const [world, opaqueLiteral, cmdsLiteral] of [[2, 4502, 19], [3, 2198, 41], [4, 4329, 32]]) {
+    let ref;
+    try { ref = await loadGzJson(ctx, `tools/sprite-video/world${world}.json.gz`); } catch { check(`world ${world} video frame (not available)`, true, 'skipped'); continue; }
+    const raw = {};
+    for (const b of Object.values(BANKS)) for (const f of b.files) { const n = f.replace('%', world); raw[n] = rncUnpack(await ctx.fetchRaw(`data/${n}`)).data; }
+    const m = new DsMemory(exe);
+    m.put(0x8b50, hexBytes(ref.g)); m.put(0x91be, hexBytes(ref.l)); m.put(0x9398, hexBytes(ref.b));
+    const cmds = collectDraws(m);
+    const img = rasterize(cmds, buildBanks(raw, world), WORLD_PALETTES['world' + world]);
+    const vid = Uint8Array.from(atob(ref.rgb), (c) => c.charCodeAt(0));
+    let opaque = 0, same = 0;
+    for (let i = 0; i < img.length; i++) if (img[i] >= 0) { opaque++; if (((vid[i * 3] << 16) | (vid[i * 3 + 1] << 8) | vid[i * 3 + 2]) === img[i]) same++; }
+    check(`world ${world}: ${cmdsLiteral} draw commands for the live entity block`, cmds.length === cmdsLiteral, `${cmds.length}`);
+    check(`world ${world}: all ${opaqueLiteral} sprite pixels equal the DOSBox frame`, opaque === opaqueLiteral && same === opaqueLiteral, `${same}/${opaque}`);
+  }
+  return results;
+}
+
 /** Opcode 38 (level-code entry, 1000:2474) on a bare data segment: the glyph rules the disassembly gives. [STATIC] */
 export async function checkCodeEntry(ctx) {
   const { results, check } = makeChecker();
@@ -720,7 +746,7 @@ export async function checkFrontend(ctx) {
 }
 
 export async function runAllChecks(ctx) {
-  const groups = [checkRncCorpus, checkPap, checkCollisionTable, checkPalettes, checkSoundBanks, checkLevelScripts, checkDemoTape, checkFrameOrder, checkCaptureRng, checkSprites, checkCodeEntry, checkFrontend, checkConformance];
+  const groups = [checkRncCorpus, checkPap, checkCollisionTable, checkPalettes, checkSoundBanks, checkLevelScripts, checkDemoTape, checkFrameOrder, checkCaptureRng, checkSprites, checkSpriteWorlds, checkCodeEntry, checkFrontend, checkConformance];
   const results = [];
   for (const g of groups) results.push(...await g(ctx));
   return { results };
