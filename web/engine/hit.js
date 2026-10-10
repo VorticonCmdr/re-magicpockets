@@ -6,7 +6,7 @@
 
 'use strict';
 
-import { pushSpawnEvent, pushEvent3, pushEvent5, pushEntityEvent } from './fire.js';
+import { pushSpawnEvent, pushEvent8, pushEvent3, pushEvent5, pushEntityEvent } from './fire.js';
 import { findByClass } from './ds-memory.js';
 import { changeClass } from './script-runner.js';
 import { crateGrab, freeSlot, putDownLight } from './entity-behavior.js';
@@ -393,7 +393,11 @@ function die(m, bx, ctx) {
   if (link !== 0) { m.w8(link + 1, 1); m.w16(link + 0xc, 0xc45b); }
   // sound requests 1D4C(4) and 1D4C(0x45) write nothing this model compares yet
   const drop = m.u8(bx + 0x39) === 0x15 ? 0x15 : m.u8(bx + 0x40) === 0x40 ? 0x40 : m.u8(bx + 0x39) === 0x41 ? 0x41 : m.u8(bx + 0x40) === 0x43 ? 0x43 : 0;
-  if (drop === 0 && m.u16(bx + 2) === 0x5b) { ctx.unported.add('549C class 0x5b drop (C0E6)'); return false; }
+  if (drop === 0 && m.u16(bx + 2) === 0x5b) { // 55DF: a class-0x5b enemy leaves a class-0x49 item
+    m.w16(0x8c1f, 0); m.w16(0x8c21, 0); m.w16(0x8c23, m.u16(bx + 0x14));
+    m.w16(0x8c25, m.u16(bx + 8)); m.w16(0x8c27, m.u16(bx + 6)); m.w16(0x8c29, 0x49);
+    pushEvent8(m);
+  }
   if (drop !== 0) {
     m.w16(0x8c25, m.u16(bx + 8)); m.w16(0x8c27, m.u16(bx + 6)); m.w16(0x8c29, drop);
     pushEvent3(m);

@@ -46,6 +46,16 @@ export function pushSpawnEvent(m) {
   m.w16(0x8bb5, si);
 }
 
+/** 1000:C0E6: like C0AE's siblings, a six-word event (8C1F..8C29) with tag 8. */
+export function pushEvent8(m) {
+  let si = m.u16(0x8bb5);
+  if (si < EVENT_FLOOR) return;
+  for (const a of [0x8c1f, 0x8c21, 0x8c23, 0x8c25, 0x8c27, 0x8c29]) { pushWord(m, si, m.u16(a)); si -= 2; }
+  pushWord(m, si, 8); si -= 2;
+  m.w16(si, 0xeeee); si -= 2;
+  m.w16(0x8bb5, si);
+}
+
 const frameIs4x = (m, bx) => m.u16(bx + 0xa) === 0x40 || m.u16(bx + 0xa) === 0x4f;
 
 /** 1000:45CF */
