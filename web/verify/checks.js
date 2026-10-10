@@ -18,7 +18,7 @@ import { RAW_BANKS } from '../core/palette.js';
 import { decodeDemoTape, DemoPlayback, INPUT_BITS, DEMO_RNG_SEED } from '../core/demo-tape.js';
 import { FRAME_ORDER } from '../engine/frame.js';
 import { Rng } from '../engine/rng.js';
-import { prepare, runConformance, runFreeRun, runLiveConformance, bootFromFiles, diffBootEntities, expandRows, midConsumeParticles } from './conformance-lib.js';
+import { prepare, runConformance, runFreeRun, runLiveConformance, runLiveFree, bootFromFiles, diffBootEntities, expandRows, midConsumeParticles } from './conformance-lib.js';
 
 export function makeChecker() {
   const results = [];
@@ -312,6 +312,7 @@ export async function checkConformance(ctx) {
   check('a free run from that files-only boot reproduces every captured entity record for the whole demo', bootRun.matched === 2341, `${bootRun.matched} rows, first mismatch ${bootRun.firstBad ?? 'none'}`);
   // Real play (not the demo): 1800 iterations of world 1 captured with capture-live.lua, keyboard input
   // replayed from each row's input words.
+  const world1 = rncUnpack(await ctx.fetchRaw('data/new1.pin')).data;
   let live = null;
   try { live = await loadGzJson(ctx, 'tools/attract-capture/live1.capture.json.gz'); } catch { /* absent */ }
   if (live) {
@@ -326,8 +327,17 @@ export async function checkConformance(ctx) {
     if (live2) {
       const l2 = runLiveConformance(env, live2.rows, {});
       check('the hold-out live-play capture (a different, seeded random player): every usable transition reproduces every captured entity record', l2.entExact === l2.total && l2.total === 1195, `${l2.entExact}/${l2.total}`);
+      const fb2 = bootFromFiles(env, world1, { world: 1, sub: 1, demo: false });
+      const f2 = runLiveFree(env, live2.rows, { start: fb2.m, from: 0, entitiesOnly: true });
+      check('a free run from a files-only boot reproduces every captured entity record of the whole hold-out capture', f2.firstBad === null && f2.matched === 1203, `${f2.matched} rows, first mismatch ${f2.firstBad ?? 'none'}`);
       check('the hold-out capture also reproduces every non-scratch global on every usable transition', l2.exact === l2.total, `${l2.exact}/${l2.total} (${l2.raceRows} differ only in sample-race globals; ${l2.skipped} transitions beside ${l2.midRows.length} mid-iteration samples skipped)`);
     }
+    // Real play from the files alone: world 1, sub-level 1 (new1.pin, pcmap.pap) booted as the game's own start does,
+    // then each row's keyboard words fed to the engine. The first capture ends its real play at a restart (CONTINUE?
+    // timed out), which is not ported.
+    const fb1 = bootFromFiles(env, world1, { world: 1, sub: 1, demo: false });
+    const f1 = runLiveFree(env, live.rows, { start: fb1.m, from: 0, entitiesOnly: true });
+    check('a free run of real play from a files-only boot reproduces every captured entity record for the first 1064 rows (the capture then restarts the game)', f1.matched >= 1064, `${f1.matched} rows, first mismatch ${f1.firstBad ?? 'none'}`);
     note('live-play unported branches still hit', [...lr.unportedHist].map(([k, n]) => `${k} x${n}`).join(', ') || 'none');
   }
   const top = [...all.unportedHist].sort((a, b) => b[1] - a[1]).slice(0, 6).map(([k, n]) => `${k} x${n}`).join(', ');

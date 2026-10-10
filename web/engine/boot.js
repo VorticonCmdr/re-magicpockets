@@ -79,13 +79,13 @@ function scrollInit(m) {
  * Start the attract demo's level on `m`, whose DS holds the EXE data, the level script at DS:0, the map
  * at 0x4200 and the demo tape at 0x8200.
  */
-export function bootAttractDemo(m, ctx) {
-  m.w16(0x8b89, 0); m.w16(0x8b8b, 1);
+export function bootAttractDemo(m, ctx, { world = 0, sub = 1, demo = true } = {}) {
+  m.w16(0x8b89, world); m.w16(0x8b8b, sub);
   clearEntities(m);
   levelStateInit(m, 'd19');
   levelStateInit(m, 'd53');
   m.w16(0x8ba6, 0x8200); m.w16(0x8ba8, m.u16(0x8200));
-  m.w16(0x8b71, 0x3141); m.w16(0x8b75, 0); m.w16(0x8b83, 0); m.w8(0x8baa, 1); m.w16(0x8b8b, 1);
+  m.w16(0x8b71, 0x3141); m.w16(0x8b75, 0); m.w16(0x8b83, 0); m.w8(0x8baa, demo ? 1 : 0xff); m.w16(0x8b8b, sub);
   clearEntities(m);
   levelStateInit(m, 'd7b');
   levelLoadEntities(m, levelListPointer(m, m.u16(0x8b8b)), ctx);

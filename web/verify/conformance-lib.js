@@ -204,13 +204,13 @@ export function runFreeRun(env, rows, o = {}) {
  * (unpacked `new1.pin` sits at DS:0), the map, and Level_LoadEntities for sub-level 1 of world 0 (the
  * attract demo's level). Globals the new-game initializer would set are not modelled yet.
  */
-export function bootFromFiles(env, levelScript) {
+export function bootFromFiles(env, levelScript, opts = {}) {
   const m = env.base.clone();
   m.put(0, levelScript);
   m.put(0x8200, env.tape);
   m.put(0x4200, env.map);
   const ctx = { unported: new Set(), events: [] };
-  bootAttractDemo(m, ctx);
+  bootAttractDemo(m, ctx, opts);
   return { m, unported: [...ctx.unported] };
 }
 
@@ -284,4 +284,54 @@ export function runLiveConformance(env, rows, o = {}) {
     if (r.shown.length < (o.show ?? 6)) r.shown.push(`${rows[k].done}->${b.done}: ${[...diffs, ...gdiffs.map((a) => `G 0x${a.toString(16)} want ${g[a - GLOBALS_BASE]} got ${m.u8(a)}`)].slice(0, 6).join('; ')} unported ${[...ctx.unported].join(',')}`);
   }
   return r;
+}
+
+/** Row indices sampled between an iteration's call #8 and call #13 (see runLiveConformance). */
+export function midIterationRows(rows) {
+  const rngOf = (row) => { const g = hexBytes(row.g); return g[0x8b71 - GLOBALS_BASE] | (g[0x8b72 - GLOBALS_BASE] << 8); };
+  const reaches = (a, b) => {
+    for (let len = 1; len <= 6; len++) for (let mask = 0; mask < (1 << (len - 1)); mask++) {
+      let s2 = a;
+      for (let i = 0; i < len - 1; i++) s2 = new Rng(s2).next((mask >> i) & 1);
+      if (new Rng(s2).next(1) === b) return true;
+    }
+    return false;
+  };
+  const rng = rows.map(rngOf);
+  const mid = new Set();
+  for (let k = 1; k < rows.length; k++) if (!reaches(rng[k - 1], rng[k]) && rng[k] !== 0x3141) mid.add(k);
+  return mid;
+}
+
+/**
+ * A free run of live play: `start` is the engine state at row `from` (for example a boot from the files);
+ * every later full row (not a mid-iteration sample) is reached by one engine iteration fed with that row's
+ * input words, and compared (entities always, globals unless `entitiesOnly`).
+ * @returns {{matched:number, firstBad:number|null, diffs:string[], unported:string[]}}
+ */
+export function runLiveFree(env, rows, o = {}) {
+  rows = expandRows(rows);
+  const from = o.from ?? 0, to = Math.min(o.to ?? rows.length - 1, rows.length - 1);
+  const mid = midIterationRows(rows);
+  const RACE = (a) => a === 0x8b69 || a === 0x8b60 || a === 0x8c38 || (a >= 0x8bb7 && a <= 0x8bba) || (a >= 0x8c13 && a <= 0x8c18);
+  let m = o.start ?? loadRow(env, rows[from]);
+  let matched = 0;
+  for (let k = from + 1; k <= to; k++) {
+    if (mid.has(k)) continue;
+    const b = rows[k];
+    const g = hexBytes(b.g);
+    m.w8(0x8b5d, g[0x8b67 - GLOBALS_BASE]); m.w8(0x8b58, g[0x8b68 - GLOBALS_BASE]);
+    const ctx = { unported: new Set(), events: [] };
+    stepIterationAfterRng(m, ctx, null);
+    const diffs = [];
+    for (const e of b.e) {
+      const want = hexBytes(e.hex), got = m.get(e.ptr, ENTITY_SIZE);
+      for (let off = 0; off < ENTITY_SIZE; off++) if (want[off] !== got[off]) diffs.push(`e${e.ptr.toString(16)} c${want[2]} +0x${off.toString(16)} want ${want[off]} got ${got[off]}`);
+    }
+    const gd = [];
+    if (!o.entitiesOnly) for (let off = 0; off < g.length; off++) if (g[off] !== m.u8(GLOBALS_BASE + off) && !isLiveScratch(GLOBALS_BASE + off) && !RACE(GLOBALS_BASE + off)) gd.push(`G 0x${(GLOBALS_BASE + off).toString(16)} want ${g[off]} got ${m.u8(GLOBALS_BASE + off)}`);
+    if (diffs.length || gd.length) return { matched, firstBad: b.done, diffs: [...diffs, ...gd].slice(0, 12), unported: [...ctx.unported] };
+    matched++;
+  }
+  return { matched, firstBad: null, diffs: [], unported: [] };
 }

@@ -39,26 +39,28 @@ async function loadExe() {
 const hue = (cls) => `hsl(${(cls * 47) % 360} 80% 60%)`;
 
 async function main() {
-  const [exe, tape, pap, script] = await Promise.all([loadExe(), fetchBytes('/data/autoplay.pin'), fetchBytes('/data/pcmap.pap'), fetchBytes('/data/level0.pin')]);
+  const [exe, tape, pap, script, world1Script] = await Promise.all([loadExe(), fetchBytes('/data/autoplay.pin'), fetchBytes('/data/pcmap.pap'), fetchBytes('/data/level0.pin'), fetchBytes('/data/new1.pin')]);
   const cache = new AssetCache(sourceFromFetch('/data', ['blocks1.pak', 'pcmap.pap']));
   const [pak, papDecoded] = await Promise.all([cache.getPak('blocks1.pak', WORLD_PALETTES.world1), cache.getPap('pcmap.pap')]);
   const background = buildBackgroundCanvas(pak, papDecoded);
   const env = prepare(exe, tape, pap);
+  let playing = new URLSearchParams(location.search).has('play');
   let m, ticks, step;
   const sim = { unported: new Set(), events: [] };
-  const levelScript = rncUnpack(script).data;
-  const restart = () => { m = bootFromFiles(env, levelScript).m; ticks = 0; };
+  const demoScript = rncUnpack(script).data, world1 = rncUnpack(world1Script).data;
+  // Watching boots the attract demo's level (level0.pin + the tape); playing boots world 1, level 1 as the
+  // game's own start does (new1.pin). Both use pcmap.pap and are parity-checked in `npm run verify`.
+  const restart = () => { m = (playing ? bootFromFiles(env, world1, { world: 1, sub: 1, demo: false }) : bootFromFiles(env, demoScript)).m; ticks = 0; };
   restart();
   // ?play (or the button): the keyboard replaces the demo tape. Call #7 then just copies the key
   // bytes [8B5D]/[8B58] (what the original's keyboard ISR writes) into the input words.
-  let playing = new URLSearchParams(location.search).has('play');
   const held = new Set();
   const KEYS = { ArrowUp: 'up', KeyW: 'up', ArrowDown: 'down', KeyS: 'down', ArrowLeft: 'left', KeyA: 'left', ArrowRight: 'right', KeyD: 'right', Space: 'fire', ControlLeft: 'fire', KeyZ: 'fire' };
   addEventListener('keydown', (e) => { if (KEYS[e.code]) { held.add(KEYS[e.code]); e.preventDefault(); } });
   addEventListener('keyup', (e) => { if (KEYS[e.code]) held.delete(KEYS[e.code]); });
   const keyState = () => [...held].reduce((v, k) => v | INPUT_BITS[k], 0);
   step = () => {
-    if (playing) { m.w8(0x8baa, 0); m.w8(0x8b5d, keyState()); m.w8(0x8b58, keyState()); }
+    if (playing) { m.w8(0x8b5d, keyState()); m.w8(0x8b58, keyState()); }
     stepIteration(m, sim, null); ticks++;
   };
 
@@ -85,7 +87,7 @@ async function main() {
   };
   if (playing) document.getElementById('play').textContent = 'watch demo';
   const clock = new Clock(step, { onRender: draw });
-  document.getElementById('play').addEventListener('click', () => { playing = !playing; if (!playing) restart(); document.getElementById('play').textContent = playing ? 'watch demo' : 'play'; });
+  document.getElementById('play').addEventListener('click', () => { playing = !playing; restart(); document.getElementById('play').textContent = playing ? 'watch demo' : 'play'; });
   document.getElementById('pause').addEventListener('click', () => { if (clock.running) clock.stop(); else clock.start(); });
   document.getElementById('restart').addEventListener('click', () => { restart(); sim.unported.clear(); draw(); });
   window.__mpDemo = { m: () => m, step, draw, clock };
