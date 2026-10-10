@@ -887,6 +887,7 @@ function resolveEnemy(m, bx, di, ctx) {
     if (m.u16(R.C7) === 0) { vert(); side(); finish(); return; } // E255
     if (m.u8(R.E7) !== 0) m.w8(R.EC, 0xff);
     if (m.u16(bx + 4) === 7) { vert(); side(); finish(); return; }
+    if (m.u16(bx + 4) === 5 || m.u16(bx + 4) === 6) { vert(); return; } // E296 / E29C: scenery and effects only resolve vertically
     if (m.u16(R.D5) !== m.u16(R.D7)) { vert(); side(); finish(); return; }
     vert();
     return;

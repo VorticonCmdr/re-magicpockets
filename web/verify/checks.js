@@ -20,7 +20,8 @@ import { decodeDemoTape, DemoPlayback, INPUT_BITS, DEMO_RNG_SEED } from '../core
 import { FRAME_ORDER, DEFAULT_TICK_HZ } from '../engine/frame.js';
 import { stepIterationAfterRng } from '../engine/iteration.js';
 import { Rng } from '../engine/rng.js';
-import { prepare, runConformance, runFreeRun, runLiveConformance, runLiveFree, bootFromFiles, diffBootEntities, expandRows, midConsumeParticles } from './conformance-lib.js';
+import { prepare, runConformance, runFreeRun, runLiveConformance, runLiveFree, bootFromFiles, diffBootEntities, expandRows, midConsumeParticles, loadRow } from './conformance-lib.js';
+import { mapFixups } from '../engine/boot.js';
 
 export function makeChecker() {
   const results = [];
@@ -533,28 +534,35 @@ export async function checkConformance(ctx) {
       ['live15-w4c', [[6, 52, 726, 660], [7, 739, 1413, 650], [8, 1426, 2278, 780]]],
       // world 3: the capture script kept [8B96] at 0x32 several times per iteration, replayed with pinHurtTimer
       ['live16-w3b', [[2, 52, 726, 630], [3, 739, 1413, 630], [5, 1426, 2142, 610]], 3, true],
-      ['live17-w3c', [[6, 52, 252, 170]], 3, true],
+      // sub-levels 7 and 8 start from the first real row: the warp kept the hero floating (target 0x41), which a files-only boot does not know
+      ['live17-w3c', [[6, 52, 726, 550], [7, 739, 1413, 570, true], [8, 1426, 2131, 700, true]], 3, true],
     ]) {
       let cap = null;
       try { cap = await loadGzJson(ctx, `tools/attract-capture/${file}.capture.json.gz`); } catch { /* absent */ }
       if (!cap) continue;
       const exc = expandRows(cap.rows);
       const wc = (r, o) => { const b = Uint8Array.from(r.g.match(/../g), (h) => parseInt(h, 16)); return b[o - 0x8b50] | (b[o - 0x8b50 + 1] << 8); };
-      const seg4 = async (sub, from, to) => {
+      const seg4 = async (sub, from, to, loadStart) => {
         const files = levelFilesFor(world, sub);
         const script = rncUnpack(await ctx.fetchRaw('data/' + files.pin)).data;
         const g = rncUnpack(await ctx.fetchRaw('data/' + files.pap)).data;
         const mp = new Uint8Array(128 * 128);
         for (let r = 0; r < 128; r++) for (let c = 0; c < 128; c++) mp[c * 128 + r] = g[r * 128 + c];
         const e = { ...env, map: mp };
-        const b = bootFromFiles(e, script, { world, sub, demo: false });
-        stepIterationAfterRng(b.m, { unported: new Set(), events: [] }, null);
-        b.m.w16(0x8b71, wc(exc[from], 0x8b71)); b.m.w16(0x8b6b, wc(exc[from], 0x8b6b));
-        return runLiveFree(e, cap.rows, { start: b.m, from, to, entitiesOnly: true, checkRng: true, force: [[0x8b96, 50]], pinHurtTimer: pinHurt, levelFiles: () => ({ script, map: e.map }) });
+        let start;
+        if (loadStart) {
+          start = loadRow(e, exc[from]); start.put(0, script); start.w16(0xef23, start.u16(0xef25 + (world - 1) * 2)); mapFixups(start, world);
+        } else {
+          const b = bootFromFiles(e, script, { world, sub, demo: false });
+          stepIterationAfterRng(b.m, { unported: new Set(), events: [] }, null);
+          b.m.w16(0x8b71, wc(exc[from], 0x8b71)); b.m.w16(0x8b6b, wc(exc[from], 0x8b6b));
+          start = b.m;
+        }
+        return runLiveFree(e, cap.rows, { start, from, to, entitiesOnly: true, checkRng: true, force: [[0x8b96, 50]], pinHurtTimer: pinHurt, levelFiles: () => ({ script, map: e.map }) });
       };
-      for (const [sub, from, to, min] of segs) {
+      for (const [sub, from, to, min, loadStart] of segs) {
         const ok = exc[from] && wc(exc[from], 0x8b89) === world && wc(exc[from], 0x8b8b) === sub;
-        const f = ok ? await seg4(sub, from, to) : { matched: 0, firstBad: 'start row is not this level' };
+        const f = ok ? await seg4(sub, from, to, loadStart) : { matched: 0, firstBad: 'start row is not this level' };
         check(`a free run with the generator checked reproduces world ${world} sub-level ${sub} from a clean start until the capture script types the next code`, ok && f.firstBad === null && f.matched >= min, `${f.matched} rows from row ${from}, first mismatch ${f.firstBad ?? 'none'}`);
       }
     }

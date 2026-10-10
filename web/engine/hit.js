@@ -33,11 +33,12 @@ function playerTouchesProjectile(m, si, bx, ctx) {
     if (cls === 0x10) return rewardTouched(m, si, bx, ctx);
     return true;
   }
-  if (world === 2) return cls !== 0x33 && cls !== 0x34;
-  if (world === 3) return cls !== 0x38 && cls !== 0x39;
+  if (world === 2) { if (cls === 0x34) return rewardTouched(m, si, bx, ctx); return cls !== 0x33; } // 4C20: 4D38 (class 0x33) is not ported
+  if (world === 3) { if (cls === 0x38) return crateTouched(m, si, bx); if (cls === 0x39) return rewardTouched(m, si, bx, ctx); return true; } // 4C68
   if (world === 4) {
     if (cls >= 0x3a && cls <= 0x3d) return stuckShotTouched(m, si, bx, ctx); // 4C78
-    return cls !== 0x3e;
+    if (cls === 0x3e) return rewardTouched(m, si, bx, ctx); // 4C64
+    return true;
   }
   return true;
 }
@@ -338,13 +339,16 @@ function strongHit(m, si, bx, ctx) {
   m.w16(0x8c27, 0x100 | m.u8(0x8c05)); // AH is left at 1 by the sound request
   m.w16(0x8c23, m.u8(bx + 0x3c));
   const world = m.u16(0x8b89) || m.u16(0x8b8b);
-  if (world !== 1) { ctx.unported.add(`52A0 world ${world}`); return false; }
+  if (world < 1 || world > 4) { ctx.unported.add(`52A0 world ${world}`); return false; }
   m.w16(0x8c25, m.u16(si + 0x26));
-  changeClass(m, si, 0x10);
+  if (world === 3) m.w16(0x8c29, 0x39);
+  changeClass(m, si, [0, 0x10, 0x34, 0x39, 0x3e][world]); // 52F2 / 52F7 / 5324 / 52FC: the shot becomes the world's reward object
   m.w16(si + 0x26, m.u16(0x8c25));
   m.w8(si + 0x3f, m.u16(0x8c27) & 0xff);
   m.w8(si + 0x3c, m.u16(0x8c23) & 0xff);
-  m.w16(si + 0xa, m.u16(si + 0x10));
+  if (world !== 3) { m.w16(si + 0xa, m.u16(si + 0x10)); return true; }
+  const frame = { 0x4e: 0x33, 0x50: 0x35, 0x4f: 0x39, 0x51: 0x37, 0x54: 0x3b }[m.u16(bx + 2)]; // 5345..53A4: the frame depends on the enemy that died
+  if (frame !== undefined) { m.w16(si + 0xa, frame); m.w16(si + 0x10, frame); m.w16(si + 0x12, frame); }
   return true;
 }
 
@@ -379,9 +383,11 @@ export function scoreBurst(m, si, ctx) {
 /** 1000:4DE2: the player touches a reward object (class 0x10, world 1 and 2). */
 function rewardTouched(m, si, bx, ctx) {
   if (m.u8(bx + 0x40) === 0x65) return true;
-  if (m.u16(0x8b89) === 3 || m.u16(0x8b89) === 4) return false;
-  if (m.u16(bx + 2) === 0x3e && m.u8(bx + 1) !== 0x5c) return true;
-  m.w8(bx + 1, 0xc9); m.w16(bx + 0xc, 0xd4c7);
+  if (m.u16(0x8b89) === 3 || m.u16(0x8b89) === 4) { m.w8(bx + 1, 0x2b); m.w16(bx + 0xc, 0xc714); } // 4E19
+  else {
+    if (m.u16(bx + 2) === 0x3e && m.u8(bx + 1) !== 0x5c) return true;
+    m.w8(bx + 1, 0xc9); m.w16(bx + 0xc, 0xd4c7);
+  }
   m.w16(0x8c1f, m.s8(bx + 0x3f) & 0xffff);
   m.w8(bx + 0x40, 0x65);
   // 4E24: a random pickup sound (1CCF) is requested here

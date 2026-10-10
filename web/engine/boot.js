@@ -25,7 +25,7 @@ function clearEntities(m) {
  * negative (animating) tile, so the sea starts out animated. `[PROVEN]`: the real map around the player in world 3 sub-level 1 holds 0xAF where
  * the file has 0x51.
  */
-function mapFixups(m, world) {
+export function mapFixups(m, world) {
   if (world !== 3) return;
   for (let a = 0x4200; a < 0x8200; a++) if (m.u8(a) === 0x51) m.w8(a, 0xaf);
 }
