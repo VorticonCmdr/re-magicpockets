@@ -164,7 +164,19 @@ export function weaponHitsEnemy(m, si, bx, ctx) {
 /** 1000:50AE: the enemy `bx` survives a hit from `si`. */
 function hurt(m, bx, si, ctx) {
   const cls = m.u16(bx + 2);
-  if (cls === 0x2b || cls === 0x23) return false;
+  if (cls === 0x2b) return false;
+  if (cls === 0x23) { // 51A6: the companion-bound enemy
+    const link = m.u16(bx + 0x2c);
+    if (m.u8(bx + 1) === 0x9a && link !== 0) { // the bound marker is released and the enemy takes the hit state
+      m.w8(link + 0x40, 0x19); m.w16(bx + 0x2c, 0); m.w8(bx + 0x3e, 0);
+      setScriptFromState(m, bx, 0x9b);
+      return true;
+    }
+    if (m.u8(bx + 1) === 0x9b) return true; // 522A
+    if (m.u8(bx + 1) !== 0) return spark(m, bx);
+    setScriptFromState(m, bx, 0x9b);
+    return true;
+  }
   if (m.u16(bx + 0x2c) !== 0) return true; // 5263
   const world = m.u16(0x8b89) || m.u16(0x8b8b);
   if (world !== 1) return false;

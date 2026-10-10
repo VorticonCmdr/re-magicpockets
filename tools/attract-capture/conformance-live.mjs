@@ -1,6 +1,6 @@
 /* conformance-live.mjs — one-step conformance of the ported iteration against a live-play capture.
  *
- *   node tools/attract-capture/conformance-live.mjs [capture.json[.gz]] [--from N] [--to N] [--show K] [--top K] [--ent-fails]
+ *   node tools/attract-capture/conformance-live.mjs [capture.json[.gz]] [--from N] [--to N] [--show K] [--top K] [--ent-fails] [--god]
  *
  * Rows come from capture-live.lua (sampled right after call #13). For each transition the NEXT row's
  * key bytes feed call #7, then every captured entity record and non-scratch global of that row is
@@ -17,7 +17,8 @@ if (!existsSync(root + capPath)) { console.error(`missing ${capPath}`); process.
 const env = prepare(new Uint8Array(readFileSync(root + 'game/GAMEU.EXE')), new Uint8Array(readFileSync(root + 'data/autoplay.pin')), new Uint8Array(readFileSync(root + 'data/pcmap.pap')));
 const raw = readFileSync(root + capPath);
 const rows = JSON.parse((capPath.endsWith('.gz') ? gunzipSync(raw) : raw).toString('utf8')).rows;
-const r = runLiveConformance(env, rows, { from: flag('--from', 1), to: flag('--to', rows.length - 1), show: flag('--show', 6) });
+const god = args.includes('--god'); // captures made with GOD = true in capture-live-drive.lua keep [8B96] at 0x32
+const r = runLiveConformance(env, rows, { from: flag('--from', 1), to: flag('--to', rows.length - 1), show: flag('--show', 6), force: god ? [[0x8b96, 0x32]] : [], ignore: god ? [0x8b96] : [] });
 console.log(`transitions ${r.total}: entity records exact ${r.entExact}, entities+globals exact ${r.exact} (${r.raceRows} of them differ only in the camera sample-race globals); ${r.skipped || 0} transitions next to ${r.midRows.length} mid-iteration samples skipped`);
 for (const s of r.shown) console.log(s);
 if (args.includes('--ent-fails')) for (const f of r.entFails) console.log(f);

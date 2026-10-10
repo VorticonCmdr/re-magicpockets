@@ -214,10 +214,7 @@ function handler(m, si, di, op, ctx) {
       return di + 1;
     }
     case 58: aimGlow(m, si); return di; // 2AE1
-    case 68: { // 2755: a level-event trigger from [8BB2]; usually nothing is pending
-      if (m.u16(si + 2) === 3 || m.u8(0x8ba4) !== 0 || m.u8(0x8bb2) !== 0) { ctx.unported.add('opcode 68 trigger'); return ABORT; }
-      return di;
-    }
+    case 68: return levelEvent(m, si, di, ctx); // 2755
     case 47: { // 2EC0: step towards the point (x, y) given by the two operands, keeping the slope
       let cx = m.u8(di), dx = m.u8(di + 1); di += 2;
       m.w16(0x8c1d, cx); m.w16(0x8c1f, dx);
@@ -339,6 +336,12 @@ function handler(m, si, di, op, ctx) {
       }
       pushSpawnEvent(m);
       return di;
+    }
+    case 26: { // 2741: cut the link between this entity and the one it is bound to ([si+0x2c] on both sides)
+      const other = m.u16(si + 0x2c);
+      m.w16(si + 0x2c, 0);
+      m.w16(other + 0x2c, 0);
+      return di; // the sound call (1D4C) touches only the sound driver's own state
     }
     case 52: { // 2CEA: the CONTINUE? screen waits for the fire key, counting [8C57] up in steps of 0x80
       if (m.u16(0x8b8b) === 0) { ctx.unported.add('opcode 52 sub-level 0 (2D8D)'); return ABORT; }
@@ -697,6 +700,79 @@ function teleportViaTable(m, si, di, ctx) {
   } else {
     const flag = findByClass(m, 0x2b);
     m.w8(flag + 0x40, 0x19); // a missing flag writes into DS:0x0040, which the game never reads
+  }
+  return di;
+}
+
+/**
+ * Opcode 68 (1000:2755), the level-event trigger every script can reach. A non-hero entity turns a pending
+ * bonus request [8BB2] into a spawn event. The hero (class 3) runs the end-of-level / bonus-sequence
+ * selector at 27DF: it parks its own script pointer in [si+0x2a] and starts one of the shared sequences.
+ */
+function levelEvent(m, si, di, ctx) {
+  if (m.u16(si + 2) !== 3) {
+    if (m.u8(0x8ba4) !== 0) { ctx.unported.add('opcode 68 C6E (difficulty counter)'); return ABORT; }
+    const dl = m.u8(0x8bb2);
+    if (dl === 0) return di; // 27DE
+    m.w8(0x8bb2, 0);
+    m.w16(0x8c1f, 0xb7 + dl); m.w16(0x8c21, 0); m.w16(0x8c23, 4);
+    const world = m.u16(0x8b89);
+    const table = world === 1 ? 0xee46 : world === 2 ? 0xee66 : world === 3 ? 0xee86 : 0xeec2;
+    const at = table + 4 * m.u16(0x8b8b);
+    m.w16(0x8c25, m.u16(at + 2));
+    m.w16(0x8c27, m.u16(at));
+    m.w16(0x8c25, m.u16(0x8c25) + 0x50);
+    m.w16(0x8c27, m.u16(0x8c27) + 0x90);
+    m.w16(0x8c29, 0x26);
+    pushSpawnEvent(m);
+    return di;
+  }
+  const world = m.u16(0x8b89), sub = m.u16(0x8b8b);
+  if ((world === 1 && sub === 6) || (world === 2 && sub === 7) || (world === 3 && sub >= 8) || (world === 4 && sub === 9)) {
+    ctx.unported.add(`opcode 68 hero event, boss level ${world}-${sub}`);
+    return ABORT;
+  }
+  const marker = findByClass(m, 0x2d); // 2824
+  if (marker !== 0) m.w8(marker + 0x40, 0x19);
+  const startSequence = (script) => { m.w16(si + 0x2a, m.u16(si + 0xc)); m.w16(si + 0xc, script); return ABORT; };
+  const c04 = m.u8(0x8c04), mode = m.u8(0x8b98);
+  if (c04 === 0x40 || c04 === 0x15 || mode === 0x43 || mode === 0x41) { // 2941
+    m.w8(0x8b98, 0); m.w8(0x8c04, 0); m.w16(si + 0x2c, 0);
+    return startSequence(0xd280);
+  }
+  if (mode === 0x1a) { m.w8(0x8b98, 0); m.w16(si + 0x2c, 0); return startSequence(0xd298); } // 295E
+  if (m.u16(0x8bff) !== 0) { // 29D8
+    m.w8(si + 0x3e, (-(m.u16(0x8bff) - 0x14)) & 0xff);
+    m.w16(0x8bff, 0);
+    return startSequence(0xd306);
+  }
+  if (m.s8(0x8bb4) >= 0) { // 29FA: the clock's last count decides the time bonus
+    const count = m.u8(0x8bb4);
+    m.w8(0x8bb4, 0xff);
+    if (count === 0) return startSequence(0xd31f); // the sound (1CCF) is graphics-side
+    const ax = count + 0xf;
+    if (ax >= 0x14) return ABORT;
+    m.w8(si + 0x3e, ax);
+    return startSequence(0xd31f);
+  }
+  if (m.u8(0x8c06) !== 0) { // 2976: the kill count decides a second bonus
+    let found = false;
+    for (let bx = 0x9398; bx < 0xb918; bx += 0x42) if (m.u16(bx + 2) !== 0 && (m.u16(bx + 4) === 2 || m.u16(bx + 4) === 4)) { found = true; break; }
+    if (!found) m.w8(0x8c06, 0x64);
+    m.w8(si + 0x3e, (-(m.u8(0x8c06) - 0xc8)) & 0xff);
+    m.w8(0x8c06, 0);
+    return startSequence(0xd2cf);
+  }
+  if (m.s8(0x8bee) < 0) { // 29B9
+    m.w8(0x8bee, 0);
+    m.w16(0x8b7f, m.u16(0x8b7f) + 0x7d0);
+    m.w16(0x8b8b, 0x32);
+    return startSequence(0xd2ee);
+  }
+  // 288C: call 25A5
+  if (m.u8(0x8bac) === 0) {
+    ctx.unported.add('opcode 68 25A5 (bonus screen letters)');
+    return ABORT;
   }
   return di;
 }

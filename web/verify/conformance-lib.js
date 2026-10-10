@@ -266,6 +266,7 @@ export function runLiveConformance(env, rows, o = {}) {
     const g = hexBytes(b.g);
     m.w8(0x8b5d, g[0x8b67 - GLOBALS_BASE]); m.w8(0x8b58, g[0x8b68 - GLOBALS_BASE]);
     m.w8(0x8ded, m.u16(0x8c3c) !== 0 ? 1 : 0); // the screen wipe's first-call flag lives outside the captured globals
+    for (const [a, v] of o.force || []) m.w8(a, v); // bytes the capture script itself kept rewriting
     const ctx = { unported: new Set(), events: [] };
     stepIterationAfterRng(m, ctx, null);
     const diffs = [], gdiffs = [];
@@ -331,8 +332,8 @@ export function runLiveFree(env, rows, o = {}) {
     }
     const gd = [];
     if (!o.entitiesOnly) for (let off = 0; off < g.length; off++) if (g[off] !== m.u8(GLOBALS_BASE + off) && !isLiveScratch(GLOBALS_BASE + off, o.ignore) && !RACE(GLOBALS_BASE + off)) gd.push(`G 0x${(GLOBALS_BASE + off).toString(16)} want ${g[off]} got ${m.u8(GLOBALS_BASE + off)}`);
-    if (diffs.length || gd.length) return { matched, firstBad: b.done, diffs: [...diffs, ...gd].slice(0, 12), unported: [...ctx.unported] };
+    if (diffs.length || gd.length) return { matched, firstBad: b.done, diffs: [...diffs, ...gd].slice(0, 12), unported: [...ctx.unported], state: m };
     matched++;
   }
-  return { matched, firstBad: null, diffs: [], unported: [] };
+  return { matched, firstBad: null, diffs: [], unported: [], state: m };
 }

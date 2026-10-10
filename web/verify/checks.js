@@ -338,6 +338,17 @@ export async function checkConformance(ctx) {
     const fb1 = bootFromFiles(env, world1, { world: 1, sub: 1, demo: false });
     const f1 = runLiveFree(env, live.rows, { start: fb1.m, from: 0, entitiesOnly: true });
     check('a free run of real play from a files-only boot reproduces every captured entity record for the first 1064 rows (the capture then restarts the game)', f1.matched >= 1064, `${f1.matched} rows, first mismatch ${f1.firstBad ?? 'none'}`);
+    // A third capture, made with the hero invulnerable ([8B96] rewritten to 0x32 every frame, see capture-live-drive.lua) so a
+    // seeded random player gets all the way through level 1, including the end-of-level bonus sequence.
+    let live3 = null;
+    try { live3 = await loadGzJson(ctx, 'tools/attract-capture/live3.capture.json.gz'); } catch { /* absent */ }
+    if (live3) {
+      const l3 = runLiveConformance(env, live3.rows, { force: [[0x8b96, 0x32]], ignore: [0x8b96] });
+      check('the invulnerable full-level capture: at least 3016 of 3018 usable transitions reproduce every captured entity record', l3.entExact >= 3016 && l3.total === 3018, `${l3.entExact}/${l3.total} (the two misses read a map tile the hero had already broken: one-step loads the original map)`);
+      const fb3 = bootFromFiles(env, world1, { world: 1, sub: 1, demo: false });
+      const f3 = runLiveFree(env, live3.rows, { start: fb3.m, from: 0, entitiesOnly: true, force: [[0x8b96, 0x32]] });
+      check('a free run from a files-only boot reproduces every captured entity record of the whole level-1 capture, end-of-level sequence included', f3.firstBad === null && f3.matched === 3109, `${f3.matched} rows, first mismatch ${f3.firstBad ?? 'none'}`);
+    }
     note('live-play unported branches still hit', [...lr.unportedHist].map(([k, n]) => `${k} x${n}`).join(', ') || 'none');
   }
   const top = [...all.unportedHist].sort((a, b) => b[1] - a[1]).slice(0, 6).map(([k, n]) => `${k} x${n}`).join(', ');
