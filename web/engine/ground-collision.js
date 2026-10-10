@@ -489,6 +489,13 @@ function sideEnemy(m, bx, ctx, di) {
     m.w16(bx + 0x14, m.u16(bx + 0x14) ^ 0xc);
     return;
   }
+  if (m.u16(bx + 4) === 6) { // E94E: like 4/5, but class 0x4D is removed at the wall
+    if (m.u8(probe) === 0) return;
+    if (m.u16(bx + 2) === 0x4d) { m.w8(bx + 0x40, 0x19); return; }
+    alignToWall(m, bx);
+    m.w16(bx + 0x14, m.u16(bx + 0x14) ^ 0xc);
+    return;
+  }
   if (m.u16(bx + 4) !== 2) { ctx.unported.add(`E8D7/E961 kind ${m.u16(bx + 4)}`); return; }
   const hit2 = face === 8 ? R.C8 : R.C7;
   if (m.u8(probe) === 0) return;
@@ -702,7 +709,7 @@ function floorEnemy(m, bx, ctx) {
 }
 
 /** 1000:E5B3 (ceiling): kind 2 and 4 set the flag, kinds 5/6 (E66F) and 7 (E9D8) bounce off it. */
-function ceilingEnemy(m, bx, ctx) {
+function ceilingEnemy(m, bx, ctx, di0) {
   if (m.u8(R.C9) === 0) return;
   const kind = m.u16(bx + 4);
   const bounce = () => { // FABD, flag, then the vertical speed reverses
@@ -724,7 +731,7 @@ function ceilingEnemy(m, bx, ctx) {
     const world = m.u16(0x8b89) || m.u16(0x8b8b);
     const cls = m.u16(bx + 2);
     if (world === 1 && [0xa, 0xb, 0xc, 0xd, 0x27].includes(cls)) { // EA10: shatter a 0x3C tile
-      let di = m.u16(R.D7);
+      let di = di0; // E5B3 runs with the entity's own map cell in DI (the scans save and restore it)
       if (m.u8(R.C5) === 0) di -= 1;
       if (m.u8(di) === 0x3c) { m.w8(di, -m.u8(di)); m.w8(bx + 0x40, 0x19); return; }
       if (m.u8(0x8be8) !== 0 && m.u8(di + 0x80) === 0x3c) { m.w8(di + 0x80, -m.u8(di + 0x80)); m.w8(bx + 0x40, 0x19); return; }
@@ -737,21 +744,21 @@ function ceilingEnemy(m, bx, ctx) {
 }
 
 /** 1000:E2C2: vertical resolution by the sign of the vertical speed. */
-function verticalEnemy(m, bx, ctx) {
+function verticalEnemy(m, bx, ctx, di) {
   const vy = m.s8(bx + 0x26);
-  if (vy > 0) ceilingEnemy(m, bx, ctx); else floorEnemy(m, bx, ctx);
+  if (vy > 0) ceilingEnemy(m, bx, ctx, di); else floorEnemy(m, bx, ctx);
 }
 
 /** The enemy half of 1000:E14F (world 1-2, kinds other than the player). */
 function resolveEnemy(m, bx, di, ctx) {
   const kind = m.u16(bx + 4);
-  if (kind !== 2 && kind !== 4 && kind !== 5 && kind !== 7) { ctx.unported.add(`E14F kind ${kind}`); return; }
+  if (kind !== 2 && kind !== 4 && kind !== 5 && kind !== 6 && kind !== 7) { ctx.unported.add(`E14F kind ${kind}`); return; }
   const vy = m.s8(bx + 0x26);
   let dl, dh;
   if (vy > 0) { scanLeft(m, bx, di); dl = m.s8(R.C9); } else { scanFloor(m, bx, di); dl = m.s8(R.CA); }
   if (m.u16(bx + 0x14) === 8) { scanBottom(m, bx, di); ledgeProbe(m, bx); dh = m.s8(R.CC); } else { scanTop(m, bx, di); ledgeProbe(m, bx); dh = m.s8(R.CB); }
   const side = () => sideEnemy(m, bx, ctx, di);
-  const vert = () => verticalEnemy(m, bx, ctx);
+  const vert = () => verticalEnemy(m, bx, ctx, di);
   const finish = () => { if (m.u8(R.E9) !== 0) m.w16(bx + 0x24, m.u16(bx + 0x24) | 0xc); };
   if (dh === dl) { // E276
     if (m.u16(R.C5) === 0) { side(); vert(); finish(); return; } // E263

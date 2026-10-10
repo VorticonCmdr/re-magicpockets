@@ -412,6 +412,20 @@ export async function checkConformance(ctx) {
       const f8 = runLiveFree(env, live8.rows, { start: fb8.m, from: 0, entitiesOnly: true, force: [[0x8b96, 50, sw8 + 40]], pokes: [{ row: 60, addr: 0x94aa, bytes: [0x7b, 0] }, { row: sw8, addr: 0x8b89, bytes: [1, 0, 4, 0] }], levelFiles: () => ({ script: world1, map: map8 }) });
       check('a free run reproduces every captured entity record of world 1 sub-level 4 (level1b.pap, its own entity list) from the files alone', sw8 > 0 && f8.firstBad === null && f8.matched >= 2170, `${f8.matched} rows, first mismatch ${f8.firstBad ?? 'none'}, level words written at row ${sw8}`);
     }
+    // World 1, sub-level 5 (level1b.pap again): reproduced up to row 1437 of 1694 (a ratchet: raise it as the remaining difference is closed).
+    let live9 = null;
+    try { live9 = await loadGzJson(ctx, 'tools/attract-capture/live9-sub5.capture.json.gz'); } catch { /* absent */ }
+    if (live9) {
+      const ex9 = expandRows(live9.rows);
+      const word9 = (r, o) => { const b = Uint8Array.from(r.g.match(/../g), (h) => parseInt(h, 16)); return b[o - 0x8b50] | (b[o - 0x8b50 + 1] << 8); };
+      const sw9 = ex9.findIndex((r) => word9(r, 0x8b8b) === 5);
+      const grid9 = rncUnpack(await ctx.fetchRaw('data/level1b.pap')).data;
+      const map9 = new Uint8Array(128 * 128);
+      for (let r = 0; r < 128; r++) for (let c = 0; c < 128; c++) map9[c * 128 + r] = grid9[r * 128 + c];
+      const fb9 = bootFromFiles(env, world1, { world: 1, sub: 1, demo: false });
+      const f9 = runLiveFree(env, live9.rows, { start: fb9.m, from: 0, entitiesOnly: true, force: [[0x8b96, 50, sw9 + 40]], pokes: [{ row: 60, addr: 0x94aa, bytes: [0x7b, 0] }, { row: sw9, addr: 0x8b89, bytes: [1, 0, 5, 0] }], levelFiles: () => ({ script: world1, map: map9 }) });
+      check('a free run reproduces the captured entity records of world 1 sub-level 5 up to row 1437 (open: the hero collision flag there, ledger item 24)', sw9 > 0 && (f9.firstBad === null || f9.firstBad >= 1437) && f9.matched >= 1300, `${f9.matched} rows, first mismatch ${f9.firstBad ?? 'none'}, level words written at row ${sw9}`);
+    }
     note('live-play unported branches still hit', [...lr.unportedHist].map(([k, n]) => `${k} x${n}`).join(', ') || 'none');
   }
   const top = [...all.unportedHist].sort((a, b) => b[1] - a[1]).slice(0, 6).map(([k, n]) => `${k} x${n}`).join(', ');

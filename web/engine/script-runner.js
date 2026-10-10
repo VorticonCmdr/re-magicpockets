@@ -648,7 +648,17 @@ function spawnOtherEffect(m, si, di, type, ctx) {
     pushEvent3(m);
     return di;
   }
-  const special = [0xe, 0x1b, 0x16, 0x53, 0x28, 0x5f, 0x30, 0x21, 0x4d];
+  if (type === 0x16) { // 372C: a projectile at the entity's side, parameter from the table at EEF1 indexed by +0x32
+    m.w16(0x8c21, m.u8(0xeef1 + m.u8(si + 0x32)));
+    m.w16(0x8c23, m.u16(si + 0x14));
+    m.w16(0x8c27, m.u16(si + 6));
+    m.w16(0x8c25, m.u16(si + 8) + 4);
+    m.w16(0x8c27, m.u16(0x8c27) - 5);
+    if (m.u16(0x8c23) !== 4) m.w16(0x8c27, m.u16(0x8c27) + 0x20);
+    pushEvent5(m);
+    return di;
+  }
+  const special = [0xe, 0x1b, 0x53, 0x28, 0x5f, 0x30, 0x21, 0x4d];
   if (special.includes(type)) { ctx.unported.add(`opcode 13 type 0x${type.toString(16)}`); return ABORT; }
   // 3406: the generic effect: two signed offsets from the entity, facing as the entity
   m.w16(0x8c27, (sb(di) + m.u16(si + 6)) & 0xffff);
