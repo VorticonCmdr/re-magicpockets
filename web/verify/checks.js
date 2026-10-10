@@ -378,8 +378,8 @@ export async function checkConformance(ctx) {
       const fb5 = bootFromFiles(env, world1, { world: 1, sub: 1, demo: false });
       const f5 = runLiveFree(env, live5.rows, { start: fb5.m, from: 0, entitiesOnly: true, force: [[0x8b96, 0x32]], demoScript });
       // Rows from 3202 on are real iterations with call #13's carry at 0 ([8C33] is set; see call13Carry); an earlier version of the carry rule
-      // wrongly called them half iterations and skipped them. The first one that needs more is the level-end screen fade (Fx_UpdateTransition state 0x32, ledger item 24).
-      check('a free run reproduces every captured entity record up to the level-end screen fade (row 3203), and nothing before it differs', f5.firstBad === 3203 && f5.matched === 3112 && f5.unported.includes('Fx_UpdateTransition state 0x32'), `${f5.matched} rows, first mismatch ${f5.firstBad ?? 'none'}, unported ${f5.unported.join(', ')}`);
+      // wrongly called them half iterations and skipped them. The first one that needs more is the level-end screen fade (Fx_UpdateTransition state 0x32 [STATIC: graphics only, no DS writes], after which the real game leaves the main loop for the end-of-level screens, ledger item 24).
+      check('a free run reproduces every captured entity record up to the level-end screen fade (row 3203), and nothing before it differs', f5.firstBad === 3203 && f5.matched === 3112, `${f5.matched} rows, first mismatch ${f5.firstBad ?? 'none'}, unported ${f5.unported.join(', ')}`);
     }
     // World 1, sub-level 2 (level1a.pap): reached by poking the level words while CONTINUE? is up (capture-live-drive.lua style, see
     // docs/dosbox-debugging.md); the capture script's own writes are replayed (hearts at row 60, level words at the switch row, the

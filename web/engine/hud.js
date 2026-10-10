@@ -65,6 +65,7 @@ export function fxUpdateTransition(m, ctx) {
   if (al === 0) return;
   if (al === 0x19) { m.w8(0x8ba2, 0); return; }
   if (al === 0x1) { screenWipeStep(m); return; }
+  if (al === 0x32 || al === 0x63) return; // 8722 / 8667: copies or clears video memory only (no DS write) [STATIC]
   ctx.unported.add(`Fx_UpdateTransition state 0x${al.toString(16)}`);
 }
 
