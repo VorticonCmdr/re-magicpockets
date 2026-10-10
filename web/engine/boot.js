@@ -104,6 +104,7 @@ export function bootAttractDemo(m, ctx, { world = 0, sub = 1, demo = true } = {}
 export function startLevel(m, ctx, { world, sub }) {
   m.w16(0x8b89, world); m.w16(0x8b8b, sub);
   clearEntities(m);
+  m.w16(0xef23, m.u16(0xef25 + (world - 1) * 2)); // the world's tile-class table (1000:0D53)
   levelStateInit(m, 'd7b');
   // (the RNG is not reseeded here: see the free-run check against the second restart in capture 4)
   levelLoadEntities(m, levelListPointer(m, sub), ctx);

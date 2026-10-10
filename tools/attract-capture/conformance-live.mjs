@@ -1,6 +1,6 @@
 /* conformance-live.mjs — one-step conformance of the ported iteration against a live-play capture.
  *
- *   node tools/attract-capture/conformance-live.mjs [capture.json[.gz]] [--from N] [--to N] [--show K] [--top K] [--ent-fails] [--god]
+ *   node tools/attract-capture/conformance-live.mjs [capture.json[.gz]] [--from N] [--to N] [--show K] [--top K] [--ent-fails] [--god] [--pap level1a.pap]
  *
  * Rows come from capture-live.lua (sampled right after call #13). For each transition the NEXT row's
  * key bytes feed call #7, then every captured entity record and non-scratch global of that row is
@@ -11,10 +11,10 @@ import { prepare, runLiveConformance } from '../../web/verify/conformance-lib.js
 
 const args = process.argv.slice(2);
 const flag = (n, d) => { const i = args.indexOf(n); return i >= 0 ? Number(args[i + 1]) : d; };
-const capPath = args.find((a) => !a.startsWith('--') && Number.isNaN(Number(a))) || 'tools/attract-capture/live1.capture.json.gz';
+const capPath = args.find((a, i) => !a.startsWith('--') && Number.isNaN(Number(a)) && args[i - 1] !== '--pap') || 'tools/attract-capture/live1.capture.json.gz';
 const root = new URL('../../', import.meta.url).pathname;
 if (!existsSync(root + capPath)) { console.error(`missing ${capPath}`); process.exit(2); }
-const env = prepare(new Uint8Array(readFileSync(root + 'game/GAMEU.EXE')), new Uint8Array(readFileSync(root + 'data/autoplay.pin')), new Uint8Array(readFileSync(root + 'data/pcmap.pap')));
+const env = prepare(new Uint8Array(readFileSync(root + 'game/GAMEU.EXE')), new Uint8Array(readFileSync(root + 'data/autoplay.pin')), new Uint8Array(readFileSync(root + 'data/' + (args.includes('--pap') ? args[args.indexOf('--pap') + 1] : 'pcmap.pap'))));
 const raw = readFileSync(root + capPath);
 const rows = JSON.parse((capPath.endsWith('.gz') ? gunzipSync(raw) : raw).toString('utf8')).rows;
 const god = args.includes('--god'); // captures made with GOD = true in capture-live-drive.lua keep [8B96] at 0x32

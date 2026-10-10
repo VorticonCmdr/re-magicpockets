@@ -47,7 +47,7 @@ export function loadRow(env, row) {
   const m = env.base.clone();
   m.put(0x8200, env.tape);
   m.put(0x4200, env.map);
-  m.w16(0xef23, 0xefa5); // world 1's tile table (set by the new-game initializer)
+  m.w16(0xef23, 0xefa5); // world 1's tile table (set by the new-game initializer); worlds 2-4 use the next ones (see loadRow's caller)
   m.put(GLOBALS_BASE, hexBytes(row.g));
   if (row.q) m.put(0x9270, hexBytes(row.q)); // the spawn queue region (0x9270..0x939B), when captured
   if (row.p && row.p.length >= 604) { // live capture: the whole pointer array including holes and the front list
@@ -332,7 +332,8 @@ export function runLiveFree(env, rows, o = {}) {
     const b = rows[k];
     const g = hexBytes(b.g);
     m.w8(0x8b5d, g[0x8b67 - GLOBALS_BASE]); m.w8(0x8b58, g[0x8b68 - GLOBALS_BASE]);
-    for (const [a, v] of o.force || []) m.w8(a, v); // bytes the capture script itself kept rewriting
+    for (const [a, v, fromRow] of o.force || []) if (fromRow === undefined || k >= fromRow) m.w8(a, v); // bytes the capture script itself kept rewriting
+    for (const p of o.pokes || []) if (p.row === k) p.bytes.forEach((v, i) => m.w8(p.addr + i, v)); // one-off writes the capture script made
     const ctx = { unported: new Set(), events: [] };
     for (let rep = 0; rep < Math.max(counts[k], 1) && !ctx.levelStart && !ctx.gameRestart; rep++) stepIterationAfterRng(m, ctx, null);
     if (ctx.gameRestart === 'demo' && o.demoScript) { // CONTINUE? timed out: the game starts over with the attract demo
@@ -342,8 +343,9 @@ export function runLiveFree(env, rows, o = {}) {
       stepIterationAfterRng(m, ctx, null);
     }
     if (ctx.levelStart) { // a script changed level: the game reloads it (and the map) and runs its first iteration
-      m.put(0x4200, env.map);
       const next = ctx.levelStart; ctx.levelStart = null;
+      const files = o.levelFiles?.(next.world, next.sub); // another world/level brings its own script and map
+      if (files) { m.put(0, files.script); m.put(0x4200, files.map); } else m.put(0x4200, env.map);
       startLevel(m, ctx, next);
       stepIterationAfterRng(m, ctx, null);
     }

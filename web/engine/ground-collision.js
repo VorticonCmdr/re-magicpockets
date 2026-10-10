@@ -195,8 +195,7 @@ function land(m, si, bx, ctx) {
   if (!landing) {
     const ws = m.u8(si + 1);
     if (ws === 0) { // F54B
-      if (m.u16(0x8b89) !== 2) return;
-      ctx.unported.add('F489 world 2 standing');
+      worldTwoStanding(m, si, bx);
       return;
     }
     const vy = m.s8(si + 0x26);
@@ -261,13 +260,36 @@ function bounce(m, si, bx, ctx) {
   if ((m.u8(0x8b67) & 2) !== 0) { settle(); return; }
   let al = m.s8(si + 0x26);
   if (al === 0) { settle(); return; }
-  if (al > 0) { if (m.u16(0x8b89) !== 2) return; ctx.unported.add('F489 world 2 standing'); return; } // F54B
+  if (al > 0) { worldTwoStanding(m, si, bx); return; } // F54B
   if (m.u8(si + 1) === 0x11) m.w8(si + 1, 0x10);
   al = (-al) >> 1; // neg al; sar al,1
   m.w8(si + 0x26, al & 0xff);
   if (m.s8(si + 0x26) <= 3) { settle(); return; }
-  if (m.u16(0x8b89) !== 2) return; // F54B
-  ctx.unported.add('F489 world 2 standing');
+  worldTwoStanding(m, si, bx); // F54B
+}
+
+/**
+ * 1000:F54B (world 2): standing next to a negative tile (a belt) drags the world entity 0x20 sideways unless that
+ * side is blocked. `si` is the world entity, `bx` the hero.
+ */
+function worldTwoStanding(m, si, bx) {
+  if (m.u16(0x8b89) !== 2) return;
+  let di = m.u16(0x8bd7);
+  const neg = (o) => m.s8(o) < 0;
+  let drag = false;
+  if (neg(di) || neg(di - 1)) drag = true; // F594
+  else if (m.u8(0x8be8) === 0) return; // F5A6
+  else if (neg(di + 0x7f)) drag = true;
+  else {
+    di -= 1;
+    if (neg(di - 1) || neg(di - 2)) drag = true;
+    else if (m.u8(0x8be8) !== 0 && neg(di + 0x7f)) drag = true;
+    else return; // F592
+  }
+  if (drag) {
+    if ((m.u16(bx + 0x24) & m.u16(si + 0x14)) !== 0) return;
+    m.w16(si + 6, m.u16(si + 6) + (m.u16(si + 0x14) === 4 ? 0x20 : -0x20));
+  }
 }
 
 /** 1000:F960: snap the world entity to the tile column it ran into and set the blocked bit. */

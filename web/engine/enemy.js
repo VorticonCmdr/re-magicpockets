@@ -285,7 +285,10 @@ function thinkByWorld(m, si, ctx) {
     if (cls === 0x23) { if (m.u8(si + 1) === 0) aiDecide(m, si, ctx); return; }
     if (cls === 0x12) { thinkClass12(m, si, ctx); return; } // 6EC5
   }
-  if (w >= 1 && w <= 4) ctx.unported.add(`think world ${w} class 0x${cls.toString(16)}`);
+  if (w === 2 && cls === 0x4a) { thinkClass13(m, si, ctx); return; } // 5EA0 -> 5F56, shared with world 1's class 0x13
+  // Classes the dispatcher at 5E22 knows per world; anything else does nothing (a plain RET).
+  const handled = { 1: [], 2: [0x48, 0x49, 0x4b, 0x4c, 0x42, 0x2c], 3: [0x4f, 0x54, 0x50, 0x51, 0x2c], 4: [0x57, 0x58, 0x5a, 0x59, 0x5d, 0x2c] }[w];
+  if (handled && (w === 1 ? cls === 0x2c : handled.includes(cls))) ctx.unported.add(`think world ${w} class 0x${cls.toString(16)}`);
 }
 
 /** 1000:CE0B: kind 2 behavior. */
@@ -595,6 +598,35 @@ function aiOpT(m, si, ctx) {
   }
 }
 
+/**
+ * 1000:6642 (world 1): an enemy of class 0x20 whose three tuning bytes add up to 0x1B walks to the prize (class 0x15):
+ * when it stands on the prize's column it picks it up (animation set 0x15 and a new random delay).
+ */
+function aiSeekPrize(m, si, di, ctx) {
+  const world = m.u16(0x8b89) || m.u16(0x8b8b);
+  if (world !== 1) { ctx.unported.add(`AI 6642 world ${world}`); return 'end'; }
+  const prize = findByClass(m, 0x15); // 6685: 721F
+  if (prize === 0) return 'next';
+  let flags = targetDistance(m, si, prize);
+  if (((m.u16(prize + 8) - 0x10) & 0xffff) === m.u16(si + 8)) flags &= 0xd;
+  m.w16(0x8c2b, flags);
+  if (m.s16(0x8c1d) > 1) return 'next';
+  if (flags !== 0 && (flags & m.u16(si + 0x14)) === 0) { aiTurn(m, si, di, ctx); return 'end'; } // 6B13
+  const cls = m.u16(si + 2); // 6A82
+  if (cls !== 0x20) { if (cls === 0x4b || cls === 0x51 || cls === 0x57) ctx.unported.add(`AI 6A82 class 0x${cls.toString(16)}`); return 'end'; }
+  // 6BD0
+  let dx = (m.u16(prize + 6) - m.u16(si + 6)) | 0;
+  if (dx < 0) dx = -dx;
+  if ((dx & 0xffe0) !== 0) return 'next';
+  m.w16(si + 0x10, 0xbc); m.w16(si + 0x12, 0xbf); m.w16(si + 0xa, 0xbc);
+  m.w8(si + 0x39, 0x15);
+  m.w8(prize + 0x40, 0x19);
+  m.w8(si + 0x38, ((m.u16(0x8b6b) & 3) + 6) & 0xff);
+  m.w16(si + 0x2a, 0);
+  m.w8(si, 0);
+  return 'end';
+}
+
 /** AI opcode 'q' (1000:63CE). */
 function aiOpQ(m, si, ctx) {
   const set = m.u8(si + 0x39), f = m.u16(0x8c2b);
@@ -636,7 +668,7 @@ function aiOpP(m, si, ctx) {
 function aiNoticeHero(m, si, di, ctx) {
   const cls = m.u16(si + 2);
   if ((cls === 0x20 || cls === 0x4b || cls === 0x51 || cls === 0x57) && ((m.u8(si + 0x36) + m.u8(si + 0x37) + m.u8(si + 0x38)) & 0xff) === 0x1b) {
-    ctx.unported.add('AI 6642'); return 'end';
+    return aiSeekPrize(m, si, di, ctx); // 6642
   }
   const bx = findByClass(m, 3);
   if (bx === 0) return 'next';
