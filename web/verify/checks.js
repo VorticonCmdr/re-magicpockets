@@ -558,6 +558,8 @@ export async function checkConformance(ctx) {
       ['live22-w3d', [[1, 52, 726, 620], [2, 738, 1412, 640]], 3, false, true], // played without god mode
       ['live23-w4d', [[1, 52, 726, 650], [2, 739, 1413, 650], [5, 1426, 1950, 490]], 4, false, true],
       ['live24-w1d', [[2, 52, 726, 640], [5, 739, 1413, 610], [6, 1425, 2099, 550, true]], 1, false, true], // played without god mode, ending on skates in the boss level
+      ['live27-w2s6-w4s7', [[6, 52, 596, 510], [7, 609, 1153, 530]], 2, false, true], // non-god, fresh seed: world 2's last two levels
+      ['live27-w2s6-w4s7', [[7, 1167, 2099, 900]], 4, false, true], // non-god: world 4 sub-level 7 (the same capture, typed 5139)
       ['live20-w1c', [[5, 52, 726, 600], [3, 740, 1414, 650], [4, 1427, 2011, 570]], 1, false], // sub-level 5 from a clean warp: the side handler's DI carries over to the ceiling handler
     ]) {
       let cap = null;
