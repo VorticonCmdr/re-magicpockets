@@ -95,3 +95,21 @@ export function bootAttractDemo(m, ctx, { world = 0, sub = 1, demo = true } = {}
   levelUpdateAnimatedTiles(m, ctx); // call 2 of iteration 0, then call 3: the first captured row is sampled here
   renderConsumes(m);
 }
+
+/**
+ * A level (re)start inside a running game (1000:03FF -> 00CA): the entities are cleared and the level list is
+ * loaded again. Score, lives and the other game-wide state are kept (the caller has already restored
+ * them), the map must be reloaded by the host. [8BAA] keeps its value (real play stays real play).
+ */
+export function startLevel(m, ctx, { world, sub }) {
+  m.w16(0x8b89, world); m.w16(0x8b8b, sub);
+  clearEntities(m);
+  levelStateInit(m, 'd7b');
+  // (the RNG is not reseeded here: see the free-run check against the second restart in capture 4)
+  levelLoadEntities(m, levelListPointer(m, sub), ctx);
+  rebuildVisibleList(m);
+  scrollInit(m);
+  m.w16(0x8bb5, 0x9396);
+  levelUpdateAnimatedTiles(m, ctx);
+  renderConsumes(m);
+}

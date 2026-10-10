@@ -7,7 +7,7 @@ import { decodeDemoTape } from '../core/demo-tape.js';
 import { DsMemory, ENTITY_ARRAY, ENTITY_ARRAY_END, ENTITY_SIZE } from '../engine/ds-memory.js';
 import { stepIteration, stepIterationAfterRng } from '../engine/iteration.js';
 import { rebuildVisibleList } from '../engine/entity-behavior.js';
-import { bootAttractDemo } from '../engine/boot.js';
+import { bootAttractDemo, startLevel } from '../engine/boot.js';
 import { Rng } from '../engine/rng.js';
 
 export const GLOBALS_BASE = 0x8b50;
@@ -325,6 +325,19 @@ export function runLiveFree(env, rows, o = {}) {
     for (const [a, v] of o.force || []) m.w8(a, v); // bytes the capture script itself kept rewriting
     const ctx = { unported: new Set(), events: [] };
     stepIterationAfterRng(m, ctx, null);
+    if (ctx.gameRestart === 'demo' && o.demoScript) { // CONTINUE? timed out: the game starts over with the attract demo
+      m = bootFromFiles(env, o.demoScript).m;
+      ctx.gameRestart = null;
+      if (b.ptrs.length === 0) continue; // the captured row is the demo's loading state
+      stepIterationAfterRng(m, ctx, null);
+    }
+    if (ctx.levelStart) { // a script changed level: the game reloads it (and the map) and runs its first iteration
+      m.put(0x4200, env.map);
+      const next = ctx.levelStart; ctx.levelStart = null;
+      startLevel(m, ctx, next);
+      stepIterationAfterRng(m, ctx, null);
+    }
+    if (b.ptrs && b.ptrs.length === 0) continue; // a loading state: no entities to compare
     const diffs = [];
     for (const e of b.e) {
       const want = hexBytes(e.hex), got = m.get(e.ptr, ENTITY_SIZE);

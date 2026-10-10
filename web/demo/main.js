@@ -10,6 +10,7 @@ import { sourceFromFetch } from '../loader/asset-source.js';
 import { WORLD_PALETTES } from '../core/palette.js';
 import { buildBackgroundCanvas } from '../render/canvas.js';
 import { prepare, bootFromFiles } from '../verify/conformance-lib.js';
+import { startLevel } from '../engine/boot.js';
 import { rncUnpack } from '../core/rnc.js';
 import { stepIteration } from '../engine/iteration.js';
 import { Clock } from '../engine/clock.js';
@@ -62,6 +63,12 @@ async function main() {
   step = () => {
     if (playing) { m.w8(0x8b5d, keyState()); m.w8(0x8b58, keyState()); }
     stepIteration(m, sim, null); ticks++;
+    if (sim.levelStart) { // opcode 37: the player continued after dying; the level loads again
+      m.put(0x4200, env.map);
+      const next = sim.levelStart; sim.levelStart = null;
+      startLevel(m, sim, next);
+    }
+    if (sim.gameRestart === 'demo') { sim.gameRestart = null; playing = false; restart(); document.getElementById('play').textContent = 'play'; } // CONTINUE? timed out
   };
 
   const s16 = (o) => m.s16(o);

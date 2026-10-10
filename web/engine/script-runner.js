@@ -337,6 +337,18 @@ function handler(m, si, di, op, ctx) {
       pushSpawnEvent(m);
       return di;
     }
+    case 37: { // 31F5: change level. A negative operand replays the current one (the player continued after losing).
+      if (m.u16(0x8b89) === 0) { ctx.unported.add('opcode 37 outside a world (3253)'); return ABORT; }
+      const al = m.s8(di); di += 1;
+      if (al > 0) { ctx.unported.add(`opcode 37 operand ${al}`); return ABORT; }
+      if (al < 0) { // 3221
+        m.w16(0x8c11, 0);
+        m.w16(0x8b8b, m.u16(0x8b8b) - 1);
+        m.w16(0x8b75, m.u16(0x8b7b)); m.w16(0x8b7f, m.u16(0x8b7d)); m.w16(0x8b83, 0);
+      }
+      ctx.levelStart = { world: m.u16(0x8b89), sub: m.u16(0x8b8b) + 1 }; // 323E -> 03FF: [8C27] + 1
+      return ABORT;
+    }
     case 26: { // 2741: cut the link between this entity and the one it is bound to ([si+0x2c] on both sides)
       const other = m.u16(si + 0x2c);
       m.w16(si + 0x2c, 0);
@@ -346,10 +358,11 @@ function handler(m, si, di, op, ctx) {
     case 52: { // 2CEA: the CONTINUE? screen waits for the fire key, counting [8C57] up in steps of 0x80
       if (m.u16(0x8b8b) === 0) { ctx.unported.add('opcode 52 sub-level 0 (2D8D)'); return ABORT; }
       m.w16(0x8c57, (m.u16(0x8c57) + 0x80) & 0xffff);
-      if (m.u16(0x8c57) === 0) { ctx.unported.add('opcode 52 timeout restarts the game (2D20)'); return ABORT; }
+      if (m.u16(0x8c57) === 0) { ctx.gameRestart = 'demo'; return ABORT; } // 2D20: CONTINUE? timed out; the game starts over with the attract demo (jmp 0089)
       if ((m.u8(0x8b5d) & 0x80) === 0) return ABORT; // 2663: try again next iteration
-      ctx.unported.add('opcode 52 fire pressed (2D0B)');
-      return ABORT;
+      m.w16(0x8c57, 0); // 2D0B: the player accepted CONTINUE?; the sound request (1CCF) is graphics-side
+      if (m.u8(0x8c0b) === 0) { ctx.unported.add('opcode 52 no continues left (2D4F)'); return ABORT; }
+      return di;
     }
     case 67: m.w8(si + 0x3d, m.u8(di)); return di + 1; // SetAnimLockFlag
     case 71: m.w8(0x8c0c, m.u8(di)); return di + 1; // SetGlobalEventTrigger

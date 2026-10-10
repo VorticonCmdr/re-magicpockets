@@ -335,9 +335,10 @@ export async function checkConformance(ctx) {
     // Real play from the files alone: world 1, sub-level 1 (new1.pin, pcmap.pap) booted as the game's own start does,
     // then each row's keyboard words fed to the engine. The first capture ends its real play at a restart (CONTINUE?
     // timed out), which is not ported.
+    const demoScript = rncUnpack(await ctx.fetchRaw('data/level0.pin')).data;
     const fb1 = bootFromFiles(env, world1, { world: 1, sub: 1, demo: false });
-    const f1 = runLiveFree(env, live.rows, { start: fb1.m, from: 0, entitiesOnly: true });
-    check('a free run of real play from a files-only boot reproduces every captured entity record for the first 1064 rows (the capture then restarts the game)', f1.matched >= 1064, `${f1.matched} rows, first mismatch ${f1.firstBad ?? 'none'}`);
+    const f1 = runLiveFree(env, live.rows, { start: fb1.m, from: 0, entitiesOnly: true, demoScript });
+    check('a free run of real play from a files-only boot reproduces every captured entity record of the whole first capture, including the CONTINUE? timeout that restarts the game as the attract demo', f1.firstBad === null && f1.matched === 1790, `${f1.matched} rows, first mismatch ${f1.firstBad ?? 'none'}`);
     // A third capture, made with the hero invulnerable ([8B96] rewritten to 0x32 every frame, see capture-live-drive.lua) so a
     // seeded random player gets all the way through level 1, including the end-of-level bonus sequence.
     let live3 = null;
@@ -348,6 +349,15 @@ export async function checkConformance(ctx) {
       const fb3 = bootFromFiles(env, world1, { world: 1, sub: 1, demo: false });
       const f3 = runLiveFree(env, live3.rows, { start: fb3.m, from: 0, entitiesOnly: true, force: [[0x8b96, 0x32]] });
       check('a free run from a files-only boot reproduces every captured entity record of the whole level-1 capture, end-of-level sequence included', f3.firstBad === null && f3.matched === 3109, `${f3.matched} rows, first mismatch ${f3.firstBad ?? 'none'}`);
+    }
+    // A fourth capture without invulnerability and with the keys never gated: the hero dies, CONTINUE? is accepted with fire and
+    // the level restarts (twice).
+    let live4 = null;
+    try { live4 = await loadGzJson(ctx, 'tools/attract-capture/live4.capture.json.gz'); } catch { /* absent */ }
+    if (live4) {
+      const fb4 = bootFromFiles(env, world1, { world: 1, sub: 1, demo: false });
+      const f4 = runLiveFree(env, live4.rows, { start: fb4.m, from: 0, entitiesOnly: true, demoScript });
+      check('a free run reproduces every captured entity record of the capture with two deaths, CONTINUE? accepted and the level restarted twice', f4.firstBad === null && f4.matched === 2579, `${f4.matched} rows, first mismatch ${f4.firstBad ?? 'none'}`);
     }
     note('live-play unported branches still hit', [...lr.unportedHist].map(([k, n]) => `${k} x${n}`).join(', ') || 'none');
   }

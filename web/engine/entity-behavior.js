@@ -370,6 +370,7 @@ export function updateAll(m, ctx, only = null) {
       if (only && !only.has(si)) { di = m.u16(G.CUR_LIST) + 2; continue; }
       if (m.u8(si + 1) !== 0) {
         si = runScript(m, si, ctx); // opcode 45 may leave SI on another entity
+        if (ctx.levelStart) return; // the level change never returns to the main loop (opcode 37 jumps out)
         freed = m.u8(si + 0x40) === 0x19;
       }
       if (!freed) {
