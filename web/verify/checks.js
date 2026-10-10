@@ -612,6 +612,9 @@ export async function checkConformance(ctx) {
       // 24 more power-up setups from a fresh world 1 level (frames 0x1E, 0x67, 0x17, 0x20 in turn): the rows show [8C5F]/[8C61] = 0x90/0x50 (frame 0x1E), [8BA4] = 1
       // (frame 0x67) taking effect, and a counter [8BFF] += 1; all of it reproduces.
       ['live40-powerups2', [[1, 0, 899, 890, true]], 1, false, false, 'live40-powerups2.pokes.json'],
+      // Score pokes (+1000, +1000, +50, +1000, +3000 added to [8B75] after logged rows 60/150/240/330/420): the extra-life burst, the 1000-point threshold [8B7F], the kill-bonus
+      // meter [8B83]/[8B85] and the HUD digits run on real captured rows; the score words and the lives HUD must agree.
+      ['live41-score', [[1, 0, 599, 590, true]], 1, false, false, 'live41-score.pokes.json'],
       ['live20-w1c', [[5, 52, 726, 600], [3, 740, 1414, 650], [4, 1427, 2011, 570]], 1, false], // sub-level 5 from a clean warp: the side handler's DI carries over to the ceiling handler
     ]) {
       let cap = null;
@@ -654,7 +657,7 @@ export async function checkConformance(ctx) {
 
 
 /** The globals the targeted-setup captures compare row by row besides the entity records (weapon/pickup modes, power-up counters, hero mode, timers). */
-const POKE_WATCH = [0x8c04, 0x8c0a, 0x8c0b, 0x8ba4, 0x8c5f, 0x8c60, 0x8c61, 0x8c62, 0x8bff, 0x8c00, 0x8bb2, 0x8c03, 0x8b98, 0x8bef, 0x8bf0, 0x8bf7, 0x8bf9, 0x8c69, 0x8b97, 0x8b94];
+const POKE_WATCH = [0x8c04, 0x8c0a, 0x8c0b, 0x8ba4, 0x8c5f, 0x8c60, 0x8c61, 0x8c62, 0x8bff, 0x8c00, 0x8bb2, 0x8c03, 0x8b98, 0x8bef, 0x8bf0, 0x8bf7, 0x8bf9, 0x8c69, 0x8b97, 0x8b94, 0x8b75, 0x8b76, 0x8b77, 0x8b78, 0x8b7f, 0x8b80, 0x8b83, 0x8b84, 0x8b85, 0x8b86, 0x8b90, 0x8b93, 0x8c05, 0x8c06];
 
 /** Sprite rendering (web/render/sprites.js): frame -> tile-stream -> bank tile, from the shipped bytes.
  *  The 396-byte entity dump below is a live DOSBox read (paused, world 1 level 1, [8B69]=0): the same frame
