@@ -457,7 +457,18 @@ function spawnEffect(m, si, di, ctx) {
   const id = m.u16(0x8c69);
   m.w16(0x8c29, id);
   if (id === 0xe || id === 0x1b) { specialWeapon(m); return di; } // 35CE
-  if (id === 0x27) { ctx.unported.add(`opcode 13 weapon ${id}`); return ABORT; }
+  if (id === 0x27) { // 3670: a fan of up to four shots, 0x17..0x1a, as many as [8BF7] allows
+    const n = m.u16(0x8bf7);
+    m.w16(0x8c1f, n);
+    m.w16(0x8c25, m.u16(0x8c25) + 8);
+    m.w16(0x8c27, m.u16(0x8c27) + (m.u16(0x8c23) === 4 ? -6 : 0x1a));
+    for (let k = 0; k < 4; k++) {
+      m.w16(0x8c21, 0x17 + k);
+      pushEvent5(m);
+      if (n === k) break;
+    }
+    return di;
+  }
   let w = m.u16(0x8b89);
   m.w16(0x8c1d, w);
   if (w === 0) { w = m.u16(0x8b8b); m.w16(0x8c1d, w); }
