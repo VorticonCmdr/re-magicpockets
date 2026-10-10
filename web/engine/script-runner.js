@@ -1002,9 +1002,10 @@ function levelEvent(m, si, di, ctx) {
  * (18A4 -> [8B5D], [8B60]) once per vertical retrace until something happens. The port runs one pass per call of
  * the script runner with [8B5D]/[8B60] already set by the host (the keyboard path of 18A4 is `[8B5D] = [8C91]`);
  * a pass with nothing pressed sets `ctx.modalWait`, which makes the iteration end after call 8, as the original
- * never leaves call 8 while waiting. `[STATIC]`: no capture reaches this screen yet (the live captures stop where the code is typed).
+ * never leaves call 8 while waiting. The glyph/cursor/confirm rules are `[PROVEN]` against 49 live transitions (tools/attract-capture/code-entry.transitions.json,
+ * `checkCodeEntry`); the wait-for-input structure (modalWait) and the exact tick at which a held key repeats are `[STATIC]`.
  */
-function codeEntry(m, si, di, ctx) {
+export function codeEntry(m, si, di, ctx) {
   const BUF = 0xe70f;
   let bx = m.u8(0x8c33);
   const leave = () => { m.w8(0x8c33, bx); return ABORT; }; // 24E1 -> 2663

@@ -21,6 +21,7 @@ import { decodeDemoTape, DemoPlayback, INPUT_BITS, DEMO_RNG_SEED } from '../core
 import { FRAME_ORDER, DEFAULT_TICK_HZ } from '../engine/frame.js';
 import { stepIterationAfterRng } from '../engine/iteration.js';
 import { Rng } from '../engine/rng.js';
+import { codeEntry } from '../engine/script-runner.js';
 import { prepare, runConformance, runFreeRun, runLiveConformance, runLiveFree, bootFromFiles, diffBootEntities, expandRows, midConsumeParticles, loadRow } from './conformance-lib.js';
 import { mapFixups } from '../engine/boot.js';
 import * as FE from '../engine/frontend.js';
@@ -633,10 +634,30 @@ export async function checkSpriteWorlds(ctx) {
 /** Opcode 38 (level-code entry, 1000:2474) on a bare data segment: the glyph rules the disassembly gives. [STATIC] */
 export async function checkCodeEntry(ctx) {
   const { results, check } = makeChecker();
-  const m = new DsMemory(await ctx.fetchRaw('game/GAMEU.EXE'));
-  check('code entry: glyph table row for scancode 0x48 is the "8" key (0x38)', m.u8(0xedb4 + 0x48) === 0x38);
-  check('code entry: glyph table row for scancode 0x50 is the "2" key (0x32)', m.u8(0xedb4 + 0x50) === 0x32);
-  check('code entry: scancodes 0x4B / 0x4D map to the "4" / "6" keys (0x34, 0x36)', m.u8(0xedb4 + 0x4b) === 0x34 && m.u8(0xedb4 + 0x4d) === 0x36);
+  const m0 = new DsMemory(await ctx.fetchRaw('game/GAMEU.EXE'));
+  check('code entry: glyph table row for scancode 0x48 is the "8" key (0x38)', m0.u8(0xedb4 + 0x48) === 0x38);
+  check('code entry: glyph table row for scancode 0x50 is the "2" key (0x32)', m0.u8(0xedb4 + 0x50) === 0x32);
+  check('code entry: scancodes 0x4B / 0x4D map to the "4" / "6" keys (0x34, 0x36)', m0.u8(0xedb4 + 0x4b) === 0x34 && m0.u8(0xedb4 + 0x4d) === 0x36);
+  // 49 transitions of the real level-code screen (DOSBox, 2026-10-10, tools/attract-capture/code-entry.transitions.json): the glyph buffer
+  // at DS:E70F, the cursor [8C33] and the typed sum [8BC3] before and after one pass of opcode 38 with the logged key bytes.
+  let trans = null;
+  try { trans = JSON.parse(new TextDecoder().decode(await ctx.fetchRaw('tools/attract-capture/code-entry.transitions.json'))); } catch { /* absent */ }
+  if (trans) {
+    const hexb = (h) => Uint8Array.from(h.match(/../g), (x) => parseInt(x, 16));
+    let bad = 0, first = '';
+    trans.forEach((t, i) => {
+      const m = m0.clone();
+      m.w8(0x8c33, t.c33); m.put(0xe70f, hexb(t.buf)); m.w16(0x8bc1, t.c1); m.w8(0x8b5d, t.in5d); m.w8(0x8b60, t.in60); m.w8(0x8bac, 0);
+      m.w16(0x9398 + 0xc, 0x1234); m.w8(0x9398 + 1, 0x77);
+      codeEntry(m, 0x9398, 0x9500, { unported: new Set(), events: [], rng() {} });
+      const got = Array.from(m.get(0xe70f, 7), (b) => b.toString(16).padStart(2, '0')).join('');
+      const final = t.toAc === 1;
+      const okBuf = final ? got.slice(10, 12) === t.toBuf.slice(10, 12) : got.slice(0, 10) === t.toBuf.slice(0, 10);
+      const okC3 = t.in60 === 0x1c && !final ? m.u16(0x8bc3) === t.toC3 : true;
+      if (!(m.u8(0x8c33) === t.to33 && okBuf && okC3 && (!final || m.u8(0x8bac) === 1))) { bad++; if (!first) first = `#${i} got c33 ${m.u8(0x8c33)} buf ${got}, wanted c33 ${t.to33} buf ${t.toBuf}`; }
+    });
+    check(`code entry: all ${trans.length} live transitions (cursor, glyphs, typed sum, success) are reproduced by one pass of opcode 38`, bad === 0 && trans.length === 49, bad ? first : `${trans.length}/${trans.length}`);
+  }
   return results;
 }
 
