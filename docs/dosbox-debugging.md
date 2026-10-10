@@ -107,6 +107,18 @@ warp to register (confirmed by reading `[0x8b89]`/`[0x8b8b]` live and seeing the
 change). If automating this again, budget for it not working and having a human do the keypresses
 while you watch via an armed breakpoint.
 
+### Automating the level-code warp (`[PROVEN]` 2026-10-10: it works from a Lua script)
+
+⚠️ The "unreliable" remark above is superseded: a Lua script that presses keys with `dosbox.key` on a frame schedule warps reliably.
+
+- **F2 opens a prompt that expires after about 20 iterations** (an invisible class-0x2D entity; `Debug_HandleCheatInput` ignores digits while none exists). Type all four digits inside that window.
+- Hold every key **at least 6 frames** (the keyboard ISR clears `[8B60]` on key-up and the handler reads it once per iteration; a 3-frame press can be missed). Leave about 14 frames between F2 and the first digit, then 6 frames down + 6 up per digit. Verify with `[E03B..E03E]` (each stored digit is `0xBC + digit`, empty is `0xBB`).
+- The codes (read live from `DS:FC2B`, targets from `DS:FCA4`; not in the file image): world 1 sub 1-6 `1053 3425 8282 4476 7766 1467`; world 2 sub 1-7 `6245 5284 4757 2818 1960 6331 8712`; world 3 sub 1-8 `3505 0692 1786 9877 7962 4125 2219 3123`; world 4 sub 1-8 `8498 4370 3541 2823 1286 6067 5139 4400`; a 30th code `2456`.
+- **Do not detect the warp by the first change of `[8B89]/[8B8B]`**: the loader writes `[8B8B] = 1` first and the real sub-level a moment later. Wait about 25 rows after the first change before treating the level words as final.
+- After `GAMEU` starts, the intro may wait for **Enter** (`input_key KBD_enter`) before the level begins and the script's `[8BAA] == 0xFF` wait ends.
+- The Lua instruction budget (1,000,000, cumulative over the script's lifetime, spent per frame polled) allows about 12,000 frames or 2,000+ logged rows; for long jobs split the work over several scripts (`bridge_stop` / `bridge_start` / remount between them).
+- A warp keeps the game state (score, hearts, **and the generator `[8B71]`**); only the level is reloaded. Rows between starting to type and the warp contain the prompt entity, which the port does not model, so end each comparison segment where the next code starts being typed.
+
 ## Don't trust a single call site — read the whole function
 
 The session's biggest wrong turn: finding *one* call to a function of interest
