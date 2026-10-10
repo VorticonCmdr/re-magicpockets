@@ -367,6 +367,15 @@ function handler(m, si, di, op, ctx) {
       if (m.u8(0x8c0b) === 0) { ctx.unported.add('opcode 52 no continues left (2D4F)'); return ABORT; }
       return di;
     }
+    case 10: { // 2F8B: puppet another entity (operand 1: its class) once it is idle: operand 2 is its new state
+      const bx = findByClass(m, m.s8(di));
+      di += 1;
+      if (m.u8(bx + 1) !== 0) return ABORT; // 2663: wait
+      const st = m.s8(di); di += 1;
+      m.w8(bx + 1, st & 0xff);
+      m.w16(bx + 0xc, st >= 0 ? m.u16(0xcd88 + 2 * st) : m.u16(0xd996 + 2 * (st + 0x80)));
+      return di;
+    }
     case 67: m.w8(si + 0x3d, m.u8(di)); return di + 1; // SetAnimLockFlag
     case 71: m.w8(0x8c0c, m.u8(di)); return di + 1; // SetGlobalEventTrigger
     case 76: m.w8(0x8c0e, 0); return di; // clears [8C0E]

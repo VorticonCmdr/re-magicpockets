@@ -342,6 +342,9 @@ export function runLiveFree(env, rows, o = {}) {
     for (const p of o.pokes || []) if (p.row === k) p.bytes.forEach((v, i) => m.w8(p.addr + i, v)); // one-off writes the capture script made
     const ctx = { unported: new Set(), events: [] };
     const skip = midDone;
+    if (o.pinHurtTimer) { // the capture script rewrote [8B96] many times per iteration: inside one iteration the timer never drops to zero
+      if (!m.__w8) { m.__w8 = m.w8.bind(m); m.w8 = (a, v) => { if (a === 0x8b96) return; m.__w8(a, v); }; }
+    }
     for (let rep = 0; rep < Math.max(counts[k], 1) && !ctx.levelStart && !ctx.gameRestart && !skip; rep++) stepIterationAfterRng(m, ctx, null);
     midDone = false;
     if (o.checkRng && !ctx.levelStart && !ctx.gameRestart) {

@@ -560,8 +560,9 @@ function enemyTouchesPlayer(m, si, bx, ctx) {
   if (cls === 0x53 && m.u16(bx + 0xa) === 0x104) return false;
   if (m.u8(0x8b96) !== 0 || m.u16(si + 0xa) === 0x4c) return true;
   const t = m.u8(0x8b98);
-  if (t === 0x15 || t === 0x43 || t === 0x21 || t === 0x41 || t === 0x1a) return false;
   if (t === 0xff) return true;
+  if (t === 0x21 || t === 0x41) return heroLosesHeart(m, si, ctx); // 4A50
+  if (t === 0x15 || t === 0x43 || t === 0x1a) return false;
   if (t === 1 || t === 3) { // 4725: carrying a crate or in the hit state, the player kills what he touches
     if (cls === 0x2b || cls === 0x42 || m.u16(bx + 4) === 6 || m.u8(bx + 0x40) === 0x19) return true;
     m.w16(0x8b75, m.u16(0x8b75) + m.u8(bx + 0x36) + 1);

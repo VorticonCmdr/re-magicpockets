@@ -85,7 +85,9 @@ export function insertByGroup(m, group, si, slot) {
 function finishSpawn(m, si, slot, bx, tpl) {
   const group = m.u16(tpl);
   if (group >= 1 && group <= 6) return { di: insertByGroup(m, group, si, slot), si: bx };
-  if (slot >= ENTITY_ARRAY_END) return { di: slot, si: bx };
+  // C513-C521: the pointer array is full -> `pop di` twice, i.e. the return address is popped too and the caller of the whole
+  // event loop (call #6) returns without resetting the queue [PROVEN: world 3 sub 6, events respawned for several iterations]
+  if (slot >= ENTITY_ARRAY_END) return { di: slot, si: bx, full: true };
   m.w16(slot, si); // C512: append at the free slot
   return { di: slot + 2, si: bx };
 }
@@ -124,7 +126,7 @@ function spawn(m, slot, type, tag, data, ctx) {
   m.w16(0x8c1d, data);
   const tpl = m.u16(TEMPLATE_INDEX + 2 * type);
   const si = findFreeRecord(m);
-  if (si === 0) return none;
+  if (si === 0) return { di: slot, si: 0, failed: true };
   if (type === 0) { m.w16(slot, 0); return { di: slot + 2, si: data }; }
   m.w16(0x8c77, tpl);
   m.w8(si + 0x16, m.u8(tpl + 8));
@@ -267,6 +269,8 @@ export function levelUpdateEventQueue(m, ctx) {
       const type = be16(m, si); si += 2;
       if (type === 0) { di += 2; continue; }
       const r = spawn(m, di, type, tag, si, ctx);
+      if (r.full) return; // see finishSpawn: call #6 is abandoned with the queue left as it is
+      if (r.failed) { si = 0; continue; } // C305: no free record -> SI = 0, back to C2A5 reading the marker at DS:0
       if (r.di === di && r.si === si) break; // nothing spawned: the next marker test fails
       di = r.di; si = r.si;
     }
@@ -301,7 +305,7 @@ export function levelLoadEntities(m, si, ctx) {
     const tag = be16(m, si); si += 2;
     const type = be16(m, si); si += 2;
     const r = spawn(m, di, type, tag, si, ctx);
-    if (r.di === di && r.si === si) { ctx.unported.add('C2F3 spawn did not complete'); return; }
+    if (r.full || r.failed || (r.di === di && r.si === si)) { ctx.unported.add('C2F3 spawn did not complete'); return; }
     di = r.di; si = r.si;
   }
 }

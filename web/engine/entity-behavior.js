@@ -12,7 +12,7 @@
 import { VISIBLE_LIST, ENTITY_ARRAY, findByClass } from './ds-memory.js';
 import { runScript } from './script-runner.js';
 import { terrainCollision, overlapTest } from './ground-collision.js';
-import { fireAndCharge, pushEvent3, pushEvent5 } from './fire.js';
+import { fireAndCharge, pushEvent3, pushEvent5, pushSpawnEvent } from './fire.js';
 import { behaviorKind2, behaviorKind4, behaviorKind5, behaviorKind6, behaviorKind7 } from './enemy.js';
 import { Rng } from './rng.js';
 import { nextByClass } from './enemy.js';
@@ -204,13 +204,66 @@ function downPressed(m, si, bx, ctx) {
   if (ax === 0x40 || ax === 0x43) unp(`class 0x${ax.toString(16)}`);
 }
 
+/**
+ * 1000:D67D (target 0x41, world 3): the hero floats on the carried float: the world entity `si` is moved by the keys (D73A), a splash event
+ * every 17th tick, the world entity's vertical speed byte from [8C59], and the hero's frame advances while a key is held.
+ */
+function floatControls(m, si, bx, ctx) {
+  fireAndCharge(m, si, bx, ctx); // 4269
+  floatMove(m, si, bx, ctx);
+  m.w16(0x8c5b, m.u16(0x8c5b) + 1);
+  if (m.u16(0x8c5b) === 0x11) {
+    const r = m.u8(0x8b6b) & 3; // the matching sound (1CCF) is graphics-side
+    m.w16(0x8c1f, r === 1 ? 0x101 : r === 2 ? 0x102 : r === 3 ? 0xff : 0x100);
+    m.w16(0x8c5b, 0);
+    m.w16(0x8c21, 0x32); m.w16(0x8c23, 4); m.w16(0x8c25, 0x50); m.w16(0x8c27, 0x98); m.w16(0x8c29, 0x55);
+    pushSpawnEvent(m);
+  }
+  let ax = m.s16(0x8c59);
+  if (ax !== 0) { if (ax < 0) ax = -ax; ax = ((ax + 2) * 4) & 0xffff; }
+  m.w8(si + 0x28, ax & 0xff);
+  if (m.u8(bx + 1) !== 0) return;
+  m.w8(0x8b5e, 0);
+  const al = (((m.u16(si + 0x24) | m.u16(bx + 0x24)) ^ 0xff) & m.u8(0x8b67)) & 0xff;
+  if (al === 0 || (al & 2) !== 0) return;
+  advanceAnim(m, bx, 1); // 3178 with SI = the hero
+}
+
+/** 1000:D73A: the keys move the world entity while floating. */
+function floatMove(m, si, bx, ctx) {
+  const cl = (((m.u8(0x8b5e) | m.u16(si + 0x24)) ^ 0xff) & m.u8(0x8b67)) & 0xff;
+  if (cl & 4) { // D7CF
+    if ((m.u16(bx + 0x24) & 4) === 0) { m.w16(bx + 0x14, 4); m.w16(si + 6, m.u16(si + 6) + 4); }
+  } else if (cl & 8) { // D7E3
+    if ((m.u16(bx + 0x24) & 8) === 0) { m.w16(bx + 0x14, 8); m.w16(si + 6, m.u16(si + 6) - 4); }
+  }
+  if (m.u8(si + 1) === 0xd) return; // D795
+  if (cl & 1) { // D796
+    if (m.s16(0x8c59) !== 4) m.w16(0x8c59, m.u16(0x8c59) + 1);
+    if ((m.u16(bx + 0x24) & 1) !== 0) { m.w16(0x8c59, 0); return; }
+    m.w16(si + 8, m.u16(si + 8) + m.u16(0x8c59));
+    return;
+  }
+  if (m.u8(si + 1) !== 0) return;
+  if ((m.u16(bx + 0x24) & 2) !== 0) { // D7B1
+    m.w16(0x8c59, 0);
+    if (cl & 2) downPressed(m, si, bx, ctx); else m.w16(0x8bfd, 0);
+    return;
+  }
+  if (m.s16(0x8c59) !== -3) m.w16(0x8c59, m.u16(0x8c59) - 1);
+  const dx = m.u16(0x8c59);
+  m.w16(si + 8, m.u16(si + 8) + dx);
+  if (cl & 2) m.w16(si + 8, m.u16(si + 8) + dx); else m.w16(0x8bfd, 0);
+}
+
 /** 1000:3CE8 Entity_HandleCollisionOrStateDispatch (SI = the world entity). */
 function handleCollisionOrStateDispatch(m, si, ctx) {
   if (m.u8(G.NO_INPUT) !== 0) return;
   const bx = findByClass(m, 3);
   const t = m.u8(G.TARGET);
   if (t === 1) { airSteer(m, si, bx); return; }
-  if (t === 0x15 || t === 0x21 || t === 0x43 || t === 0x41) { ctx.unported.add(`3CE8 target ${t}`); return; }
+  if (t === 0x15 || t === 0x21 || t === 0x43) { ctx.unported.add(`3CE8 target ${t}`); return; }
+  if (t === 0x41) { floatControls(m, si, bx, ctx); return; } // D67D
   if (t === 3 || t === 0xff) return;
   if (m.u8(bx + 1) === 0x63) return;
   if (fireAndCharge(m, si, bx, ctx)) return;
