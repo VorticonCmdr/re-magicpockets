@@ -240,7 +240,8 @@ export function runLiveConformance(env, rows, o = {}) {
   const r = { total: 0, entExact: 0, exact: 0, hist: new Map(), unportedHist: new Map(), entFails: [], shown: [], raceRows: 0 };
   // A poll that lands after the next iteration's call #1 shows the scroll state of that call. These
   // globals are the only ones it changes.
-  const RACE = (a) => a === 0x8b69 || (a >= 0x8bb7 && a <= 0x8bba) || a === 0x8c15 || a === 0x8c17;
+  // (also [8C38], which call #3 consumes, and [8B60]; the scroll words [8C13]-[8C18] are recomputed by call #1.)
+  const RACE = (a) => a === 0x8b69 || a === 0x8b60 || a === 0x8c38 || (a >= 0x8bb7 && a <= 0x8bba) || (a >= 0x8c13 && a <= 0x8c18);
   // The poll can land between an iteration's call #8 and its call #13. Every iteration's last RNG call is
   // call #13 with carry 1, so a row whose RNG state cannot be reached from the previous row by a run of
   // calls ending in carry 1 is such a mid-iteration sample; it and the transition after it are half
