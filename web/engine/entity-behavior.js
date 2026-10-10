@@ -171,7 +171,7 @@ function downPressed(m, si, bx, ctx) {
     }
     if (c04 === 0x40) { // 41CE: put the carried class-0x40 item down
       if (m.u8(bx + 1) !== 0) return;
-      let it = 0x9398 - 0x42;
+      let it = 0x9398;
       do it = nextByClass(m, it, 0x40); while (it !== 0 && m.u8(it + 0x40) !== 0xf6);
       if (it === 0) return;
       m.w16(it + 0xa, 8); m.w16(it + 0x2c, 0); m.w8(it + 0x40, 0); m.w8(it + 0x3e, 0); m.w8(0x8c04, 0);
@@ -218,7 +218,21 @@ function downPressed(m, si, bx, ctx) {
     m.w16(0x8c5d, m.u16(0x8c5d) + 1); m.w8(0x8c04, 0x45); m.w8(item + 0x40, 0x19);
     return;
   }
-  if (t === 0x1a) { unp('target 0x1a'); return; }
+  if (t === 0x1a) { // 40C1: put the carried class-0x1a (or, failing that, class-0x41) item down
+    let it = 0x9398;
+    do it = nextByClass(m, it, 0x1a); while (it !== 0 && m.u8(it + 0x40) !== 0xf6);
+    if (it === 0) {
+      it = 0x9398;
+      do it = nextByClass(m, it, 0x41); while (it !== 0 && m.u8(it + 0x40) !== 0xf6);
+      if (it === 0) return;
+      m.w16(it + 0xa, 0xe1); // 4119 (the screen call that follows is graphics-side)
+    }
+    if (m.u8(it + 1) === 0 && m.u8(0x8b98) !== 0x41) {
+      m.w8(it + 0x40, 0); m.w8(it + 0x3e, 0); m.w8(it + 1, 0); m.w8(0x8b98, 0); m.w16(it + 6, 0x90);
+      if (m.u8(0x8c04) === 0x1d) m.w8(0x8c04, 0);
+    }
+    return;
+  }
   if (ax === 0x41) { takeItem(m, si, bx, item); return; } // 4014
   if (ax === 0x15) { // 3FB3
     if (m.u8(bx + 1) !== 0) return;
