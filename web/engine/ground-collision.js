@@ -212,10 +212,7 @@ function land(m, si, bx, ctx) {
     landing = true;
   }
   // F4F6
-  if (m.u8(R.E7) !== 0) { // F552: only the signed-tile-byte checks (tiles are 1..120 here) are inert
-    ctx.unported.add('F552 side-contact landing');
-    return;
-  }
+  if (m.u8(R.E7) !== 0) { worldTwoStanding(m, si, bx, true); return; } // F552
   m.w16(bx + 0x24, m.u16(bx + 0x24) | 2);
   snapWorldY(m, si);
   worldThreeSplash(m, si); // F6F7
@@ -303,14 +300,16 @@ function bounce(m, si, bx, ctx) {
  * 1000:F54B (world 2): standing next to a negative tile (a belt) drags the world entity 0x20 sideways unless that
  * side is blocked. `si` is the world entity, `bx` the hero.
  */
-function worldTwoStanding(m, si, bx) {
-  if (m.u16(0x8b89) !== 2) return;
+function worldTwoStanding(m, si, bx, fromLanding = false) {
+  const world = m.u16(0x8b89);
+  if (world !== 2 && !fromLanding) return; // F54B; the landing code jumps to F552 directly
   let di = m.u16(0x8bd7);
   const neg = (o) => m.s8(o) < 0;
   let drag = false;
   if (neg(di) || neg(di - 1)) drag = true; // F594
   else if (m.u8(0x8be8) === 0) return; // F5A6
   else if (neg(di + 0x7f)) drag = true;
+  else if (world !== 2) return; // F56F -> F592
   else {
     di -= 1;
     if (neg(di - 1) || neg(di - 2)) drag = true;
@@ -679,7 +678,14 @@ function floorProjectile(m, bx, ctx) {
     m.w8(bx + 0x26, al);
     m.w8(bx + 0x26, al - (m.s8(bx + 0x26) >> 1)); // sar al,1 on the negated byte, then subtract
     if (m.u8(0x8c03) !== 0) { // F0F5: a class-0xD shot sheds two sparks when it bounces
-      if (world !== 1) { ctx.unported.add(`F0F5 world ${world}`); return; }
+      if (world === 3 && cls !== 0x38 && cls !== 0x27 && cls !== 0x44) { // F145 -> F15A -> F1D1: the shot becomes the next, bigger class
+        m.w16(bx + 6, m.u16(bx + 6) - 3); m.w16(bx + 8, m.u16(bx + 8) - 6);
+        const v = m.u16(bx + 0x26); m.w16(0x8c27, v);
+        changeClass(m, bx, cls + 1);
+        m.w16(bx + 0x26, m.u16(0x8c27));
+      }
+      if (world !== 1) { if (world === 4 || world === 3 || world === 2) { /* RET */ } else ctx.unported.add(`F0F5 world ${world}`); }
+      else
       if (cls === 0xd) {
         m.w16(0x8c29, 0xa); m.w16(0x8c21, 0x17);
         m.w16(0x8c25, m.u16(bx + 8)); m.w16(0x8c27, m.u16(bx + 6) + 8);
@@ -938,7 +944,7 @@ function resolveGroundCollision(m, si, bx, di, ctx) {
 
 /** 1000:E067: terrain collision of `bx` (the player) against the map, relative to world entity `si`. */
 export function terrainCollision(m, si, bx, ctx) {
-  if (m.u8(bx + 0x40) === 0x65) { ctx.unported.add('E067 state 0x65'); return; }
+  if (m.u8(bx + 0x40) === 0x65) return; // E068: a dying entity is not tested
   let x = (m.u16(bx + 6) - m.u16(si + 6)) & 0xffff;
   let y = (m.u16(bx + 8) - m.u16(si + 8)) & 0xffff;
   x = Math.floor(x / 0x20); y = Math.floor(y / 0x10);

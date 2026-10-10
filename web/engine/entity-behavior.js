@@ -163,7 +163,20 @@ function downPressed(m, si, bx, ctx) {
     if (ax === 0x29) { unp('class 0x29'); return; }
     if (t === 0x43) { unp('target 0x43'); return; }
     if (c04 === 0x40) { unp('c04 0x40'); return; }
-    if (ax === 0x24) { unp('class 0x24'); return; }
+    if (ax === 0x24) { // 4144: the lift / door prop (frames 0xBB, 0xBC, else the sealed chest)
+      const frame = m.u16(item + 0xa);
+      if (frame === 0xbb) {
+        if (m.u8(si + 1) === 0 && m.u8(bx + 1) === 0) { m.w8(bx + 0x3e, 0); m.w8(bx + 1, 0x37); m.w16(bx + 0xc, 0xc819); }
+        return;
+      }
+      if (frame === 0xbc) { if (m.u8(item + 1) === 0) { m.w8(item + 1, 0xac); m.w16(item + 0xc, 0xd1e7); } return; }
+      if (m.u8(si + 1) !== 0 || m.u8(bx + 1) !== 0) return;
+      m.w8(item + 0x40, 0x19); m.w16(item + 0xa, 0xcc);
+      m.w8(si + 1, 0xaf); m.w16(si + 0xc, 0xd21b);
+      m.w8(bx + 1, 0x63); m.w16(bx + 0xc, 0xcba6);
+      m.w8(0x8b96, 0x32); m.w8(si + 0x3e, 0); m.w8(bx + 0x3e, 0); m.w16(si + 0x30, 0);
+      return;
+    }
     if (ax === 0xd || ax === 0x33) { crateGrab(m, si, bx); return; }
     if (t !== 0x41 && ax === 0x1a) { takeItem(m, si, bx, item); return; } // 4014
     if (c04 === 0x27) { // 3F0F

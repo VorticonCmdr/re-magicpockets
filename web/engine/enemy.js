@@ -76,10 +76,16 @@ function aiTurn(m, si, di, ctx) {
   if (e9 === 0) {
     if (m.u8(di - 2) !== 0x71) {
       if (m.u16(si + 2) === 0x42) { turnAround(m, si); return; }
-      if (m.u8(si + 0x39) === 5 && (m.u16(0x8c2b) & 2) !== 0) { ctx.unported.add('AI 6B5F'); return; }
+      if (m.u8(si + 0x39) === 5 && (m.u16(0x8c2b) & 2) !== 0) return; // 6B5F is a RET
     }
     const cls = m.u16(si + 2);
-    if (cls === 0x2c) { ctx.unported.add('AI 6C80 class 0x2c'); return; }
+    if (cls === 0x2c) { // 6C80: turn round, mark that side blocked and reload the frame range
+      m.w16(si + 0x24, m.u16(si + 0x24) | m.u16(si + 0x14));
+      m.w16(si + 0x14, m.u16(si + 0x14) ^ 0xc);
+      if (m.u16(si + 0x14) === 4) { m.w16(si + 0x10, 0xfc); m.w16(si + 0x12, 0xff); } else { m.w16(si + 0x10, 0xf8); m.w16(si + 0x12, 0xfb); }
+      m.w16(si + 0xa, m.u16(si + 0x10));
+      return;
+    }
     let w = m.u16(0x8b89);
     if (w === 0) w = m.u16(0x8b8b);
     if (w === 1 && cls === 0x14) { m.w8(si + 1, 0x85); m.w16(si + 0xc, 0xcf07); return; } // 6C61
@@ -224,7 +230,14 @@ function aiScanCrates(m, si, di, ctx) {
 function pickUp(m, si, bx, ctx) {
   if (m.u16(0x8c1b) !== 0) return 'next';
   const cls = m.u16(si + 2);
-  if (cls === 0x4c || cls === 0x50) { ctx.unported.add(`AI 6AA7 class 0x${cls.toString(16)}`); return 'end'; }
+  if (cls === 0x4c || cls === 0x50) { // 6ADE / 6AF4: the enemy carries the crate away
+    if (cls === 0x50) m.w16(bx + 6, m.u16(si + 6) + 8);
+    m.w16(si + 0x2e, bx);
+    if (cls === 0x4c) { m.w8(si + 1, 0xd4); m.w16(si + 0xc, 0xd596); } else { m.w8(si + 1, 0xf8); m.w16(si + 0xc, 0xd909); }
+    m.w8(si + 0x3c, m.u8(si + 0x3c) + 1);
+    m.w8(0x8c09, m.u8(0x8c09) + 1);
+    return 'end';
+  }
   if (cls === 0x14) m.w8(si + 0x3d, 0);
   m.w8(bx + 0x40, 0x19);
   m.w8(si + 0x3c, m.u8(si + 0x3c) + 1);

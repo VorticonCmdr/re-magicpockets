@@ -24,6 +24,37 @@ export function pairEvent(m, si, bx, cl, ctx) {
   return false;
 }
 
+/**
+ * 1000:4D38 (world 2, class 0x33): a platform the hero can stand on. Carried or falling he is lifted onto it
+ * (dx = 0x70 - its y, at most 0x10), otherwise it is remembered like a crate for the grab at 4CF6.
+ * `si` is the hero, `bx` the platform.
+ */
+function platformTouched(m, si, bx) {
+  const t = m.u8(0x8b98);
+  if (t === 1) { // 4DCB
+    const w = findByClass(m, 1);
+    if (m.s8(w + 0x26) >= 0) return true;
+    m.w8(0x8b98, 0);
+  } else if (t !== 0x1a && t !== 0) return true;
+  // 4D53
+  if (m.s16(bx + 8) < 0x50) return true;
+  const dx = (0x70 - m.s16(bx + 8)) | 0;
+  if (dx > 0x10) return true;
+  const world = findByClass(m, 1);
+  if (m.u8(world + 1) !== 0) {
+    if (m.s8(world + 0x26) < 0) { // 4D81: the rising world entity is set down on the platform
+      m.w16(world + 8, m.u16(world + 8) + dx - m.s8(world + 0x26) - 2);
+      m.w16(world + 0x26, 0); m.w8(world + 1, 0);
+      m.w16(si + 0x10, 0x41); m.w16(si + 0x12, 0x48); m.w16(si + 0xa, 0x40);
+      m.w16(0x8c38, 0); m.w8(si + 1, 0); m.w8(si + 0x3e, 0);
+      m.w8(0x8beb, 0xff);
+    }
+  } else m.w8(0x8beb, 0xff); // 4DB5
+  m.w16(0x8c01, bx);
+  if (m.s8(si + 0x26) < 0) return true;
+  return crateGrabTail(m, si); // 4CF6
+}
+
 /** 1000:4C01. @returns {boolean} handled */
 function playerTouchesProjectile(m, si, bx, ctx) {
   const world = m.u16(0x8b89) || m.u16(0x8b8b);
@@ -33,7 +64,7 @@ function playerTouchesProjectile(m, si, bx, ctx) {
     if (cls === 0x10) return rewardTouched(m, si, bx, ctx);
     return true;
   }
-  if (world === 2) { if (cls === 0x34) return rewardTouched(m, si, bx, ctx); return cls !== 0x33; } // 4C20: 4D38 (class 0x33) is not ported
+  if (world === 2) { if (cls === 0x33) return platformTouched(m, si, bx); if (cls === 0x34) return rewardTouched(m, si, bx, ctx); return true; } // 4C20
   if (world === 3) { if (cls === 0x38) return crateTouched(m, si, bx); if (cls === 0x39) return rewardTouched(m, si, bx, ctx); return true; } // 4C68
   if (world === 4) {
     if (cls >= 0x3a && cls <= 0x3d) return stuckShotTouched(m, si, bx, ctx); // 4C78
@@ -68,7 +99,13 @@ function stuckShotTouched(m, si, bx, ctx) {
 /** 1000:4CE0: the player touches a pushable crate (class 0xD): remember it, then the gating checks. */
 function crateTouched(m, si, bx) {
   m.w16(0x8c01, bx);
-  if (m.u8(bx + 0x26) !== 0 || m.u8(si + 0x26) !== 0) return true;
+  if (m.u8(bx + 0x26) !== 0) return true;
+  return crateGrabTail(m, si);
+}
+
+/** 1000:4CF6: the crate is grabbed by the world entity's script once the hero is on the ground and empty-handed. */
+function crateGrabTail(m, si) {
+  if (m.u8(si + 0x26) !== 0) return true;
   if (m.u8(0x8b98) !== 0) return true; // 1 and every other non-zero value return alike
   if (m.u8(si + 1) !== 0) return true;
   const world = findByClass(m, 1); // 4D1C: the crate is grabbed by the world entity's script
@@ -165,22 +202,57 @@ function findNextByClass(m, from, cls) {
   return 0;
 }
 
+/** 1000:EE1F: a shot (class 0xD: a burst of debris; others: it turns into the class-0xF particle and keeps its speed). */
+function shotBursts(m, shot) {
+  if (m.u16(shot + 2) === 0xd) {
+    m.w16(0x8c27, m.u16(shot + 6) + 8); m.w16(0x8c25, m.u16(shot + 8) + 8);
+    particles(m); // 572A
+    m.w8(shot + 0x40, 0x19);
+    return;
+  }
+  if (m.s8(shot + 1) < 0) return;
+  m.w16(0x8c1f, m.u16(shot + 0x26));
+  changeClass(m, shot, 0xf);
+  m.w16(shot + 0x26, m.u16(0x8c1f));
+}
+
+/** 1000:5033: a shot hits a class-0x2B object: it turns into the 0x29 state script with a score and debris. */
+function breakBox(m, bx, ctx) {
+  if (m.u16(0x8b89) === 4 && m.u16(0x8b8b) === 9) { ctx.unported.add('5033 -> 4FA3 world 4 sub-level 9'); return false; }
+  m.w8(bx + 0x40, 0); m.w8(bx + 1, 0x29); m.w16(bx + 0xc, 0xc6ea);
+  m.w16(0x8b75, m.u16(0x8b75) + 0x32);
+  m.w16(0x8c27, m.u16(bx + 6) + 8); m.w16(0x8c25, m.u16(bx + 8) + 0x18);
+  return particles(m); // 572A
+}
+
 /** 1000:4F27: a projectile (si, kind 7) hits an enemy (bx, kind 2). @returns {boolean} handled */
 export function weaponHitsEnemy(m, si, bx, ctx) {
   if (m.u8(bx + 0x40) === 0x65 || m.u8(si + 0x40) === 0x65 || m.u8(bx + 0x40) === 0x19 || m.u8(si + 0x40) === 0x19) return true;
   const target = m.u16(bx + 2);
   if (target === 0x2c || target === 0x42) return true;
   const cls = m.u16(si + 2);
-  if (cls === 0x3f || cls === 0x14 || m.u16(si + 4) !== 7) return false;
+  const scoreOnly = () => { // 5092: a shot of another kind scores and takes one hit point
+    m.w16(0x8b75, m.u16(0x8b75) + m.u8(bx + 0x36) + 1);
+    kill(m, si);
+    m.w8(bx + 0x3f, m.u8(bx + 0x3f) - 1);
+    if (m.s8(bx + 0x3f) > 0) return hurt(m, bx, si, ctx);
+    return die(m, bx, ctx);
+  };
+  if (cls === 0x14 && m.u16(bx + 0xa) === 0xc) { // 5019 -> 5022
+    if (m.u16(si + 4) !== 7) return true;
+    shotBursts(m, si);
+    return true;
+  }
+  if (cls !== 0x3f && m.u16(si + 4) !== 7) return scoreOnly();
   const score = () => { // 5003
-    if (target === 0x2b) return false; // 5033
+    if (target === 0x2b) return breakBox(m, bx, ctx); // 5033
     m.w16(0x8b75, m.u16(0x8b75) + m.u8(bx + 0x36) + 1);
     return die(m, bx, ctx);
   };
-  if (cls === 0x44) return score();
+  if (cls === 0x44 || cls === 0x3f) return score();
   if (cls === 0x27) { kill(m, si); return score(); } // 4FFF
   if (cls === 0x1d) { // 506F: the shot's own strength is spent on the enemy
-    if (target === 0x2b) return false;
+    if (target === 0x2b) return breakBox(m, bx, ctx); // 506F -> 5033
     const al = (m.u8(si + 0x3f) + 1) & 0xff;
     const hp = byte(m.u8(bx + 0x3f) - al);
     m.w8(bx + 0x3f, hp);
@@ -197,7 +269,7 @@ export function weaponHitsEnemy(m, si, bx, ctx) {
   if ((hp & 0x80) === 0) { kill(m, si); return hurt(m, bx, si, ctx); } // 4FC2 -> 50AE
   // 4FC9: the enemy's health ran out
   if (m.u8(bx + 0x39) === 0x41 || m.u8(bx + 0x40) === 0x40 || m.u8(bx + 0x39) === 0x15 || m.u8(bx + 0x40) === 0x43) return die(m, bx, ctx);
-  if (target === 0x2b) return false; // 5033
+  if (target === 0x2b) return breakBox(m, bx, ctx); // 5033
   kill(m, si);
   if (dmg === 4) return strongHit(m, si, bx, ctx); // 52A0
   kill(m, si); // 4FFF
@@ -558,11 +630,35 @@ export function heroLosesHeart(m, si, ctx) {
   return true;
 }
 
+/** 1000:49A8: the hero touches a class-0x2B object: he is whisked back to the centre of the screen in state 0x2F and the counters reset. */
+function levelPortal(m, si, bx, ctx) {
+  if (m.u8(si + 1) === 0x2f || m.u8(si + 1) !== 0) return true;
+  const t = m.u8(0x8b98);
+  if (t === 0x43 || t === 0x21) return true;
+  const world = findByClass(m, 1);
+  if (m.u8(world + 1) !== 0) return true;
+  m.w16(world + 0x24, 0x8f);
+  if (m.u16(0x8b89) === 4 && m.u16(0x8b8b) === 9) { ctx.unported.add('49A8 -> 4A8D world 4 sub-level 9'); return false; }
+  m.w8(bx + 1, 0); m.w16(bx + 6, 0x90); m.w16(bx + 8, 0x50); m.w16(bx + 0xa, 0); m.w16(bx + 0x10, 0); m.w16(bx + 0x12, 0);
+  m.w8(0x8b96, 0x28);
+  m.w8(si + 1, 0x2f); m.w16(si + 0xc, 0xc79f);
+  m.w8(0x8c03, 0); m.w16(0x8bf1, 0); m.w16(0x8bff, 0); m.w8(0x8bb2, 0); m.w8(0x8b93, 1); m.w8(0x8b90, 6);
+  return true;
+}
+
 /** 1000:4639: an enemy (bx, kind 2) overlaps the player (si). @returns {boolean} handled */
 function enemyTouchesPlayer(m, si, bx, ctx) {
   if (m.u8(bx + 0x40) === 0x65) return true;
   const cls = m.u16(bx + 2);
-  if (cls === 0x2c || cls === 0x2b || m.u8(0x8c04) === 0x40) return false;
+  if (cls === 0x2c) { // 47B2: a coin-like pickup bursts into a reward
+    if (m.u8(bx + 1) !== 0) return true;
+    m.w16(0x8c1f, 0x12); m.w16(0x8c1d, 0x20); m.w8(bx + 0x40, 0x19);
+    m.w16(0x8c27, m.u16(bx + 6)); m.w16(0x8c25, m.u16(bx + 8));
+    scoreBurst(m, si, ctx); // 53A5 (+ sound 1CCF(0x52))
+    return true;
+  }
+  if (cls === 0x2b) return levelPortal(m, si, bx, ctx); // 49A8
+  if (m.u8(0x8c04) === 0x40) return false;
   if (cls === 0x53 && m.u16(bx + 0xa) === 0x104) return false;
   if (m.u8(0x8b96) !== 0 || m.u16(si + 0xa) === 0x4c) return true;
   const t = m.u8(0x8b98);

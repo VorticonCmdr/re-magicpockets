@@ -754,7 +754,23 @@ function spawnOtherEffect(m, si, di, type, ctx) {
     pushEvent5(m);
     return di;
   }
-  const special = [0xe, 0x1b, 0x53, 0x28, 0x5f, 0x30, 0x21, 0x4d];
+  if (type === 0x53) { // 3767: a 0x53 effect (the spitter's shot) from the entity's side; with item 0x41 held a random facing at the head
+    if (m.u8(si + 0x39) !== 0x41) {
+      m.w16(0x8c1f, (m.u8(0x8b6b) & 0xf) !== 0 ? 0x108 : 0x104);
+      m.w16(0x8c21, m.u8(0xeef1 + m.u8(si + 0x32)));
+      m.w16(0x8c23, m.u16(si + 0x14));
+      m.w16(0x8c27, (m.u16(si + 6) - 5) & 0xffff); m.w16(0x8c25, (m.u16(si + 8) + 4) & 0xffff);
+      if (m.u16(0x8c23) !== 4) m.w16(0x8c27, (m.u16(0x8c27) + 0x20) & 0xffff);
+    } else { // 37BB
+      const r = m.u8(0x8b6b) & 0xc;
+      m.w16(0x8c23, r === 0 ? 4 : r === 0xc ? 8 : r);
+      m.w16(0x8c1f, 0x108); m.w16(0x8c21, 0);
+      m.w16(0x8c27, (m.u16(si + 6) + 8) & 0xffff); m.w16(0x8c25, (m.u16(si + 8) - 0x10) & 0xffff);
+    }
+    pushSpawnEvent(m); // C035
+    return di;
+  }
+  const special = [0xe, 0x1b, 0x28, 0x5f, 0x30, 0x21, 0x4d];
   if (special.includes(type)) { ctx.unported.add(`opcode 13 type 0x${type.toString(16)}`); return ABORT; }
   // 3406: the generic effect: two signed offsets from the entity, facing as the entity
   m.w16(0x8c27, (sb(di) + m.u16(si + 6)) & 0xffff);
