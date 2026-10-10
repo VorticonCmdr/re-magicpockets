@@ -393,7 +393,7 @@ function handler(m, si, di, op, ctx) {
     case 38: return codeEntry(m, si, di, ctx); // 2474
     case 70: // 3C4B: the horizontal speed word follows the frame (no operand)
       if (m.u16(si + 0xa) !== 0x77) m.w16(si + 0x1c, 4);
-      else m.w16(si + 0x1c, m.u16(si + 0x14) === 4 ? 0x12 : 0xfff6);
+      else m.w16(si + 0x1c, m.u16(si + 0x14) === 4 ? 0xfff6 : 0x12); // 3C57: facing 4 -> -10 (live-found: the first port had the two swapped)
       return di;
     case 67: m.w8(si + 0x3d, m.u8(di)); return di + 1; // SetAnimLockFlag
     case 71: m.w8(0x8c0c, m.u8(di)); return di + 1; // SetGlobalEventTrigger

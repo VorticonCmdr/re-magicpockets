@@ -11,7 +11,7 @@
 'use strict';
 
 import { pairEvent } from './hit.js';
-import { pushEvent5 } from './fire.js';
+import { pushEvent5, pushEvent3, checkTimerEvent } from './fire.js';
 import { changeClass } from './script-runner.js';
 import { findByClass } from './ds-memory.js';
 import { targetDistance } from './enemy.js';
@@ -208,7 +208,7 @@ function land(m, si, bx, ctx) {
       if (m.u8(R.E7) === 0) { m.w16(bx + 0x24, m.u16(bx + 0x24) | 2); snapWorldY(m, si); bounce(m, si, bx, ctx); }
       return;
     }
-    if (t === 0x43) { ctx.unported.add(`F489 landing target ${t}`); return; }
+    if (t === 0x43) { landBurden(m, si, bx, ctx); return; } // F675
     landing = true;
   }
   // F4F6
@@ -229,6 +229,28 @@ function land(m, si, bx, ctx) {
   }
   m.w16(bx + 0xc, 0xc62d);
   m.w8(bx + 1, 0x16);
+}
+
+/** 1000:F675: the hero lands while carrying the class-0x43 burden: the jump button / direction decide the bounce, Down puts the burden down (4233). */
+function landBurden(m, si, bx, ctx) {
+  if (m.u8(R.E7) !== 0) return;
+  m.w16(bx + 0x24, m.u16(bx + 0x24) | 2);
+  snapWorldY(m, si);
+  ctx.events.push({ op: 'sound', id: 0x3a }); m.sound?.(0x3a);
+  checkTimerEvent(m, bx); // 45CF
+  const cl = m.u8(0x8b67);
+  if ((cl & 0x80) !== 0) m.w8(si + 0x26, 0x10);
+  else if ((cl & 1) !== 0) m.w8(si + 0x26, 0xc);
+  else if ((cl & 2) !== 0) { // F6C6
+    m.w16(si + 0x26, 0); m.w8(si + 1, 0);
+    if (m.s16(si + 0x26) > 4) return; // 4233 (never taken here: the speed was just cleared)
+    m.w8(0x8b98, 0); m.w16(0x8c38, 0);
+    m.w16(bx + 0x10, 0x41); m.w16(bx + 0x12, 0x48); m.w16(bx + 0xa, 0x40);
+    m.w16(0x8c29, 0x43); m.w16(0x8c27, m.u16(bx + 6)); m.w16(0x8c25, m.u16(bx + 8));
+    pushEvent3(m);
+    return;
+  } else m.w8(si + 0x26, 8);
+  m.w8(bx + 0x3d, 0); m.w16(bx + 0xa, 0x2b); m.w8(si + 1, 0); // F6AC
 }
 
 /**

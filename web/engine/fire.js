@@ -59,7 +59,7 @@ export function pushEvent8(m) {
 const frameIs4x = (m, bx) => m.u16(bx + 0xa) === 0x40 || m.u16(bx + 0xa) === 0x4f;
 
 /** 1000:45CF */
-function checkTimerEvent(m, bx) {
+export function checkTimerEvent(m, bx) {
   if (m.s16(0x8b9a) >= 0) return;
   m.w16(0x8b9a, 0);
   m.w16(0x8c23, m.u16(bx + 0x14));

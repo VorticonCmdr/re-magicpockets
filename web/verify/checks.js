@@ -551,7 +551,7 @@ export async function checkConformance(ctx) {
     }
     // World 4 (one session, warps 8498 -> sub 1, then sub 2 and sub 5 by the level codes): three full segments, the generator checked every row.
     // Rows polled between a roll and call #13 (call #13 has carry 0 in world 4) are recognised by the generator alone (see runLiveFree).
-    for (const [file, segs, world = 4, pinHurt = false, noGod = false] of [
+    for (const [file, segs, world = 4, pinHurt = false, noGod = false, pokes = []] of [
       ['live13-w4', [[1, 52, 726, 660], [2, 739, 1413, 660], [5, 1426, 2100, 640]]],
       ['live14-w4b', [[3, 52, 726, 630], [4, 739, 1413, 640]]],
       ['live15-w4c', [[6, 52, 726, 660], [7, 739, 1413, 650], [8, 1426, 2278, 780]]],
@@ -575,6 +575,17 @@ export async function checkConformance(ctx) {
       ['live31-w1w2', [[2, 52, 556, 500, true]], 1, false, true], // non-god, fresh seed: world 1 sub-level 2
       ['live33-w3w4', [[2, 52, 546, 470, true], [3, 559, 1053, 470, true]], 3, false, true], // non-god, fresh seed, aggressive fire: world 3 sub-levels 2 and 3
       ['live33-w3w4', [[2, 1066, 1899, 820, true]], 4, false, true], // non-god: world 4 sub-level 2
+      // Targeted state setups (the capture script wrote these bytes after logging the row before `row`): [8C04] = 0x27 with a weapon timer, 0x1B with a
+      // count, 0x40; the hero mode [8B98] = 0x1A, then 0x43 (the burden: its landing F675, 3E15/4233), back to 0. Every one of 899 rows reproduces.
+      ['live34-pokes', [[2, 0, 899, 890, true]], 4, false, true, [
+        { row: 101, addr: 0x8c04, bytes: [0x27] }, { row: 101, addr: 0x8bef, bytes: [0xe8, 0x03] },
+        { row: 261, addr: 0x8c04, bytes: [0x1b] }, { row: 261, addr: 0x8c0a, bytes: [5] },
+        { row: 421, addr: 0x8c04, bytes: [0x40] },
+        { row: 561, addr: 0x8b98, bytes: [0x1a] },
+        { row: 641, addr: 0x8b98, bytes: [0] }, { row: 641, addr: 0x8c04, bytes: [0] },
+        { row: 701, addr: 0x8b98, bytes: [0x43] },
+        { row: 801, addr: 0x8b98, bytes: [0] }, { row: 801, addr: 0x8c04, bytes: [0] },
+      ]],
       ['live20-w1c', [[5, 52, 726, 600], [3, 740, 1414, 650], [4, 1427, 2011, 570]], 1, false], // sub-level 5 from a clean warp: the side handler's DI carries over to the ceiling handler
     ]) {
       let cap = null;
@@ -598,7 +609,7 @@ export async function checkConformance(ctx) {
           b.m.w16(0x8b71, wc(exc[from], 0x8b71)); b.m.w16(0x8b6b, wc(exc[from], 0x8b6b));
           start = b.m;
         }
-        return runLiveFree(e, cap.rows, { start, from, to, entitiesOnly: true, checkRng: true, force: noGod ? [] : [[0x8b96, 50]], pinHurtTimer: pinHurt, levelFiles: () => ({ script, map: e.map }) });
+        return runLiveFree(e, cap.rows, { start, from, to, entitiesOnly: true, checkRng: true, force: noGod ? [] : [[0x8b96, 50]], pinHurtTimer: pinHurt, pokes, levelFiles: () => ({ script, map: e.map }) });
       };
       for (const [sub, from, to, min, loadStart] of segs) {
         const ok = exc[from] && wc(exc[from], 0x8b89) === world && wc(exc[from], 0x8b8b) === sub;
