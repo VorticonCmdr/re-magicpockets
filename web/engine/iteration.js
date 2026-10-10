@@ -89,6 +89,7 @@ function rngWithCarry(m, carry) {
 
 export function stepIteration(m, ctx, only = null) {
   ctx.rng = rngWithCarry;
+  ctx.modalWait = false;
   // Call 6 of the previous iteration comes after the capture sample (calls 1-3) and before this
   // iteration's call 7, so it opens the step.
   fxUpdateTransition(m, ctx); // call 5
@@ -109,6 +110,7 @@ export function stepIteration(m, ctx, only = null) {
  */
 export function stepIterationAfterRng(m, ctx, only = null) {
   ctx.rng = rngWithCarry;
+  ctx.modalWait = false;
   cameraUpdateScroll(m); // call 1
   levelUpdateAnimatedTiles(m, ctx); // call 2
   renderConsumes(m); // call 3
@@ -116,7 +118,7 @@ export function stepIterationAfterRng(m, ctx, only = null) {
   levelUpdateEventQueue(m, ctx); // call 6
   demoPlaybackInput(m); // call 7
   updateAll(m, ctx, only); // call 8
-  if (ctx.levelStart || ctx.gameRestart) return; // opcode 37 / the game restart (2D20, 2D4F) left the main loop: calls 12 and 13 never run
+  if (ctx.levelStart || ctx.gameRestart || ctx.modalWait) return; // opcode 38 waiting for a key / opcode 37 / the game restart (2D20, 2D4F) left the main loop: calls 12 and 13 never run
   hudUpdateScoreDisplay(m, ctx); // call 12
   rngNext(m); // call 13
 }

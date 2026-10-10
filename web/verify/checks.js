@@ -600,6 +600,16 @@ export async function checkConformance(ctx) {
  *  rendered by the port matched the DOSBox screenshot on 2681 of 2764 sprite pixels (the rest is the score
  *  digits the HUD pass writes, not part of this DS image). [PROVEN] live; these rows pin the decode. */
 const LIVE_ENTITIES_B64 = '/wABAAEAQP3A/AEAAsYAAAEABAAIAAsAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAEABAAA/wADAAMAkABQAEAAAsgAAEEASAAIAAoAIAAgAAQABAAYABwAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAEIAAAEABAAAAAACAAAAkABkALAAWsQAALAAsAAAAA4AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAEABPYAAAAHAAAAcACoAAIAAAAAAAIAAgAAAA4AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAEABAAAAAAYAAAAAACoAHwAWsQAAH8AfwAAAA4AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAMABAAAAAAZAAAAIAGoAHoAWsQAAHoAegAAAA0AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAEABAAA';
+/** Opcode 38 (level-code entry, 1000:2474) on a bare data segment: the glyph rules the disassembly gives. [STATIC] */
+export async function checkCodeEntry(ctx) {
+  const { results, check } = makeChecker();
+  const m = new DsMemory(await ctx.fetchRaw('game/GAMEU.EXE'));
+  check('code entry: glyph table row for scancode 0x48 is the "8" key (0x38)', m.u8(0xedb4 + 0x48) === 0x38);
+  check('code entry: glyph table row for scancode 0x50 is the "2" key (0x32)', m.u8(0xedb4 + 0x50) === 0x32);
+  check('code entry: scancodes 0x4B / 0x4D map to the "4" / "6" keys (0x34, 0x36)', m.u8(0xedb4 + 0x4b) === 0x34 && m.u8(0xedb4 + 0x4d) === 0x36);
+  return results;
+}
+
 export async function checkSprites(ctx) {
   const { results, check } = makeChecker();
   const exe = await ctx.fetchRaw('game/GAMEU.EXE');
@@ -635,7 +645,7 @@ export async function checkSprites(ctx) {
 }
 
 export async function runAllChecks(ctx) {
-  const groups = [checkRncCorpus, checkPap, checkCollisionTable, checkPalettes, checkSoundBanks, checkLevelScripts, checkDemoTape, checkFrameOrder, checkCaptureRng, checkSprites, checkConformance];
+  const groups = [checkRncCorpus, checkPap, checkCollisionTable, checkPalettes, checkSoundBanks, checkLevelScripts, checkDemoTape, checkFrameOrder, checkCaptureRng, checkSprites, checkCodeEntry, checkConformance];
   const results = [];
   for (const g of groups) results.push(...await g(ctx));
   return { results };

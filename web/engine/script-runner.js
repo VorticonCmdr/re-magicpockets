@@ -383,6 +383,7 @@ function handler(m, si, di, op, ctx) {
       m.w8(m.u16(si + 0x2e) + 0x40, 0x19); m.w16(si + 0x2e, 0);
       return di;
     }
+    case 38: return codeEntry(m, si, di, ctx); // 2474
     case 70: // 3C4B: the horizontal speed word follows the frame (no operand)
       if (m.u16(si + 0xa) !== 0x77) m.w16(si + 0x1c, 4);
       else m.w16(si + 0x1c, m.u16(si + 0x14) === 4 ? 0x12 : 0xfff6);
@@ -989,6 +990,58 @@ function levelEvent(m, si, di, ctx) {
     levelCode(m, ctx);
   }
   return ABORT; // 25C3: pop ax; jmp 2663
+}
+
+/**
+ * Opcode 38 (1000:2474): the level-code entry screen. The original loops inside the opcode, polling the joystick/keyboard
+ * (18A4 -> [8B5D], [8B60]) once per vertical retrace until something happens. The port runs one pass per call of
+ * the script runner with [8B5D]/[8B60] already set by the host (the keyboard path of 18A4 is `[8B5D] = [8C91]`);
+ * a pass with nothing pressed sets `ctx.modalWait`, which makes the iteration end after call 8, as the original
+ * never leaves call 8 while waiting. `[STATIC]`: no capture reaches this screen yet (the live captures stop where the code is typed).
+ */
+function codeEntry(m, si, di, ctx) {
+  const BUF = 0xe70f;
+  let bx = m.u8(0x8c33);
+  const leave = () => { m.w8(0x8c33, bx); return ABORT; }; // 24E1 -> 2663
+  if (m.u8(BUF + bx) === 0xc8) { m.w8(BUF + bx, 0xbb); return leave(); }
+  const up = () => {
+    if (m.u8(BUF + bx) === 0xbb) m.w8(BUF + bx, 0);
+    else { m.w8(BUF + bx, m.u8(BUF + bx) + 2); if (m.u8(BUF + bx) === 0x14) m.w8(BUF + bx, 0); }
+    return leave();
+  };
+  const down = () => {
+    if (m.u8(BUF + bx) === 0xbb) m.w8(BUF + bx, 0x12);
+    else { m.w8(BUF + bx, m.u8(BUF + bx) - 2); if (m.u8(BUF + bx) === 0xfe) m.w8(BUF + bx, 0x12); }
+    return leave();
+  };
+  const left = () => { if (bx !== 1) { bx -= 1; m.w8(BUF + bx, 0xc8); } return leave(); };
+  const right = () => { if (bx !== 4) { bx += 1; m.w8(BUF + bx, 0xc8); } return leave(); };
+  const confirm = () => { // 252E: the four digit glyphs (value*2) form the typed code
+    const v = (m.u8(BUF + 1) >> 1) * 1000 + (m.u8(BUF + 2) >> 1) * 100 + (m.u8(BUF + 3) >> 1) * 10 + (m.u8(BUF + 4) >> 1);
+    m.w16(0x8bc3, v & 0xffff);
+    if ((v & 0xffff) !== m.u16(0x8bc1)) { levelCode(m, ctx); return di; } // 257F: a new code is picked, the script goes on
+    m.w8(0x8c33, 0); m.w8(BUF + 5, 0xbc); m.w8(0x8bac, 1); // 2586
+    m.w16(si + 0xc, 0); m.w8(si + 1, 0);
+    return ABORT;
+  };
+  const key = m.u8(0x8b5d);
+  if (key === 1) return up();
+  if (key === 2) return down();
+  if (key === 4) return left();
+  if (key === 8) return right();
+  if (key === 0x80) return confirm();
+  const ch = m.u8(0x8b60);
+  if (ch === 0) { ctx.modalWait = true; return ABORT; } // nothing yet: the original keeps polling
+  m.w8(0x8b60, 0);
+  if (ch === 0x0e || ch === 0x53) { m.w8(BUF + bx, 0xc8); return leave(); }
+  if (ch === 0x1c) return confirm();
+  const mapped = m.u8(0xedb4 + ch);
+  if (mapped === 0x38) return up();
+  if (mapped === 0x32) return down();
+  if (mapped === 0x34) return left();
+  if (mapped === 0x36) return right();
+  if (mapped === 0x5f) { ctx.modalWait = true; return ABORT; }
+  return leave();
 }
 
 /**
