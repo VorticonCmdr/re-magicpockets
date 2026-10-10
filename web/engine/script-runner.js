@@ -904,9 +904,30 @@ function levelEvent(m, si, di, ctx) {
     return di;
   }
   const world = m.u16(0x8b89), sub = m.u16(0x8b8b);
-  if ((world === 1 && sub === 6) || (world === 2 && sub === 7) || (world === 3 && sub >= 8) || (world === 4 && sub === 9)) {
-    ctx.unported.add(`opcode 68 hero event, boss level ${world}-${sub}`);
-    return ABORT;
+  const bossSequence = (script) => { m.w16(si + 0x2a, m.u16(si + 0xc)); m.w16(si + 0xc, script); return ABORT; };
+  if (world === 1 && sub === 6) { // 2890: the boss' defeat step picks the ending sequence
+    const step = m.s16(0x8c2f);
+    const script = step === 0 ? 0xcd03 : step === 1 ? 0xcd1b : step === 2 ? 0xcd33 : 0;
+    if (!script) return di;
+    m.w16(0x8c2f, 0xffff);
+    return bossSequence(script);
+  }
+  if (world === 2 && sub === 7) { // 28EB: the time bonus of the last level
+    if (m.s8(0x8baf) < 0) return di;
+    m.w8(0x8baf, 0xff);
+    m.w8(si + 0x3e, (-(m.s8(0x8bae) - 0xc8)) & 0xff);
+    return bossSequence(0xd2b0);
+  }
+  if (world === 3 && sub >= 8) { // 2914
+    const n = m.u8(0x8c0e);
+    if (n === 0) return di;
+    m.w8(0x8c0e, 0);
+    m.w8(si + 0x3e, (-(n - 0xc8)) & 0xff);
+    m.w8(si + 0x27, m.u8(di));
+    return bossSequence(0xd381);
+  }
+  if (world === 4 && sub === 9) { // 281A is reachable by no jump in the disassembly, so world 4 takes the generic path
+    ctx.unported.add('opcode 68 hero event, world 4 sub 9 (generic path assumed)');
   }
   const marker = findByClass(m, 0x2d); // 2824
   if (marker !== 0) m.w8(marker + 0x40, 0x19);
