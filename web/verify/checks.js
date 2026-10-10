@@ -609,6 +609,9 @@ export async function checkConformance(ctx) {
       // 23 live power-up setups: the capture script rewrote an enemy into a type-0x1B item (kind 5/7, frames 0x15..0x67, state 0x3E = 1) on the hero's own position.
       // The captured rows show frame 0x1F (the [8C04] = 0x1B pickup, nine times) and frame 0x66 (an extra continue, twice) taking effect; all of it reproduces.
       ['live39-powerups', [[4, 0, 1299, 1285, true]], 4, false, false, 'live39-powerups.pokes.json'],
+      // 24 more power-up setups from a fresh world 1 level (frames 0x1E, 0x67, 0x17, 0x20 in turn): the rows show [8C5F]/[8C61] = 0x90/0x50 (frame 0x1E), [8BA4] = 1
+      // (frame 0x67) taking effect, and a counter [8BFF] += 1; all of it reproduces.
+      ['live40-powerups2', [[1, 0, 899, 890, true]], 1, false, false, 'live40-powerups2.pokes.json'],
       ['live20-w1c', [[5, 52, 726, 600], [3, 740, 1414, 650], [4, 1427, 2011, 570]], 1, false], // sub-level 5 from a clean warp: the side handler's DI carries over to the ceiling handler
     ]) {
       let cap = null;
