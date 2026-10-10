@@ -116,7 +116,7 @@ export function stepIterationAfterRng(m, ctx, only = null) {
   levelUpdateEventQueue(m, ctx); // call 6
   demoPlaybackInput(m); // call 7
   updateAll(m, ctx, only); // call 8
-  if (ctx.levelStart) return; // opcode 37 left the main loop: calls 12 and 13 never run
+  if (ctx.levelStart || ctx.gameRestart) return; // opcode 37 / the game restart (2D20, 2D4F) left the main loop: calls 12 and 13 never run
   hudUpdateScoreDisplay(m, ctx); // call 12
   rngNext(m); // call 13
 }

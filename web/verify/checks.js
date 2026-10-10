@@ -370,6 +370,17 @@ export async function checkConformance(ctx) {
       const f4 = runLiveFree(env, live4.rows, { start: fb4.m, from: 0, entitiesOnly: true, demoScript });
       check('a free run reproduces every captured entity record of the capture with two deaths, CONTINUE? accepted and the level restarted twice', f4.firstBad === null && f4.matched === 2579, `${f4.matched} rows, first mismatch ${f4.firstBad ?? 'none'}`);
     }
+    // Natural starts played without god mode (generator checked): the continues counter [8C0B] is poked at row 20.
+    // live25: it wraps to 255, so the player keeps accepting CONTINUE? and once lets it time out (the attract demo starts);
+    // live26: it is 1, so the second death ends the game (GAME OVER, opcode 52 -> 2D4F) and a new game starts with the generator running on.
+    for (const [file, poke, label] of [['live25-continue-timeout', 0, 'three deaths, CONTINUE? accepted and once timed out'], ['live26-gameover', 1, 'a GAME OVER and the new game after it']]) {
+      let capN = null;
+      try { capN = await loadGzJson(ctx, `tools/attract-capture/${file}.capture.json.gz`); } catch { /* absent */ }
+      if (!capN) continue;
+      const fbN = bootFromFiles(env, world1, { world: 1, sub: 1, demo: false });
+      const fN = runLiveFree(env, capN.rows, { start: fbN.m, from: 0, entitiesOnly: true, checkRng: true, force: [], pokes: [{ row: 20, addr: 0x8c0b, bytes: [poke] }], demoScript, world1Script: world1 });
+      check(`a free run with the generator checked reproduces a natural start played without god mode: ${label}`, fN.firstBad === null && fN.matched >= 1950, `${fN.matched} rows, first mismatch ${fN.firstBad ?? 'none'}`);
+    }
     // A fifth capture: the invulnerable run again with Enter taps added, so it also holds the end-of-level code letters
     // (opcode 68 -> 25A5/25C8). Rows after 3225 are the code screen's own loop (one RNG call with carry 0 per tick, no call #13), not main-loop iterations.
     let live5 = null;

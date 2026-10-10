@@ -364,7 +364,7 @@ function handler(m, si, di, op, ctx) {
       if (m.u16(0x8c57) === 0) { ctx.gameRestart = 'demo'; return ABORT; } // 2D20: CONTINUE? timed out; the game starts over with the attract demo (jmp 0089)
       if ((m.u8(0x8b5d) & 0x80) === 0) return ABORT; // 2663: try again next iteration
       m.w16(0x8c57, 0); // 2D0B: the player accepted CONTINUE?; the sound request (1CCF) is graphics-side
-      if (m.u8(0x8c0b) === 0) { ctx.unported.add('opcode 52 no continues left (2D4F)'); return ABORT; }
+      if (m.u8(0x8c0b) === 0) { ctx.gameRestart = 'newgame'; return ABORT; } // 2D4F: no continues left: GAME OVER, then a new game starts at world 1 level 1 (B56B, jmp 00C1)
       return di;
     }
     case 10: { // 2F8B: puppet another entity (operand 1: its class) once it is idle: operand 2 is its new state

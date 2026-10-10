@@ -354,6 +354,14 @@ export function runLiveFree(env, rows, o = {}) {
       if (ours !== real) for (let s = real, j = 0; j <= 14; j++, s = new Rng(s).next(0)) if (new Rng(s).next(carry) === ours) { midDone = true; break; }
       if (midDone) continue;
     }
+    if (ctx.gameRestart === 'newgame' && o.world1Script) { // GAME OVER (no continues): the game starts over with world 1, level 1
+      const rng = m.u16(0x8b71); // the generator is seeded once at program start: a new game keeps running it
+      m = bootFromFiles(env, o.world1Script, { world: 1, sub: 1, demo: false }).m;
+      m.w16(0x8b71, rng);
+      ctx.gameRestart = null;
+      if (b.ptrs.length === 0) continue; // the captured row is a loading state
+      stepIterationAfterRng(m, ctx, null);
+    }
     if (ctx.gameRestart === 'demo' && o.demoScript) { // CONTINUE? timed out: the game starts over with the attract demo
       m = bootFromFiles(env, o.demoScript).m;
       ctx.gameRestart = null;
