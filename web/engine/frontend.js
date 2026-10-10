@@ -8,8 +8,8 @@
 //    loads, 5 x (box 11 frames on, 11 frames off), 8 palette-fade steps out. No key is read anywhere in it.
 //  * the LEVEL DISPATCH (1000:03FF): which map file (and script / extra bank) the next (world, sub-level) loads, when the
 //    next world starts (7EB, with its intro screen) and where the ending is (6E3, world 4 sub 10).
-// The title picture and the Bitmap Brothers intro are NOT in GAMEU.EXE: they belong to INTROU.EXE / KLOGOPOU.EXE, which the
-// launcher (pockets.exe) runs before game.exe (docs/launcher.md); nothing here models them.
+// The Konami/Renegade screen and the captions / close-ups / title are NOT in GAMEU.EXE: they belong to KLOGOPOU.EXE and INTROU.EXE, which the
+// launcher (pockets.exe) runs before game.exe (docs/launcher.md); web/engine/klogo.js and web/engine/intro.js model them.
 //
 // Evidence tags follow CLAUDE.md. The intro's composition, palette and timing are `[PROVEN]` against DOSBox video captures
 // of all four worlds (tools/front-capture, asserted by `npm run verify`); the dispatch is `[STATIC]` (read from the

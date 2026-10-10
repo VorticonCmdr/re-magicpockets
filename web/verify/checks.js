@@ -25,6 +25,10 @@ import { codeEntry } from '../engine/script-runner.js';
 import { prepare, runConformance, runFreeRun, runLiveConformance, runLiveFree, bootFromFiles, diffBootEntities, expandRows, midConsumeParticles, loadRow } from './conformance-lib.js';
 import { mapFixups } from '../engine/boot.js';
 import * as FE from '../engine/frontend.js';
+import * as KL from '../engine/klogo.js';
+import * as IN from '../engine/intro.js';
+import { lzhufDecode } from '../core/lzhuf.js';
+import { fnv64 } from '../core/hash.js';
 import { DsMemory } from '../engine/ds-memory.js';
 import { collectDraws, mirrorTile32, BANKS } from '../render/sprites.js';
 
@@ -772,8 +776,92 @@ export async function checkFrontend(ctx) {
   return results;
 }
 
+
+/**
+ * The screens that run BEFORE GAMEU (docs/launcher.md): KLOGOPOU.EXE's Konami/Renegade screen (web/engine/klogo.js) and INTROU.EXE's caption /
+ * close-up / title sequence (web/engine/intro.js) against one DOSBox video of `POCKETS` (tools/front-capture/prelude.capture.json.gz, made and
+ * read by import-prelude.mjs). Every video frame is identified by a 64-bit hash of its RGB bytes, so a match is pixel-exact.
+ */
+export async function checkPrelude(ctx) {
+  const { results, check, note } = makeChecker();
+  let exeK, exeI, pockets, ini;
+  try { [exeK, exeI, pockets, ini] = await Promise.all(['game/KLOGOPOU.EXE', 'game/INTROU.EXE', 'game/pockets.exe', 'game/pockets.ini'].map(async (f) => new Uint8Array(await ctx.fetchRaw(f)))); } catch { /* absent */ }
+  if (!exeK || !exeI) { note('KLOGOPOU.EXE / INTROU.EXE not found', 'game/KLOGOPOU.EXE and game/INTROU.EXE are missing; the pre-game screens were not checked'); return results; }
+  let cap = null;
+  try { cap = await loadGzJson(ctx, 'tools/front-capture/prelude.capture.json.gz'); } catch { /* absent */ }
+  const str = (b, o, n) => String.fromCharCode(...b.subarray(o, o + n));
+  // ---- the launcher: pockets.exe runs klogopok.exe /m<mode> /t5, then intro.exe, then game.exe; pockets.ini line 2 "Colour VGA" is mode 1
+  const find = (hay, text) => { const n = [...text].map((c) => c.charCodeAt(0)); return indexOfBytes(hay, n); };
+  check('pockets.exe names klogopok.exe (tail " /m1 /t5 0"), intro.exe and game.exe, the programs of the start-up chain', find(pockets, ' /m1 /t5 0') >= 0 && find(pockets, 'klogopok.exe\0') >= 0 && find(pockets, 'intro.exe\0') >= 0 && find(pockets, 'game.exe\0') >= 0, '');
+  check('pockets.exe maps the video driver letter C (pockets.ini "Colour VGA") to the mode digit 1: `mov byte [1C],0x31 / cmp al,0x43` (and E -> 2, T -> 4, M -> 0 around it)', find(pockets, '\xc6\x06\x1c\x00\x31\x3c\x43') >= 0 && str(ini, 0, 0) === '' && ini[ini.indexOf(10) + 1] === 0x43);
+  // ---- KLOGOPOU.EXE: the EJWLIB archive after the MZ image, LZHUF streams, the EGA picture
+  const imageEnd = ((exeK[4] | (exeK[5] << 8)) - 1) * 512 + (exeK[2] | (exeK[3] << 8));
+  check('KLOGOPOU.EXE: an EJWLIB archive of 3 entries follows the MZ image (offset 15228) and runs to the end of the file', imageEnd === 15228 && str(exeK, imageEnd + 4, 6) === 'EJWLIB' && exeK[imageEnd] === 3, `${exeK.length - imageEnd} bytes`);
+  const entries = KL.archiveEntries(exeK);
+  check('the archive entries (their 22-byte records are XORed with a running key) are LOGO1.HUF 6455 bytes at 76, LOGO2_4.HUF 4155 at 6531, LOGO3.HUF 3092 at 10686, tiling the archive exactly', entries.map((e) => `${e.name} ${e.size}@${e.offset}`).join() === 'LOGO1.HUF 6455@76,LOGO2_4.HUF 4155@6531,LOGO3.HUF 3092@10686' && entries[2].offset + entries[2].size === exeK.length - imageEnd);
+  const dec = lzhufDecode(exeK, imageEnd + entries[0].offset);
+  check('LZHUF decodes LOGO1.HUF to 32000 bytes (200 rows x 160) consuming exactly its 6455 stored bytes', dec.data.length === 32000 && dec.end - (imageEnd + entries[0].offset) === entries[0].size, `${dec.end - (imageEnd + entries[0].offset)} bytes read`);
+  const logo = KL.loadLogo(exeK);
+  check('the logo uses all 16 colours; its target DAC triples are the 48 bytes at DS:04A6 (6-bit values, max 63)', new Set(logo.pixels).size === 16 && logo.target.every((c) => c.every((v) => v <= 63)));
+  if (!cap) { note('prelude capture not found', 'tools/front-capture/prelude.capture.json.gz is missing; the DOSBox comparison was skipped'); return results; }
+  const states = KL.distinctStates(logo, 5);
+  check('the fade is 32 steps in and 32 out of distinct palettes (64 + the black start), the hold repeats the last: 50 x 5 ticks', states.length === 65 && KL.createLogo(logo, { seconds: 5 }).hold === 250 && cap.klogo.steps === 64);
+  // every video frame, reconstructed from the palette states and the per-colour tear rows, hashes to the video frame's hash
+  let bad = 0, firstBad = -1;
+  const fr = cap.klogo.frames;
+  fr.forEach(([a, t, h], f) => {
+    const split = Array.isArray(t) ? t : new Array(16).fill(t);
+    const got = fnv64(KL.frameRgb(logo.pixels, states[a], states[a + 1], split));
+    if (got !== h) { bad++; if (firstBad < 0) firstBad = f; }
+  });
+  check(`KLOGO: all ${fr.length} video frames (fade in, the 5 s hold, fade out) are reproduced pixel for pixel from the decoded picture, the DS:04A6 colours and the +2 / -2 fade states`, bad === 0 && fr.length === 440, bad ? `${bad} differ, first at frame ${firstBad}` : `${fr.length} frames`);
+  const torn = fr.filter(([, t]) => Array.isArray(t)).length;
+  note('KLOGO frames torn by the 50 Hz palette write', `${torn} of ${fr.length} frames show some colours already one step ahead (the beam position at the interrupt)`);
+  const inFrames = fr.filter(([a]) => a < 31).length, holdFrames = fr.filter(([a]) => a === 31).length, outFrames = fr.length - inFrames - holdFrames;
+  const ratio = 70.0865 / (1193182 / 0x5d2e); // video frames per timer tick
+  const near = (got, ticks) => Math.abs(got - ticks * ratio) <= 3;
+  check('KLOGO timing: 32 fade steps = 43 video frames, the 250-tick hold = 352, 32 steps out = 45; the timer runs at 1193182 / 0x5D2E = 50.02 Hz, so a tick is 1.401 video frames (within 3 frames)', near(inFrames, 31) && near(holdFrames, 251) && near(outFrames, 32), `${inFrames} / ${holdFrames} / ${outFrames}`);
+  // ---- INTROU.EXE
+  const w = (o) => exeI[IN.INTRO_DS + o] | (exeI[IN.INTRO_DS + o + 1] << 8);
+  const tbl = []; for (let i = 0; i < 41; i++) tbl.push(w(IN.TIMING_CURSOR.B + 2 * i));
+  check('INTROU.EXE script table of the Beeper driver (DS:BAF3): 448, 240, 165, 208, 148, 176, 40, 80, then 5, 5, 5, 5 ... ending 64, 80 after 41 words; wait AX arguments in the code are dead (CS:0F5C reads the cursor)', tbl.slice(0, 12).join() === '448,240,165,208,148,176,40,80,5,5,5,5' && tbl.slice(35).join() === '16,40,172,199,64,80' && w(IN.EXIT_CURSOR) === 80);
+  check('INTROU.EXE: `f57` (CS:0F57) loads its wait from [BAEF] (`mov di,[BAEF]; mov ax,[di]`), so `mov ax,imm` before it is dead', exeI[0x90 + 0xf57] === 0x57 && exeI[0x90 + 0xf58] === 0x8b && exeI[0x90 + 0xf59] === 0x3e && exeI[0x90 + 0xf5a] === 0xef && exeI[0x90 + 0xf5b] === 0xba && exeI[0x90 + 0xf5c] === 0x8b && exeI[0x90 + 0xf5d] === 0x05);
+  const pics = [];
+  for (let n = 0; n < 6; n++) pics.push(IN.decodePip200(rncUnpack(await ctx.fetchRaw(`data/intro${n}.pip`)).data));
+  const rowsUsed = Math.max(...Object.values(IN.BLITS).flat().filter((b) => b.slot === 5).map((b) => Math.floor(b.si / 40) + b.rows));
+  const intro5 = rncUnpack(await ctx.fetchRaw('data/intro5.pip')).data;
+  check('intro5.pip holds only 64 picture rows (10274 bytes): every blit that reads slot 5 stays inside them (the lowest row used is 48)', intro5.length === 10274 && Math.floor((intro5.length - 0x22) / 160) === 64 && rowsUsed === 48, `${rowsUsed} rows`);
+  const sim = IN.createIntro({ exe: exeI, pics }, { driver: 'B' });
+  const runs = [];
+  let lastKey = null, lastHash = null, ticks = 0;
+  for (;;) {
+    const o = IN.step(sim, null);
+    if (o.done) break;
+    const key = `${o.draw.rev}:${o.draw.bank}:${JSON.stringify(sim.patches)}`;
+    if (key !== lastKey) { lastKey = key; const h = fnv64(IN.frameRgbBytes(sim)); if (h !== lastHash) { runs.push([h, 1]); lastHash = h; } else runs[runs.length - 1][1]++; } else runs[runs.length - 1][1]++;
+    ticks++;
+  }
+  const ref = cap.intro.runs.slice(0, -1); // the last run is GAME's black loading screen
+  const refFromFirst = ref.slice(0, ref.length); // [black? no: the first run is the first lit screen]
+  const simFromFirst = runs.slice(1); // drop the 448-tick black wait
+  const hashesEqual = simFromFirst.length === refFromFirst.length && simFromFirst.every((r, i) => r[0] === refFromFirst[i][0]);
+  const firstDiff = simFromFirst.findIndex((r, i) => !refFromFirst[i] || r[0] !== refFromFirst[i][0]);
+  check(`INTROU: the ${refFromFirst.length} successive screens (captions, the four close-ups with their palette fades, the title and its twinkling stars, LOADING) are identical to the DOSBox video, hash for hash`, hashesEqual, hashesEqual ? `${simFromFirst.length} screens` : `first difference at screen ${firstDiff}`);
+  const maxDev = Math.max(...simFromFirst.map((r, i) => Math.abs(r[1] - refFromFirst[i][1])));
+  const simTotal = simFromFirst.reduce((n, r) => n + r[1], 0), refTotal = refFromFirst.reduce((n, r) => n + r[1], 0);
+  check('INTROU timing: every screen is held for the same number of vsyncs as video frames to within 3 (the capture runs about 0.3% longer than 70.09 Hz vsyncs), and the whole sequence from the first screen lasts 3954 ticks (the video: 3968 frames)', maxDev <= 3 && Math.abs(simTotal - refTotal) <= Math.ceil(refTotal * 0.005) + 1 && simTotal === 3954, `max ${maxDev}, ${simTotal} ticks vs ${refTotal} frames`);
+  check('INTROU consumes all 41 script words of the Beeper table in order and leaves with exit code 2 (pockets.exe then starts game.exe)', sim.consumed === 41 && sim.exitCode === 2);
+  note('INTROU load time before the first screen', `${cap.intro.blackBeforeFirstScreen} black video frames after the KLOGO fade-out = 448 ticks of the first script wait + about ${cap.intro.blackBeforeFirstScreen - 448} for loading the six pictures and depacking (disk time; a stand-in in the page)`);
+  // the abort path (a bound key pressed during a wait, CS:0F83): [STATIC], not captured
+  const sk = IN.createIntro({ exe: exeI, pics }, { driver: 'B' });
+  let n = 0; while (n < 700) { IN.step(sk, { key: n > 600 }); n++; if (sk.done) break; }
+  let m2 = 0; while (!sk.done && m2 < 2000) { IN.step(sk, { key: false }); m2++; }
+  note('INTROU abort (any bound key during a wait)', `[STATIC] CS:0F83 clears, draws LOADING, fades it in and waits the first script word (80 ticks), then exits with code 3; the model leaves after ${m2} more ticks with code ${sk.exitCode}`);
+  return results;
+}
+
 export async function runAllChecks(ctx) {
-  const groups = [checkRncCorpus, checkPap, checkCollisionTable, checkPalettes, checkSoundBanks, checkLevelScripts, checkDemoTape, checkFrameOrder, checkCaptureRng, checkSprites, checkSpriteWorlds, checkCodeEntry, checkFrontend, checkConformance];
+  const groups = [checkRncCorpus, checkPap, checkCollisionTable, checkPalettes, checkSoundBanks, checkLevelScripts, checkDemoTape, checkFrameOrder, checkCaptureRng, checkSprites, checkSpriteWorlds, checkCodeEntry, checkFrontend, checkPrelude, checkConformance];
   const results = [];
   for (const g of groups) results.push(...await g(ctx));
   return { results };

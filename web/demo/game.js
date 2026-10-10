@@ -1,5 +1,7 @@
 // `demo.html?game`: the playable page driven through the game's own flow instead of booting a level directly.
 //
+//   [?intro: the launcher's chain first: KLOGOPOU.EXE's Konami/Renegade screen (web/engine/klogo.js, 50 Hz timer) -> INTROU.EXE's captions,
+//   close-ups and MAGIC POCKETS title (web/engine/intro.js, 70 Hz; any movement key leaves it)]
 //   fresh start -> world 1 intro screen (web/engine/frontend.js, 70 Hz) -> world 1 sub-level 1 (16.7 Hz main loop)
 //   -> opcode 37 (next sub-level: map and script chosen by the 03FF dispatch) -> past the last sub-level of a world: the next
 //   world's intro screen -> ... -> world 4 sub-level 10: the ending picture (the ending sequence itself is not ported).
@@ -8,8 +10,10 @@
 //   (where the original exits to DOS) starts a new game.
 //
 // What is a stand-in here (docs/open-questions-history.md "front end"): the disk-load pause between the intro's fade-in and its blink
-// (`?hold=N` ticks, default 0), the ending screen's palette (world 1's) and missing ending sequence, and the title / Bitmap
-// Brothers intro (INTROU.EXE and KLOGOPOU.EXE, not GAMEU.EXE; not modelled).
+// (`?hold=N` ticks, default 0), the same for INTROU's loading before its first screen (`?load=N`, default 165 ticks = the 613 black video frames
+// minus its 448-tick first wait), the ending screen's palette (world 4's, [STATIC]) and missing ending sequence. The KLOGOPOU.EXE and
+// INTROU.EXE screens are `[PROVEN]` against DOSBox video (npm run verify, group checkPrelude); both programs are fetched from /game/ and `?intro`
+// falls back to the world intro when they are absent.
 
 'use strict';
 
@@ -27,6 +31,8 @@ import { VSYNC_HZ, DEFAULT_TICK_HZ } from '../engine/frame.js';
 import { buildSpriteAtlas, drawEntities, BANKS } from '../render/sprites.js';
 import { levelFilesFor, LEVEL_FILES } from '../engine/level-registry.js';
 import * as FE from '../engine/frontend.js';
+import * as KL from '../engine/klogo.js';
+import * as IN from '../engine/intro.js';
 
 const VIEW_W = 320, VIEW_H = 192;
 
@@ -38,7 +44,18 @@ export async function startGame({ exe, fetchBytes, canvas, setStatus }) {
   const ctx2d = canvas.getContext('2d');
   const params = new URLSearchParams(location.search);
   const hold = +(params.get('hold') || 0);
+  const loadTicks = +(params.get('load') || 165);
   const timing = FE.introTiming(exe);
+  // ?intro: KLOGOPOU.EXE and INTROU.EXE (the launcher's first two programs) with the six intro pictures
+  let prelude = null;
+  if (params.has('intro')) {
+    try {
+      const [exeK, exeI] = await Promise.all([fetchBytes('/game/KLOGOPOU.EXE'), fetchBytes('/game/INTROU.EXE')]);
+      const pics = [];
+      for (let n = 0; n < 6; n++) pics.push(IN.decodePip200(rncUnpack(await fetchBytes(`/data/intro${n}.pip`)).data));
+      prelude = { logo: KL.loadLogo(exeK), intro: { exe: exeI, pics } };
+    } catch (err) { setStatus(`?intro: KLOGOPOU.EXE / INTROU.EXE / intro*.pip not available (${err.message}); starting at the world intro`); }
+  }
 
   // ---- assets: everything the flow can reach is fetched up front (the files are small) ----
   const raw = new Map();
@@ -75,17 +92,19 @@ export async function startGame({ exe, fetchBytes, canvas, setStatus }) {
 
   // ---- the flow ----
   const g = {
-    mode: 'intro', fs: FE.newGame({ hold }), m: null, sim: { unported: new Set(), events: [] }, world: 1, map: 'pcmap.pap', ticks: 0, iterations: 0,
+    mode: prelude ? 'logo' : 'intro', fs: FE.newGame({ hold }), logo: prelude ? KL.createLogo(prelude.logo, { seconds: 5 }) : null, pre: null, loadLeft: 0, dac: null, m: null, sim: { unported: new Set(), events: [] }, world: 1, map: 'pcmap.pap', ticks: 0, iterations: 0,
     note: '', demo: false, drawn: null,
   };
   const held = new Set();
+  const down = new Set(); // every key currently down (KLOGOPOU ends its hold on any key)
   let scan = 0;
   addEventListener('keydown', (e) => {
+    down.add(e.code);
     if (KEYS[e.code]) { held.add(KEYS[e.code]); e.preventDefault(); }
     if (SCANCODES[e.code]) { scan = SCANCODES[e.code]; if (e.code.startsWith('Arrow') || e.code === 'Enter') e.preventDefault(); }
     if (g.mode === 'ending' && (e.code === 'Enter' || e.code === 'Space')) toIntro({ world: 1, reason: 'newGame' });
   });
-  addEventListener('keyup', (e) => { if (KEYS[e.code]) held.delete(KEYS[e.code]); });
+  addEventListener('keyup', (e) => { down.delete(e.code); if (KEYS[e.code]) held.delete(KEYS[e.code]); });
   const keyState = () => [...held].reduce((v, k) => v | INPUT_BITS[k], 0);
 
   /** The page flip's pan comes from the scroll remainder [8B69] of whatever was on screen before (`[PROVEN]` for the stale-value case). */
@@ -128,9 +147,20 @@ export async function startGame({ exe, fetchBytes, canvas, setStatus }) {
     if (g.demo && m.u8(0x8ba8) === 1 && m.u16(m.u16(0x8ba6) + 2) === 0xffff) toIntro({ world: 1, reason: 'newGame' });
   }
 
+  function afterLogo() { g.mode = 'loading'; g.loadLeft = loadTicks; g.pre = IN.createIntro(prelude.intro, { driver: 'B' }); }
+  function afterPrelude() { g.mode = 'intro'; g.fs = FE.newGame({ hold }); g.drawn = null; }
+
   function tick() {
     g.ticks++;
-    if (g.mode === 'intro') {
+    if (g.mode === 'logo') {
+      const out = KL.step(g.logo, { key: down.size > 0 });
+      if (out.done) afterLogo(); else g.dac = out.draw.dac;
+    } else if (g.mode === 'loading') {
+      if (--g.loadLeft <= 0) g.mode = 'prelude';
+    } else if (g.mode === 'prelude') {
+      const out = IN.step(g.pre, { key: held.size > 0 });
+      if (out.done) afterPrelude();
+    } else if (g.mode === 'intro') {
       const out = FE.step(g.fs, timing);
       if (out.draw) g.drawn = out.draw;
       if (out.boot) afterIntro(out.boot);
@@ -160,13 +190,33 @@ export async function startGame({ exe, fetchBytes, canvas, setStatus }) {
     ctx2d.drawImage(backgroundFor(g.world, g.map), ox, oy);
     drawEntities(ctx2d, m, atlasFor(g.world));
   }
+  const setHeight = (h) => { if (canvas.height !== h) canvas.height = h; };
+  let preImg = null;
   function draw() {
+    if (g.mode === 'logo' || g.mode === 'loading' || g.mode === 'prelude') {
+      setHeight(200);
+      if (!preImg || preImg.height !== 200) preImg = ctx2d.createImageData(320, 200);
+      let indices = null, pal = null, label = '';
+      if (g.mode === 'logo') {
+        indices = prelude.logo.pixels; pal = g.dac ? KL.toRgb(g.dac) : null;
+        label = `KLOGOPOU.EXE (Konami / Renegade): tick ${g.logo.t} of ${64 + g.logo.hold}, 50.02 Hz timer; any key skips the hold`;
+      } else if (g.mode === 'prelude') {
+        const f = IN.frameOf(g.pre); indices = f.indices; pal = f.palette;
+        label = `INTROU.EXE: tick ${g.pre.t}, script words ${g.pre.consumed}, palette bank 0x${g.pre.bank.toString(16)}; a movement key leaves`;
+      } else label = 'loading INTROU.EXE (disk time stand-in, ?load=N)';
+      const d = preImg.data;
+      for (let i = 0; i < 64000; i++) { const c = pal ? pal[indices[i]] : [0, 0, 0]; d[i * 4] = c[0]; d[i * 4 + 1] = c[1]; d[i * 4 + 2] = c[2]; d[i * 4 + 3] = 255; }
+      ctx2d.putImageData(preImg, 0, 0);
+      setStatus(label);
+      return;
+    }
+    setHeight(VIEW_H);
     if (g.mode === 'intro') {
       drawIntro();
       const dr = g.drawn;
       setStatus(`world ${g.fs.world} intro: ${dr ? dr.phase : 'start'}, palette bank 0x${dr ? dr.bank.toString(16) : '--'}, tick ${g.fs.t}  (${g.fs.reason}; the original reads no key here)`);
     } else if (g.mode === 'ending') {
-      paint(endPic.slice(0, VIEW_W * VIEW_H), WORLD_PALETTES.world1);
+      paint(endPic.slice(0, VIEW_W * VIEW_H), WORLD_PALETTES.world4); // 06E3 sets no palette: the screen inherits world 4's (`[STATIC]`, docs/open-questions-history.md 26)
       setStatus(`${g.note}: Enter starts a new game`);
     } else {
       drawPlay();
@@ -181,7 +231,7 @@ export async function startGame({ exe, fetchBytes, canvas, setStatus }) {
     if (!running) return;
     acc += Math.min(now - last, 250); last = now;
     for (;;) {
-      const ms = 1000 / (g.mode === 'intro' ? VSYNC_HZ : DEFAULT_TICK_HZ);
+      const ms = 1000 / (g.mode === 'logo' ? KL.KLOGO_HZ : (g.mode === 'intro' || g.mode === 'prelude' || g.mode === 'loading') ? VSYNC_HZ : DEFAULT_TICK_HZ);
       if (acc < ms) break;
       acc -= ms; tick();
     }

@@ -61,7 +61,7 @@ trace is in its own plate comment):
    `Config_ParseCommandLineSwitches`) are driven directly by `pockets.ini`'s video-driver
    line. `/t5` -> `5*50` frames, matching `App_LoadAndDisplayLogoForMode`'s duration
    multiplier there.
-5. **EXECs `intro.exe`** (no arguments) — the Bitmap Brothers logo/animation sequence.
+5. **EXECs `intro.exe`** (no arguments) — the captions / close-ups / MAGIC POCKETS title sequence (see "What the two programs show" below). ⚠️ `[PROVEN]` 2026-10-10 by DOSBox video: `klogopok.exe` shows the Konami / Renegade copyright screen, NOT a Bitmap Brothers logo (older wording corrected); "A BITMAP BROTHERS GAME" is a caption inside `intro.exe`.
 6. **EXECs `game.exe`** in a loop: checks the exit code via `INT21 AH=4Dh` after each run,
    and if non-zero, patches the code into the next command-tail (as an ASCII digit) and
    EXECs `game.exe` again rather than exiting. A zero exit code breaks the loop.
@@ -115,3 +115,29 @@ having been retired). Not independently confirmed by tracing an actual `game.exe
 live (would require reproducing the `p`→`Ctrl+C` sequence in DOSBox and confirming `pockets.exe`'s
 loop reads code `0` and exits cleanly, which the static evidence already makes the only plausible
 outcome) — a small, low-priority follow-up for whoever wants full closure.
+
+## What the two programs show (`[PROVEN]` against DOSBox video unless tagged)
+
+Ported as `web/engine/klogo.js` and `web/engine/intro.js`; `npm run verify` group `checkPrelude` compares every video frame by hash with
+`tools/front-capture/prelude.capture.json.gz` (made by `tools/front-capture/import-prelude.mjs`; procedure in its header). In the page: `demo.html?game&intro`.
+
+**`klogopok.exe /m1 /t5 0`** (`KLOGOPOU.EXE`, MZ header 0x30 bytes). Mode digit 1 = video driver `C`. The picture is the resource `LOGO1.HUF` of an `EJWLIB`
+archive appended to the EXE (offset 15228 = MZ image size; 10-byte header = entry count, key word, "EJWLIB"; 22-byte entries XORed with a running key,
+`key += key >> 8` per byte, the key continuing across entries: `LOGO1.HUF` 6455 bytes at 76, `LOGO2_4.HUF` 4155 at 6531, `LOGO3.HUF` 3092 at 10686 for the other video
+modes). Streams are LZHUF (`web/core/lzhuf.js`; ring buffer 4096 prefilled 0x20, start 4036, match length `c - 253`, 4-byte size first); LOGO1 unpacks to
+32000 bytes = 200 rows x (4 planes x 40 bytes), copied to VRAM in 8 interlaced passes. Target colours: 48 six-bit DAC bytes at DS:04A6 (DS = file 0x30 + 0x3660).
+Fade in = 32 steps of +2 per component (clamped to the target), hold 50 x t ticks (any key ends it), fade out 32 steps of -2. The clock is the PIT-0 interrupt
+at divisor 0x5D2E = 50.02 Hz, NOT vsync, so a tick is 1.401 video frames, and a palette write lands mid-frame: 47 of 440 video frames are torn (rows above the beam show
+the previous step). 43 frames in, 352 hold, 45 out.
+
+**`intro.exe`** (`INTROU.EXE`, MZ header 0x90, DS = file 0x90 + 0x2FD0, mode `C` = EGA 0x0D, page 352 px wide). Pictures `intro0..5.pip` are Degas PI1 (see
+`formats/pip.md`), 320 x 200, uploaded to off-screen VRAM slots A400..AE00; the page is composed with latch-copy blits (`13E5`). Colours come only from a table of
+16-word banks at DS:BC9E (32 bytes each, banks 0x00..0x3B real); bank AL is applied by `0571`. Everything that moves is a bank switch plus a few blits:
+`064A` banks 0 -> 0x11 -> 7 at 1 vsync each (the white hold of 8 frames = banks 0xE..0x11 and back), `06A7` / `07C8` fades at 2 vsyncs per bank, `0596` the title's star twinkle
+(banks 0x22..0x26, 5 vsyncs each, script word - 1 steps), `086C` 16 invisible vsyncs. **Every wait (`0F57` and `0596`) ignores the AX the caller passes** and reads the next word of a
+per-sound-driver script at DS:[BAEF] (Beeper `B`: BAF3, 41 words 448, 240, 165, 208, 148, 176, 40, 80, 5 x 4, ...; A BB45, R BBE9, S BB97, T BC3B; the exit path resets to BAF1 = 80). Order: black wait, RENEGADE,
+PRESENTS, A BITMAP BROTHERS GAME (captions from `intro5.pip`, 64 rows only), four 96 x 96 close-ups (shoe, belly, jacket, face: `intro2`, `intro3`, `intro4`, `intro1`, six frames
+each), the title (`intro0`) fading in and twinkling for 198 x 5 ticks, then LOADING (exit code 2; the abort path exits with 3). 431 successive screens equal the video; durations equal vsync counts
+(the capture runs 0.3% long). Between the KLOGO fade-out and the first intro screen DOSBox shows 613 black frames = the 448-tick first wait + about 165 ticks of loading (disk time, a stand-in).
+`[STATIC]` (not captured): any bound key (arrow, fire; `1FF3` ORs the ISR's key masks) during an `0F57` wait runs `0F83` (clear, LOADING, 80 ticks) and exits with code 3; the title twinkle (`0596`) and the
+fades do not poll keys.

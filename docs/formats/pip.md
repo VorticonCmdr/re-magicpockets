@@ -83,3 +83,10 @@ uses `PLANE_TO_INDEX_BIT = [0,1,2,3]` (identity) for both `.pak` and `.pip`.
   offset.
 - Only `new.pip` and `endscrn.pip` are referenced by `GAMEU.EXE` — the `intro0-5.pip` files
   belong to the separate `intro.exe`, not analyzed in this project (out of scope so far).
+
+## Update 2026-10-10: the layout is Degas Elite PI1; INTROU's pictures are 200 rows
+
+`[PROVEN]` by `intro0..4.pip` decoding to the pictures in the DOSBox video: a `.pip` is a Degas PI1 file: a 2-byte resolution word, 16 big-endian ST palette words (0x0RGB, 3 bits per
+component), 32000 bytes of bitmap (200 rows x 20 groups x 4 plane words, plane k = index bit k), and 32 bytes of colour-cycle data (2 + 32 + 32000 + 32 = 32066; the "1312 trailing bytes" above are
+8 rows plus 32). GAMEU draws 192 rows of `new.pip`/`endscrn.pip`; INTROU uploads all 200 (`fa4`, 4000 groups) and never uses the embedded palette (its colours are the banks at DS:BC9E).
+`intro5.pip` (the caption font) is only 10274 bytes = 64 rows. `decodePip200` in `web/engine/intro.js`.
