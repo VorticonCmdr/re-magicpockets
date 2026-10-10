@@ -257,6 +257,34 @@ function skateMove(m, si, bx, ax) {
   advanceAnim(m, bx, q); // 3178 with SI = the hero
 }
 
+/** 1000:D7FA (target 0x21): the hero rides the class-0x21 cart; the cart sits 0x9a (or 0x86 facing right) from the left. [STATIC] */
+function rideCart(m, si, bx) {
+  // D81F
+  const key = (m.u8(0x8b5e) | m.u16(si + 0x24)) & 0xffff;
+  const cl = ((key ^ 0xff) & m.u8(0x8b67)) & 0xff;
+  if (cl & 4) {
+    if ((m.u16(bx + 0x24) & 4) === 0) { m.w16(bx + 0x14, 4); m.w16(si + 6, m.u16(si + 6) + 4); }
+  } else if (cl & 8) {
+    if ((m.u16(bx + 0x24) & 8) === 0) { m.w16(bx + 0x14, 8); m.w16(si + 6, m.u16(si + 6) - 4); }
+  }
+  const cart = () => findByClass(m, 0x21);
+  if (cl & 2) { // D885
+    if ((m.u16(bx + 0x24) & 2) === 0) { m.w16(si + 8, m.u16(si + 8) - 4); }
+    else {
+      m.w8(0x8b98, 0); m.w16(bx + 0xa, 0x40);
+      const e = cart(); m.w8(e + 1, 0x9c); m.w16(e + 0xc, 0xd0c0); // D8AD returns into D7FD
+    }
+  } else if (m.u8(bx + 1) === 0 && m.u8(si + 1) === 0) { // D849
+    m.w16(bx + 0xa, m.u16(bx + 0xa) === 0x5e ? 0x59 : 0x5e);
+    if (m.s16(si + 8) < -16 && (m.u16(bx + 0x24) & 1) === 0) {
+      m.w16(si + 8, m.u16(si + 8) + 4);
+      if (cl & 1) m.w16(si + 8, m.u16(si + 8) + 4);
+    }
+  }
+  const e = cart(); // D7FD
+  m.w16(e + 6, m.u16(bx + 0x14) === 4 ? 0x86 : 0x9a);
+}
+
 /** 1000:D9E6 (target 0x15): the hero on skates. `si` is the world entity, `bx` the hero. */
 function skate(m, si, bx, ctx) {
   const key = (m.u8(0x8b5e) | m.u16(si + 0x24) | m.u16(bx + 0x24)) & 0xffff;
@@ -366,7 +394,8 @@ function handleCollisionOrStateDispatch(m, si, ctx) {
   const t = m.u8(G.TARGET);
   if (t === 1) { airSteer(m, si, bx); return; }
   if (t === 0x15) { skate(m, si, bx, ctx); return; } // D9E6
-  if (t === 0x21 || t === 0x43) { ctx.unported.add(`3CE8 target ${t}`); return; }
+  if (t === 0x21) { rideCart(m, si, bx); return; } // D7FA
+  if (t === 0x43) { ctx.unported.add(`3CE8 target ${t}`); return; }
   if (t === 0x41) { floatControls(m, si, bx, ctx); return; } // D67D
   if (t === 3 || t === 0xff) return;
   if (m.u8(bx + 1) === 0x63) return;
