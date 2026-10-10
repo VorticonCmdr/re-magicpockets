@@ -471,6 +471,30 @@ function carriedItem(m, si, bx, ctx) {
   m.w8(0x8c04, 0x1d); stepX(2); // D268
 }
 
+/**
+ * 1000:7084 (animation set 5): a hovering enemy that is above the hero, facing him and within range dives (class 0x12
+ * state 0x96, 0x54 state 0xE3, 0x5D state 0xF0). Returns true when the decision is finished.
+ */
+function diveAtHero(m, si, ctx) {
+  const hero = findByClass(m, 3);
+  const flags = hero === 0 ? 3 : targetDistance(m, si, hero);
+  m.w16(0x8c27, flags);
+  if ((flags & 2) === 0 || (flags & m.u16(si + 0x14)) === 0) return false;
+  if (m.s16(0x8c1d) > ((m.u8(si + 0x37) << 1) & 0xff)) return false;
+  if (m.s16(0x8c1b) > 2) return false;
+  const scan = tileScan(m, 'right', m.u16(0x8bd7), 1, m.u16(0x8c1b));
+  if (scan.dh !== 0) return false;
+  if (m.u8(0x8b96) !== 0) return false;
+  rollRandom(m, si, ctx);
+  if (m.u16(0x8be5) === 0) return false;
+  const cls = m.u16(si + 2);
+  const start = (state, script) => { m.w8(si + 1, state); m.w16(si + 0xc, script); m.w8(si + 0x26, 0xff); };
+  if (cls === 0x12) start(0x96, 0xd059);
+  else if (cls === 0x54) start(0xe3, 0xd7cd);
+  else if (cls === 0x5d) start(0xf0, 0xd89f);
+  return true;
+}
+
 /** 1000:6EC5 (world 1, class 0x12): the hovering enemy rolls to dive (state 0x36) or to bob (0xB/0xD). */
 function thinkClass12(m, si, ctx) {
   const frameTarget = 0x86;
@@ -484,7 +508,8 @@ function thinkClass12(m, si, ctx) {
   }
   if (m.u8(si + 0x40) === 0) { // 7014
     const set = m.u8(si + 0x39);
-    if (set === 5 || set === 0xa || set === 0xf) { ctx.unported.add(`think class 0x12 set ${set}`); return; }
+    if (set === 0xa || set === 0xf) { ctx.unported.add(`think class 0x12 set ${set}`); return; }
+    if (set === 5 && diveAtHero(m, si, ctx)) return; // 7084
     if (m.u16(si + 0xa) !== frameTarget) return;
     rollRandom(m, si, ctx);
     if (m.u16(0x8be5) !== 0) {
