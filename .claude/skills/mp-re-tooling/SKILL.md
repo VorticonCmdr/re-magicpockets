@@ -1,14 +1,25 @@
 ---
 name: mp-re-tooling
-description: Usage notes and gotchas for the Ghidra MCP, DOSBox MCP and the headless verify suite used to reverse-engineer Magic Pockets (GAMEU.EXE) and check the web port. Use before or while disassembling, live-tracing in DOSBox, or running `npm run verify`.
+description: Tooling gotchas for the Magic Pockets port - DOSBox bridge recipes (restart, launch, warp, video + memory capture), the live-capture pipeline, disassembly, verify. Read before touching DOSBox or adding a capture.
 ---
 
-# Magic Pockets reverse-engineering tooling
+# Magic Pockets RE tooling (all `[PROVEN]` unless noted, 2026-10-10)
 
-- **Ghidra MCP** (`mcp__ghidra__*`). The project is `ghidra/magicpockets.gpr` (gitignored, machine-local). Several programs may be open: always pass `program=` explicitly. 16-bit real-mode code reaches strings and tables through DS-relative immediates, so `get_xrefs_to` on a data address usually returns nothing: use `search_instructions` with the offset as an operand pattern. Some code (e.g. the 4-instruction trampoline pattern) sits in analysis gaps that `get_function_callers` cannot see. Ghidra scripting is disabled, so `symbols/*.json` is exported by hand.
-- **DOSBox MCP** (`mcp__dosbox__*`), full recipe in `docs/dosbox-debugging.md`. Start it with `bridge_start` (reported working by the maintainer; an earlier session saw it time out, so if it regresses fall back to asking the user to launch DOSBox-X by hand with the project mounted as `C:` and then `bridge_connect`). Check `dosbox_status` shows the debugger capability. Code addresses need `debug_map_set_base`; globals live at `live_DS*16 + offset` (GAMEU's PSP landed at segment `0x1E5`, code at `0x1F5` in the recorded session). Breakpoints only take effect after a pause followed by `debug_continue`, and back-to-back pause/continue can freeze the CPU. Lua scripting (`script_run`) was reported broken: re-test before building a capture harness on it. Port 8386 may be taken by something else: check `lsof -iTCP:8386` before assuming a local fault.
-- **Layout.** Original files: `game/` (executables, `pockets.ini`) and `data/` (the `.pak/.pap/.pip/.pin` assets, RNC-packed). Both are gitignored. `GAMEU.EXE` (450130 bytes) is the unpacked copy of `game.exe`.
-- **The verify suite.** `npm run verify` runs `tools/lint-checks.mjs` (rejects tautological checks) then `tools/verify-node.mjs`, which prints its own totals. Quote that output; do not copy counts from docs. Checks live in `web/verify/checks.js`: each takes `{fetchRaw, listData}` and must compare against a literal or a value read from the shipped bytes. A row made with `note()` is a measurement, not an assertion.
-- **Evidence tags.** `[PROVEN]` executed or live-traced, `[STATIC]` read from the binary, `[WF]` unreviewed subagent output, `[UNKNOWN]` not established (register as `UNKNOWN_<id>` in `docs/open-questions-history.md`).
-- **Legacy pipeline.** `npm run extract` (`tools/build-all.js`) regenerates `build/` for `level.html` and the MIDI player only; the playable port never reads `build/`.
-- **CodeGraph** is not initialized for this project (no `.codegraph/`).
+## DOSBox (mcp__dosbox__*)
+- Restart: `bridge_stop`, `bridge_start`, `drive_mount C /Users/valentin.pletzer/Downloads/dosgames/magicpockets/build/dosbox-c`, then type `C:\n`, then `G`, then `AMEU\n` (one `input_type` call drops letters). GAMEU exits to DOS when the attract tape ends or the level-end screen is confirmed: after that a second launch in the same emulator crashes, so restart again.
+- Scripts run on the emulation thread: while paused they do not run. Lua budget is 1,000,000 instructions per script; a plain frame loop costs ~25/frame, a logged row ~40 (use `fmt(('%02x'):rep(n), byte(mr(DS, off, n), 1, -1))`). `script_status` shows `instruction limit exceeded` when it runs out. `dosbox.log` lines land in the debug log on disk (`script_log` or the `logs/` path in `script_status`), the only way to get bulk memory into files (`mem_read` output exists only in the chat).
+- DS segment is 0x5FD8 live (linear 0x5FD80), CS 0x1F5. Key names are `KBD_*`; hold keys >= 6 frames; F2 + four digits within ~20 iterations warps (codes in docs/dosbox-debugging.md). Lua `mem_write` takes a string (`string.char(...)`).
+- Frame-exact comparison recipe: `video_capture_start`, run a Lua script that logs `ROW ... G/L/B` hex dumps every few frames, `video_capture_stop`, `ffmpeg -i video000N.avi -pix_fmt rgb24 -f rawvideo v.rgb` (320x200), then `node tools/sprite-video-compare.mjs <world> dump.log v.rgb`. The video frame index of a dump is unknown, so the tool searches all frames for the best match.
+- Execute breakpoints with a memory `condition` work (`debug_breakpoint_add`; pause first, they arm on `debug_continue`; `once:true` for one-shots). A paused emulator shows the previous frame on screen.
+- `bridge_stop` was once denied by the permission classifier; the user later approved restarts in chat, then it worked.
+
+## Live capture pipeline
+- `tools/attract-capture/capture-live-chain.lua` (random driven play + level-code warps; set `SEED`, `PER`, `CODES`, `GOD=false` for non-god) -> debug log -> `node tools/attract-capture/import-entities.mjs log out.json` -> `gzip -9` into `tools/attract-capture/liveNN-*.capture.json.gz` -> add a segment `[sub, fromRow, toRow, minMatched, loadStart]` to the ratchet list in `web/verify/checks.js` (`loadStart` true starts from the first captured row instead of a boot from files).
+- A warp that does not take (wrong timing) leaves the hero in the old level: the segment keys printed by the free-run tool show which warps happened. After GAMEU's own end-of-demo the capture rows are not a level.
+
+## Static work
+- `build/analysis/dis.sh <hex CS offset> <lines>` (adds 0x340 itself); DS offset 0 = file 0x5E170. Transliterate, keep the `1000:` address in a comment, send unread branches to `ctx.unported`.
+- `node $SCRATCH/fuzz.mjs` style engine-only fuzzing finds reachable unported branches; the ports it leads to are `[STATIC]` until a capture reaches them.
+
+## Verify
+- `npm run verify` prints its own totals; quote them, never copy a count from a doc. Checks compare against literals or shipped bytes (lint rejects tautologies). Commit only explicit file names; the working tree holds the user's uncommitted edits.
