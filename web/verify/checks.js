@@ -597,11 +597,16 @@ export async function checkConformance(ctx) {
         { row: 701, addr: 0x8b98, bytes: [0] }, { row: 701, addr: 0x8c04, bytes: [0x1b] }, { row: 701, addr: 0x8c0a, bytes: [2] },
         { row: 821, addr: 0x8b96, bytes: [0x30] },
       ]],
+      // 37 live retypes: every 40 rows the capture script rewrote the class word of one on-screen enemy to another entity type (0x10..0x5F), so the class
+      // dispatch of the AI/touch/shot code ran on classes the level never spawns there (god mode, the hurt timer pinned). 1498 of 1500 rows reproduce.
+      ['live36-retype', [[1, 0, 1499, 1490, true]], 1, false, false, 'live36-retype.pokes.json'],
       ['live20-w1c', [[5, 52, 726, 600], [3, 740, 1414, 650], [4, 1427, 2011, 570]], 1, false], // sub-level 5 from a clean warp: the side handler's DI carries over to the ceiling handler
     ]) {
       let cap = null;
       try { cap = await loadGzJson(ctx, `tools/attract-capture/${file}.capture.json.gz`); } catch { /* absent */ }
       if (!cap) continue;
+      let pokeList = pokes;
+      if (typeof pokes === 'string') { try { pokeList = JSON.parse(new TextDecoder().decode(await ctx.fetchRaw(`tools/attract-capture/${pokes}`))); } catch { continue; } }
       const exc = expandRows(cap.rows);
       const wc = (r, o) => { const b = Uint8Array.from(r.g.match(/../g), (h) => parseInt(h, 16)); return b[o - 0x8b50] | (b[o - 0x8b50 + 1] << 8); };
       const seg4 = async (sub, from, to, loadStart) => {
@@ -620,7 +625,7 @@ export async function checkConformance(ctx) {
           b.m.w16(0x8b71, wc(exc[from], 0x8b71)); b.m.w16(0x8b6b, wc(exc[from], 0x8b6b));
           start = b.m;
         }
-        return runLiveFree(e, cap.rows, { start, from, to, entitiesOnly: true, checkRng: true, force: noGod ? [] : [[0x8b96, 50]], pinHurtTimer: pinHurt, pokes, levelFiles: () => ({ script, map: e.map }) });
+        return runLiveFree(e, cap.rows, { start, from, to, entitiesOnly: true, checkRng: true, force: noGod ? [] : [[0x8b96, 50]], pinHurtTimer: pinHurt, pokes: pokeList, levelFiles: () => ({ script, map: e.map }) });
       };
       for (const [sub, from, to, min, loadStart] of segs) {
         const ok = exc[from] && wc(exc[from], 0x8b89) === world && wc(exc[from], 0x8b8b) === sub;
