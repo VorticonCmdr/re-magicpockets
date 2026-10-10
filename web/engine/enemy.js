@@ -14,10 +14,18 @@ import { interactions } from './entity-behavior.js';
 
 const AI_TABLES = { floor: 0xec68, wall: 0xec7c, ledge: 0xec90 };
 
-function moveHorizontalByFlags(m, si, ax) { // 1000:D5E2
+export function moveHorizontalByFlags(m, si, ax) { // 1000:D5E2
   const dx = m.u16(si + 0x24);
   if (m.u16(si + 0x14) === 4) { if ((dx & 4) === 0) m.w16(si + 6, m.u16(si + 6) - ax); return; }
   if ((dx & 8) === 0) m.w16(si + 6, m.u16(si + 6) + ax);
+}
+
+/** 1000:319A: like 3178, but a shape that faces left runs its frames backwards. */
+export function advanceAnimDir(m, si, al) {
+  if (al > m.s8(si + 0x3b)) { m.w8(si + 0x3b, m.u8(si + 0x3b) + 1); return; }
+  m.w8(si + 0x3b, 0);
+  if (m.u16(si + 0x14) === 8) m.w16(si + 0xa, m.u16(si + 0xa) === m.u16(si + 0x12) ? m.u16(si + 0x10) : m.u16(si + 0xa) + 1);
+  else m.w16(si + 0xa, m.u16(si + 0xa) === m.u16(si + 0x10) ? m.u16(si + 0x12) : m.u16(si + 0xa) - 1);
 }
 
 function advanceAnim(m, si, al) { // 1000:3178
@@ -314,8 +322,13 @@ function thinkByWorld(m, si, ctx) {
     return;
   }
   if (w === 3 && cls === 0x4f) { thinkClass4f(m, si, ctx); return; } // 6190
-  const handled = { 3: [0x54], 4: [0x57, 0x58, 0x5a, 0x59, 0x5d] }[w];
-  if (handled && handled.includes(cls)) ctx.unported.add(`think world ${w} class 0x${cls.toString(16)}`);
+  if (w === 3 && cls === 0x54) { thinkHover(m, si, ctx, 0x2b); return; } // 6FFC
+  if (w === 4) {
+    if (cls === 0x5d) { thinkHover(m, si, ctx, 0x2a); return; } // 7008
+    if (cls === 0x57 || cls === 0x58 || cls === 0x59 || cls === 0x5a) { // 62A9 / 62BA / 62CB / 62DC
+      if (m.u8(si + 1) === 0 && m.u16(0x8bc7) === 0) aiDecide(m, si, ctx);
+    }
+  }
 }
 
 /** 1000:6190 (world 3, class 0x4F): rolls to start a dive (state 0xDC), or (set 5) dives at the hero when four cells in a row ahead are clear. */
@@ -461,8 +474,8 @@ export function behaviorKind2(m, si, ctx) {
   if (cls === 0x51) { if (m.u8(si + 0x39) === 0x41) return; ceac(); return; }
   if (cls === 0x2c || cls === 0x5a) { ce87(); return; }
   if (cls === 0x13 || cls === 0x14) { ce93(); return; }
-  if (cls === 0x57) { if (m.u8(si + 0x40) === 0x43) { ceac(); return; } }
-  else if (cls !== 0x4a) {
+  if (cls === 0x57 && m.u8(si + 0x40) === 0x43) { ceac(); return; } // CEBC
+  if (cls !== 0x4a) {
     // default classes (CE73): set 5 and set 0xf use the plain step, set 0x15 does nothing
     if (m.u8(si + 0x39) === 5) { ce87(); return; }
   }
@@ -686,7 +699,18 @@ function thinkClass12(m, si, ctx) {
       return;
     }
   }
-  if (m.u8(si + 0x40) === 0) { // 7014
+  hoverTail(m, si, ctx, frameTarget);
+}
+
+/** 1000:6FFC / 7008 (world 3 class 0x54 / world 4 class 0x5D): the hover think starts directly at 7014 with its own target frame. */
+function thinkHover(m, si, ctx, frameTarget) {
+  m.w16(0x8c25, frameTarget);
+  hoverTail(m, si, ctx, frameTarget);
+}
+
+/** 1000:7014: the bob / dive decision shared by the hovering enemies (see thinkClass12). */
+function hoverTail(m, si, ctx, frameTarget) {
+  if (m.u8(si + 0x40) === 0) {
     const set = m.u8(si + 0x39);
     if (set === 0xa || set === 0xf) { ctx.unported.add(`think class 0x12 set ${set}`); return; }
     if (set === 5 && diveAtHero(m, si, ctx)) return; // 7084
@@ -732,7 +756,10 @@ function tileScan(m, kind, di, dl, cx) {
 function worldJumpState(m, si, world) {
   const cls = m.u16(si + 2);
   const table = world === 2 ? { 0x4b: [0xcb, 0xd4e8], 0x4a: [0xce, 0xd52c], 0x4c: [0xd0, 0xd54c] }
-    : world === 3 ? { 0x50: [0xda, 0xd633], 0x51: [0xe0, 0xd78b] } : null;
+    : world === 3 ? { 0x50: [0xda, 0xd633], 0x51: [0xe0, 0xd78b] }
+    : world === 4 ? { // 6DF7 (0x57: state 0x43 of the field at +0x40 picks the other pair), 6E7D, 6EA2, 6E97
+      0x57: m.u8(si + 0x40) === 0x43 ? [0x7d, 0xcd4b] : [0xe9, 0xd817], 0x58: [0xec, 0xd84a], 0x59: [0xe6, 0xd7f9], 0x5a: [0xfa, 0xd93b],
+    } : null;
   if (!table) return false;
   if (table[cls]) { m.w8(si + 1, table[cls][0]); m.w16(si + 0xc, table[cls][1]); }
   return true;

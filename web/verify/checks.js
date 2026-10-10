@@ -525,6 +525,31 @@ export async function checkConformance(ctx) {
       const f3c = await seg3(8, a8, a8 + 70);
       check('a free run with the generator checked reproduces the first 70 rows of the world 3 sea level (call #13 has carry 0 there)', a8 > 0 && f3c.firstBad === null && f3c.matched >= 65, `${f3c.matched} rows from row ${a8}, first mismatch ${f3c.firstBad ?? 'none'}`);
     }
+    // World 4 (one session, warps 8498 -> sub 1, then sub 2 and sub 5 by the level codes): three full segments, the generator checked every row.
+    // Rows polled between a roll and call #13 (call #13 has carry 0 in world 4) are recognised by the generator alone (see runLiveFree).
+    let live13 = null;
+    try { live13 = await loadGzJson(ctx, 'tools/attract-capture/live13-w4.capture.json.gz'); } catch { /* absent */ }
+    if (live13) {
+      const ex13 = expandRows(live13.rows);
+      const w13 = (r, o) => { const b = Uint8Array.from(r.g.match(/../g), (h) => parseInt(h, 16)); return b[o - 0x8b50] | (b[o - 0x8b50 + 1] << 8); };
+      const seg4 = async (sub, from, to) => {
+        const files = levelFilesFor(4, sub);
+        const script = rncUnpack(await ctx.fetchRaw('data/' + files.pin)).data;
+        const g = rncUnpack(await ctx.fetchRaw('data/' + files.pap)).data;
+        const mp = new Uint8Array(128 * 128);
+        for (let r = 0; r < 128; r++) for (let c = 0; c < 128; c++) mp[c * 128 + r] = g[r * 128 + c];
+        const e = { ...env, map: mp };
+        const b = bootFromFiles(e, script, { world: 4, sub, demo: false });
+        stepIterationAfterRng(b.m, { unported: new Set(), events: [] }, null);
+        b.m.w16(0x8b71, w13(ex13[from], 0x8b71)); b.m.w16(0x8b6b, w13(ex13[from], 0x8b6b));
+        return runLiveFree(e, live13.rows, { start: b.m, from, to, entitiesOnly: true, checkRng: true, force: [[0x8b96, 50]], levelFiles: () => ({ script, map: e.map }) });
+      };
+      for (const [sub, from, to, min] of [[1, 52, 726, 660], [2, 739, 1413, 660], [5, 1426, 2100, 640]]) {
+        const ok = ex13[from] && w13(ex13[from], 0x8b89) === 4 && w13(ex13[from], 0x8b8b) === sub;
+        const f = ok ? await seg4(sub, from, to) : { matched: 0, firstBad: 'start row is not this level' };
+        check(`a free run with the generator checked reproduces world 4 sub-level ${sub} from a clean start until the capture script types the next code`, ok && f.firstBad === null && f.matched >= min, `${f.matched} rows from row ${from}, first mismatch ${f.firstBad ?? 'none'}`);
+      }
+    }
     note('live-play unported branches still hit', [...lr.unportedHist].map(([k, n]) => `${k} x${n}`).join(', ') || 'none');
   }
   const top = [...all.unportedHist].sort((a, b) => b[1] - a[1]).slice(0, 6).map(([k, n]) => `${k} x${n}`).join(', ');

@@ -588,11 +588,14 @@ function noFloorProp(m, bx, cls, ctx) {
 function floorProjectile(m, bx, ctx) {
   const world = m.u16(0x8b89) || m.u16(0x8b8b);
   if (m.u8(R.CA) === 0) { // EDCC: nothing happens in worlds 1-3; world 4 is not ported
-    if (world === 4) ctx.unported.add('EDED kind 7 without floor, world 4');
+    if (world === 4) { // EDED: the world-4 shots 0x3a-0x3e switch to their landing state once flagged
+      const cls = m.u16(bx + 2);
+      if (cls >= 0x3a && cls <= 0x3e && m.s8(bx + 1) < 0) { m.w16(bx + 0x14, 0); m.w8(bx + 1, 0x8d); m.w16(bx + 0xc, 0xcfd1); }
+    }
     return;
   }
   if (m.u8(R.C6) !== 0) alignToFloor(m, bx); // EB20: FAF5
-  if (world !== 1 && world !== 2 && world !== 3) { ctx.unported.add(`EB23 kind 7 world ${world}`); return; }
+  if (world < 1 || world > 4) { ctx.unported.add(`EB23 kind 7 world ${world}`); return; }
   const cls = m.u16(bx + 2);
   const kill = () => m.w8(bx + 0x40, 0x19);
   if (world === 2) { // EB90: the world-2 shots; the classes 0x30-0x33 and 0x27/0x44 bounce (ECE5), the rest end here
@@ -612,6 +615,19 @@ function floorProjectile(m, bx, ctx) {
       m.w8(bx + 0x29, 0xff);
       if (cls < 0x30 || cls > 0x33) { kill(); return; }
     }
+  } else if (world === 4) { // EC1C
+    if (cls >= 0x3a && cls <= 0x3d) { // EC58: the shot sticks in the ground
+      if (m.u8(bx + 0x40) === 0x65 || m.u8(R.E7) !== 0) return;
+      m.w8(bx + 0x3d, 0xff); m.w16(bx + 0x24, m.u16(bx + 0x24) | 2);
+      m.w8(bx + 1, 0x9f); m.w16(bx + 0xc, 0xd103);
+      return;
+    }
+    if (cls === 0x3e) { // ED32
+      if (m.u8(bx + 1) === 0x5c) return;
+      m.w16(bx + 0x26, 0); m.w8(bx + 1, 0x5c); m.w16(bx + 0xc, 0xcac4);
+      return;
+    }
+    if (cls !== 0x44 && cls !== 0x5f && cls !== 0x27) { kill(); return; }
   } else if (world === 3) { // EBDC
     if (cls === 0x39) { // ED47
       if (m.u8(bx + 1) === 0x2c) return;
@@ -689,6 +705,21 @@ export function projectileRunsOut(m, bx, ctx, world, cls, kill) {
   if (cls === 0x27) { settle(0xca, 0xd4d6, true); return; } // EED8
   if (cls === 0x28 || cls === 0x5f) { settle(0xad, 0xd1fe, true); return; } // EEC4
   if (cls === 0x16) { settle(0xae, 0xd20b, true); return; } // EEEC
+  if (world === 4) { // EFA7
+    const to = { 0x3a: [0xff, 0xd97e], 0x3b: [0xfe, 0xd971], 0x3c: [0xfd, 0xd964], 0x3d: [0xfc, 0xd957] }[cls];
+    if (to) {
+      if (m.u8(bx + 1) === to[0]) return;
+      m.w8(bx + 1, to[0]); m.w16(bx + 0xc, to[1]); m.w8(bx + 0x40, 0x65);
+      return;
+    }
+    if (cls === 0x3e) {
+      if (m.u8(bx + 1) === 0) return;
+      m.w8(bx + 1, 0x2c); m.w16(bx + 0xc, 0xc726); m.w8(bx + 0x40, 0x65);
+      return;
+    }
+    kill();
+    return;
+  }
   if (world === 3) { // EF00
     const to = { 0x35: [0xf5, 0xd8e5, 0], 0x36: [0xf4, 0xd8d8, 4], 0x37: [0xf3, 0xd8cb, 2], 0x38: [0xf2, 0xd8b3, 0] }[cls];
     if (to) {

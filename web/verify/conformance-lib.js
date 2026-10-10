@@ -5,7 +5,7 @@
 import { rncUnpack } from '../core/rnc.js';
 import { decodeDemoTape } from '../core/demo-tape.js';
 import { DsMemory, ENTITY_ARRAY, ENTITY_ARRAY_END, ENTITY_SIZE } from '../engine/ds-memory.js';
-import { stepIteration, stepIterationAfterRng } from '../engine/iteration.js';
+import { stepIteration, stepIterationAfterRng, call13Carry } from '../engine/iteration.js';
 import { rebuildVisibleList } from '../engine/entity-behavior.js';
 import { bootAttractDemo, startLevel } from '../engine/boot.js';
 import { Rng } from '../engine/rng.js';
@@ -332,7 +332,7 @@ export function runLiveFree(env, rows, o = {}) {
   const mid = new Set(); counts.forEach((c, k) => { if (c === 0) mid.add(k); });
   const RACE = (a) => a === 0x8b69 || a === 0x8b60 || a === 0x8c38 || (a >= 0x8bb7 && a <= 0x8bba) || (a >= 0x8c13 && a <= 0x8c18);
   let m = o.start ?? loadRow(env, rows[from]);
-  let matched = 0;
+  let matched = 0, midDone = false; // midDone: the previous row was polled between a roll and call #13; our state is already past it
   for (let k = from + 1; k <= to; k++) {
     if (mid.has(k)) continue;
     const b = rows[k];
@@ -341,7 +341,16 @@ export function runLiveFree(env, rows, o = {}) {
     for (const [a, v, fromRow] of o.force || []) if (fromRow === undefined || k >= fromRow) m.w8(a, v); // bytes the capture script itself kept rewriting
     for (const p of o.pokes || []) if (p.row === k) p.bytes.forEach((v, i) => m.w8(p.addr + i, v)); // one-off writes the capture script made
     const ctx = { unported: new Set(), events: [] };
-    for (let rep = 0; rep < Math.max(counts[k], 1) && !ctx.levelStart && !ctx.gameRestart; rep++) stepIterationAfterRng(m, ctx, null);
+    const skip = midDone;
+    for (let rep = 0; rep < Math.max(counts[k], 1) && !ctx.levelStart && !ctx.gameRestart && !skip; rep++) stepIterationAfterRng(m, ctx, null);
+    midDone = false;
+    if (o.checkRng && !ctx.levelStart && !ctx.gameRestart) {
+      // The poll fires on every RNG change, so a roll inside an iteration can produce a row before call #13. Where call #13 uses carry 0 that
+      // looks like any whole iteration to iterationsBetween; our iteration, though, ends carry-0 rolls and one call-#13 step after such a row.
+      const real = g[0x8b71 - GLOBALS_BASE] | (g[0x8b72 - GLOBALS_BASE] << 8), ours = m.u16(0x8b71), carry = call13Carry(m);
+      if (ours !== real) for (let s = real, j = 0; j <= 14; j++, s = new Rng(s).next(0)) if (new Rng(s).next(carry) === ours) { midDone = true; break; }
+      if (midDone) continue;
+    }
     if (ctx.gameRestart === 'demo' && o.demoScript) { // CONTINUE? timed out: the game starts over with the attract demo
       m = bootFromFiles(env, o.demoScript).m;
       ctx.gameRestart = null;

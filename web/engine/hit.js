@@ -10,6 +10,8 @@ import { pushSpawnEvent, pushEvent3, pushEvent5, pushEntityEvent } from './fire.
 import { findByClass } from './ds-memory.js';
 import { changeClass } from './script-runner.js';
 import { crateGrab } from './entity-behavior.js';
+import { moveHorizontalByFlags, advanceAnimDir } from './enemy.js';
+import { projectileRunsOut } from './ground-collision.js';
 
 /** @returns {boolean} true when the original `pop ax; ret` abandons the whole interaction scan */
 export function pairEvent(m, si, bx, cl, ctx) {
@@ -33,7 +35,32 @@ function playerTouchesProjectile(m, si, bx, ctx) {
   }
   if (world === 2) return cls !== 0x33 && cls !== 0x34;
   if (world === 3) return cls !== 0x38 && cls !== 0x39;
-  if (world === 4) return !(cls >= 0x3a && cls <= 0x3e);
+  if (world === 4) {
+    if (cls >= 0x3a && cls <= 0x3d) return stuckShotTouched(m, si, bx, ctx); // 4C78
+    return cls !== 0x3e;
+  }
+  return true;
+}
+
+/**
+ * 1000:4C78 (world 4): the player walks into a shot that is stuck in the ground (state 0x9F): it takes the player's facing, is pushed
+ * along while he walks into it (his side-blocked bits are set from its own) and, after a few ticks of that, either starts its
+ * wobble states 0xA5-0xA7 (F15A) or runs out (EE60) once the count passes 4 x [8B90].
+ */
+function stuckShotTouched(m, si, bx, ctx) {
+  if (m.u8(bx + 0x40) === 0x65 || m.u8(bx + 1) === 0x8d || m.u8(bx + 1) !== 0x9f) return true;
+  m.w16(bx + 0x14, m.u16(si + 0x14));
+  const ax = m.u16(bx + 0x24) & 0xc;
+  m.w16(si + 0x24, m.u16(si + 0x24) | ax);
+  if (ax !== 0) return true;
+  moveHorizontalByFlags(m, bx, 4); // D5E2 with the shot as SI
+  m.w8(bx + 0x3e, 0);
+  advanceAnimDir(m, bx, 0);
+  m.w16(bx + 0x2e, m.u16(bx + 0x2e) + 1);
+  if (m.s16(bx + 0x2e) <= 5 || m.u8(bx + 1) === 0x8d) return true;
+  if (m.u8(0x8b90) * 4 <= m.s16(bx + 0x2e)) { projectileRunsOut(m, bx, ctx); return true; }
+  const to = { 0x3a: [0xa5, 0xd13b], 0x3b: [0xa6, 0xd142], 0x3c: [0xa7, 0xd149] }[m.u16(bx + 2)]; // F15A
+  if (to && m.u8(bx + 1) !== to[0]) { m.w8(bx + 1, to[0]); m.w16(bx + 0xc, to[1]); m.w16(bx + 0x2e, 0); }
   return true;
 }
 

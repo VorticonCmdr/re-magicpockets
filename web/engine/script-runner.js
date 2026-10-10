@@ -159,6 +159,7 @@ function handler(m, si, di, op, ctx) {
     case 40: m.w8(si + 0x40, m.u8(di)); return di + 1; // SetState40
     case 50: m.w16(0x8b75, m.u16(0x8b75) + m.s8(di)); return di + 1; // AddSignedByteToScore
     case 54: m.w16(si + 0xc, 0); m.w8(si + 1, 0); return ABORT; // ResetScript
+    case 74: projectileRunsOut(m, si, ctx); return ABORT; // 2685: the shot's run-out handler (EE60) on this entity
     case 55: // DispatchSpeedTickByKind
       if (m.u16(si + 4) === 1) { tickKind1(m, si, di); return ABORT; }
       if (m.u16(si + 4) === 2) { tickKind2(m, si, di, ctx); return ABORT; }
@@ -444,16 +445,24 @@ function spawnEffect(m, si, di, ctx) {
   let w = m.u16(0x8b89);
   m.w16(0x8c1d, w);
   if (w === 0) { w = m.u16(0x8b8b); m.w16(0x8c1d, w); }
-  const base = { 1: 0xa, 2: 0x30, 3: 0x35 }[w];
-  if (base === undefined) { if (w !== 4) return di; ctx.unported.add('opcode 13 world 4 weapon'); return ABORT; }
-  const v = id - base;
-  if (v < 0 || v > 3) return di;
-  const left = m.u16(0x8c23) === 4;
-  const dy = [8, 4, 2, 0][v];
-  const dxl = [-6, -6, -10, -0x12][v], dxr = [0x1a, 0x1a, 0x16, 0xe][v];
-  m.w16(0x8c25, m.u16(0x8c25) + dy);
-  m.w16(0x8c27, m.u16(0x8c27) + (left ? dxl : dxr));
-  pushEvent5(m);
+  const base = { 1: 0xa, 2: 0x30, 3: 0x35, 4: 0x3a }[w];
+  if (base === undefined) return di;
+  const spawn = () => { // 3943 / 3964 / 3985 / 39A6: the four shot strengths sit at different offsets from the player
+    const v = id - base;
+    if (v < 0 || v > 3) return;
+    const left = m.u16(0x8c23) === 4;
+    m.w16(0x8c25, m.u16(0x8c25) + [8, 4, 2, 0][v]);
+    m.w16(0x8c27, m.u16(0x8c27) + (left ? [-6, -6, -10, -0x12][v] : [0x1a, 0x1a, 0x16, 0xe][v]));
+    pushEvent5(m);
+  };
+  if (w === 4 && m.u8(0x8c03) !== 0) { // 38FA: with the double-shot flag a second shot follows (its sprite word is one higher)
+    const y = m.u16(0x8c25), x = m.u16(0x8c27);
+    spawn();
+    m.w16(0x8c27, x); m.w16(0x8c25, y);
+    m.w16(0x8c21, m.u16(0x8c21) + 1);
+    if (m.u16(0x8c21) === 0x1b) m.w16(0x8c21, 0x17);
+  }
+  spawn();
   return di;
 }
 
