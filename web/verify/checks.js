@@ -642,6 +642,215 @@ export async function checkSpriteWorlds(ctx) {
   return results;
 }
 
+const DATA_CENSUS = [
+  ['adlib.pin', 6525, 20655],
+  ['adlib2.pin', 1293, 10328],
+  ['adlib3.pin', 1287, 10328],
+  ['ape.pak', 11622, 38400],
+  ['autoplay.pin', 430, 2000],
+  ['beeper.pin', 3198, 6438],
+  ['bitkid.pak', 15836, 38400],
+  ['blocks1.pak', 24384, 30720],
+  ['blocks2.pak', 25156, 30720],
+  ['blocks3.pak', 20345, 30720],
+  ['blocks4.pak', 19851, 30720],
+  ['endscrn.pip', 13344, 32066],
+  ['extra_2.pin', 19956, 38400],
+  ['extras.pak', 19612, 38400],
+  ['extrax1.pak', 3394, 12800],
+  ['extrax2.pak', 2864, 12800],
+  ['extrax3.pak', 5979, 12800],
+  ['extrax4.pak', 2391, 12800],
+  ['intro0.pip', 13330, 32066],
+  ['intro1.pip', 8328, 32066],
+  ['intro2.pip', 7082, 32066],
+  ['intro3.pip', 10690, 32066],
+  ['intro4.pip', 12880, 32066],
+  ['intro5.pip', 2876, 10274],
+  ['kidx1.pak', 4826, 12800],
+  ['kidx2.pak', 4026, 12800],
+  ['kidx3.pak', 5077, 12800],
+  ['kidx4.pak', 4459, 12800],
+  ['level0.pin', 1558, 5888],
+  ['level1a.pap', 8822, 16384],
+  ['level1b.pap', 9172, 16384],
+  ['level2.pin', 5311, 13946],
+  ['level2a.pap', 7223, 16384],
+  ['level2b.pap', 6919, 16384],
+  ['level3a.pap', 5630, 16384],
+  ['level3a.pin', 2351, 5744],
+  ['level3b.pap', 8240, 16384],
+  ['level3b.pin', 3022, 7680],
+  ['level3c.pin', 1371, 4882],
+  ['level4.pin', 5703, 16662],
+  ['level4a.pap', 5299, 16384],
+  ['level4b.pap', 7229, 16384],
+  ['nasty1.pak', 17199, 38400],
+  ['nasty2.pak', 18586, 38400],
+  ['nasty3.pak', 18432, 38400],
+  ['nasty4.pak', 19450, 38400],
+  ['new.pip', 17421, 32066],
+  ['new1.pin', 6175, 16662],
+  ['pcmap.pap', 7254, 16384],
+  ['player.pin', 6743, 12064],
+  ['roland.pin', 3110, 8028],
+  ['roland2.pin', 6220, 17201],
+  ['sblaster.pin', 41153, 59699],
+  ['sea.pap', 9029, 16384],
+  ['soundbnk.pin', 3811, 17320],
+  ['special1.pak', 6096, 12800],
+  ['special2.pak', 5423, 12800],
+  ['special3.pak', 5879, 12800],
+  ['special4.pak', 5112, 12800],
+  ['tandy.pin', 3202, 6344],
+];
+const PAP_RANGES = [
+  ['level1a.pap', 1, 120],
+  ['level1b.pap', 1, 119],
+  ['level2a.pap', 1, 120],
+  ['level2b.pap', 1, 120],
+  ['level3a.pap', 1, 120],
+  ['level3b.pap', 1, 120],
+  ['level4a.pap', 1, 120],
+  ['level4b.pap', 1, 120],
+  ['pcmap.pap', 1, 120],
+  ['sea.pap', 1, 115],
+];
+
+const DESCRIPTORS = [ // [type, columns, rows, bank, cell width, cell height, frameSourceMode]
+  [0, 0, 0, 0, 0, 0, 0],
+  [1, 128, 128, 5, 32, 16, 0],
+  [2, 1, 1, 6, 16, 16, 0],
+  [3, 1, 2, 2, 32, 16, 0],
+  [4, 1, 1, 6, 16, 16, 1],
+  [5, 1, 2, 2, 32, 16, 0],
+  [6, 2, 2, 6, 16, 16, 0],
+  [7, 6, 1, 6, 16, 16, 0],
+  [8, 1, 1, 6, 16, 16, 0],
+  [9, 8, 2, 6, 16, 16, 0],
+  [10, 1, 1, 6, 16, 16, 1],
+  [11, 1, 1, 3, 20, 20, 1],
+  [12, 1, 1, 3, 26, 26, 1],
+  [13, 1, 1, 3, 32, 32, 1],
+  [14, 1, 1, 6, 16, 16, 1],
+  [15, 1, 1, 6, 16, 16, 1],
+  [16, 1, 1, 3, 32, 32, 1],
+  [17, 2, 1, 6, 32, 16, 0],
+  [18, 1, 1, 7, 32, 32, 0],
+  [19, 1, 1, 7, 32, 32, 0],
+  [20, 1, 1, 7, 32, 32, 0],
+  [21, 1, 1, 2, 32, 32, 0],
+  [22, 1, 1, 6, 16, 16, 1],
+  [23, 2, 1, 6, 16, 16, 256],
+  [24, 2, 2, 6, 16, 16, 0],
+  [25, 1, 1, 2, 32, 32, 0],
+  [26, 2, 1, 6, 16, 16, 0],
+  [27, 1, 1, 6, 16, 16, 1],
+  [28, 2, 2, 6, 16, 16, 256],
+  [29, 2, 1, 6, 16, 16, 0],
+  [30, 1, 1, 6, 16, 16, 0],
+  [31, 1, 1, 6, 16, 16, 1],
+  [32, 1, 1, 7, 32, 32, 0],
+  [33, 1, 1, 2, 32, 32, 0],
+  [34, 2, 1, 6, 16, 16, 0],
+  [35, 1, 1, 7, 32, 32, 0],
+  [36, 2, 2, 6, 16, 16, 0],
+  [37, 4, 1, 6, 16, 16, 0],
+  [38, 2, 2, 6, 16, 16, 0],
+  [39, 1, 1, 6, 16, 16, 1],
+  [40, 1, 1, 6, 16, 16, 1],
+  [41, 2, 2, 6, 16, 16, 0],
+  [42, 2, 2, 6, 16, 16, 0],
+  [43, 1, 1, 2, 32, 32, 1],
+  [44, 1, 1, 6, 16, 16, 0],
+  [45, 16, 1, 6, 16, 16, 0],
+  [46, 2, 2, 6, 16, 16, 256],
+  [47, 1, 1, 2, 32, 16, 1],
+  [48, 1, 1, 6, 16, 16, 1],
+  [49, 1, 1, 3, 20, 20, 1],
+  [50, 1, 1, 3, 26, 26, 1],
+  [51, 1, 1, 3, 32, 32, 1],
+  [52, 1, 1, 3, 32, 32, 1],
+  [53, 1, 1, 6, 16, 16, 1],
+  [54, 2, 1, 6, 20, 16, 0],
+  [55, 1, 1, 3, 26, 26, 1],
+  [56, 1, 1, 3, 32, 32, 1],
+  [57, 1, 1, 3, 32, 32, 1],
+  [58, 1, 1, 6, 16, 16, 1],
+  [59, 1, 1, 3, 20, 20, 1],
+  [60, 1, 1, 3, 26, 26, 1],
+  [61, 1, 1, 3, 32, 32, 1],
+  [62, 1, 1, 3, 32, 32, 1],
+  [63, 1, 1, 2, 32, 16, 0],
+  [64, 1, 1, 6, 16, 16, 256],
+  [65, 1, 1, 3, 32, 32, 0],
+  [66, 2, 2, 7, 32, 32, 0],
+  [67, 1, 1, 2, 32, 32, 0],
+  [68, 1, 1, 6, 16, 16, 1],
+  [69, 2, 2, 6, 16, 16, 0],
+  [70, 5, 1, 6, 16, 16, 0],
+  [71, 15, 1, 2, 32, 28, 0],
+  [72, 1, 1, 7, 32, 32, 0],
+  [73, 1, 1, 7, 32, 32, 0],
+  [74, 1, 1, 7, 32, 32, 1],
+  [75, 1, 1, 7, 32, 32, 1],
+  [76, 1, 1, 7, 32, 32, 1],
+  [77, 1, 1, 6, 16, 16, 1],
+  [78, 1, 1, 7, 32, 32, 1],
+  [79, 1, 1, 7, 32, 32, 1],
+  [80, 1, 1, 7, 32, 32, 1],
+  [81, 1, 1, 7, 32, 32, 1],
+  [82, 2, 2, 6, 16, 16, 256],
+  [83, 1, 1, 6, 16, 16, 1],
+  [84, 1, 1, 7, 32, 32, 1],
+  [85, 1, 1, 6, 16, 16, 1],
+  [86, 1, 1, 2, 32, 32, 0],
+  [87, 1, 1, 7, 32, 32, 1],
+  [88, 1, 1, 7, 32, 32, 1],
+  [89, 1, 1, 7, 32, 32, 1],
+  [90, 1, 1, 7, 32, 32, 1],
+  [91, 1, 1, 7, 32, 32, 1],
+  [92, 1, 1, 2, 32, 16, 65535],
+  [93, 1, 1, 7, 32, 32, 1],
+  [94, 1, 1, 6, 16, 16, 1],
+  [95, 1, 1, 6, 16, 16, 1],
+];
+
+/** The 96 sprite descriptors of GAMEU.EXE (near pointers at DS:C39A, words +0xA columns, +0xC rows, +0xE bank, +0x12/+0x14 cell size, +0x16 frameSourceMode), pinned as read. */
+export async function checkDescriptors(ctx) {
+  const { results, check } = makeChecker();
+  const m = new DsMemory(await ctx.fetchRaw('game/GAMEU.EXE'));
+  for (const [t, ...want] of DESCRIPTORS) {
+    const d = m.u16(0xc39a + 2 * t);
+    const got = [0xa, 0xc, 0xe, 0x12, 0x14, 0x16].map((o) => m.u16(d + o));
+    check(`sprite descriptor ${t}: ${want.join(',')}`, got.join() === want.join(), got.join());
+  }
+  return results;
+}
+
+/** Every shipped data file by name: packed size on disk and unpacked size, and the value range of each map. The literals are the files
+ *  as shipped (a regression pin: a decoder change or a wrong file shows up here); RNC's own CRCs are checked in the group above. */
+export async function checkDataCensus(ctx) {
+  const { results, check } = makeChecker();
+  for (const [name, packed, unpacked] of DATA_CENSUS) {
+    let raw = null;
+    try { raw = await ctx.fetchRaw(`data/${name}`); } catch { /* absent */ }
+    if (!raw) { check(`${name}: not available`, true, 'skipped'); continue; }
+    const r = rncUnpack(raw);
+    check(`${name}: ${packed} bytes on disk, ${unpacked} unpacked`, raw.length === packed && r.data.length === unpacked, `${raw.length} / ${r.data.length}`);
+  }
+  for (const [name, lo, hi] of PAP_RANGES) {
+    let raw = null;
+    try { raw = await ctx.fetchRaw(`data/${name}`); } catch { /* absent */ }
+    if (!raw) continue;
+    const g = rncUnpack(raw).data;
+    let mn = 255, mx = 0;
+    for (const v of g) { if (v < mn) mn = v; if (v > mx) mx = v; }
+    check(`${name}: map cells run from ${lo} to ${hi}`, mn === lo && mx === hi, `${mn}..${mx}`);
+  }
+  return results;
+}
+
 /** Opcode 38 (level-code entry, 1000:2474) on a bare data segment: the glyph rules the disassembly gives. [STATIC] */
 export async function checkCodeEntry(ctx) {
   const { results, check } = makeChecker();
@@ -955,7 +1164,7 @@ export async function checkAdlibDriver(ctx) {
 }
 
 export async function runAllChecks(ctx) {
-  const groups = [checkRncCorpus, checkPap, checkCollisionTable, checkPalettes, checkSoundBanks, checkLevelScripts, checkDemoTape, checkFrameOrder, checkCaptureRng, checkSprites, checkSpriteWorlds, checkCodeEntry, checkFrontend, checkPrelude, checkConformance, checkAdlibDriver];
+  const groups = [checkRncCorpus, checkPap, checkCollisionTable, checkPalettes, checkSoundBanks, checkLevelScripts, checkDemoTape, checkFrameOrder, checkCaptureRng, checkSprites, checkSpriteWorlds, checkDataCensus, checkDescriptors, checkCodeEntry, checkFrontend, checkPrelude, checkConformance, checkAdlibDriver];
   const results = [];
   for (const g of groups) results.push(...await g(ctx));
   return { results };
