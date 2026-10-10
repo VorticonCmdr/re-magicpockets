@@ -321,6 +321,14 @@ function handler(m, si, di, op, ctx) {
       ctx.partner = si;
       return di;
     }
+    case 52: { // 2CEA: the CONTINUE? screen waits for the fire key, counting [8C57] up in steps of 0x80
+      if (m.u16(0x8b8b) === 0) { ctx.unported.add('opcode 52 sub-level 0 (2D8D)'); return ABORT; }
+      m.w16(0x8c57, (m.u16(0x8c57) + 0x80) & 0xffff);
+      if (m.u16(0x8c57) === 0) { ctx.unported.add('opcode 52 timeout restarts the game (2D20)'); return ABORT; }
+      if ((m.u8(0x8b5d) & 0x80) === 0) return ABORT; // 2663: try again next iteration
+      ctx.unported.add('opcode 52 fire pressed (2D0B)');
+      return ABORT;
+    }
     case 67: m.w8(si + 0x3d, m.u8(di)); return di + 1; // SetAnimLockFlag
     case 71: m.w8(0x8c0c, m.u8(di)); return di + 1; // SetGlobalEventTrigger
     case 76: m.w8(0x8c0e, 0); return di; // clears [8C0E]

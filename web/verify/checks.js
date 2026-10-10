@@ -18,7 +18,7 @@ import { RAW_BANKS } from '../core/palette.js';
 import { decodeDemoTape, DemoPlayback, INPUT_BITS, DEMO_RNG_SEED } from '../core/demo-tape.js';
 import { FRAME_ORDER } from '../engine/frame.js';
 import { Rng } from '../engine/rng.js';
-import { prepare, runConformance, runFreeRun, bootFromFiles, diffBootEntities, expandRows, midConsumeParticles } from './conformance-lib.js';
+import { prepare, runConformance, runFreeRun, runLiveConformance, bootFromFiles, diffBootEntities, expandRows, midConsumeParticles } from './conformance-lib.js';
 
 export function makeChecker() {
   const results = [];
@@ -310,6 +310,17 @@ export async function checkConformance(ctx) {
   check('that boot reproduces every byte of the first captured row\'s entity records', bd.diffs.length === 0, `${bd.diffs.length} bytes`);
   const bootRun = runFreeRun(env, rows, { start: boot.m, entitiesOnly: true, skip: MID_CALL_SAMPLES });
   check('a free run from that files-only boot reproduces every captured entity record for the whole demo', bootRun.matched === 2341, `${bootRun.matched} rows, first mismatch ${bootRun.firstBad ?? 'none'}`);
+  // Real play (not the demo): 1800 iterations of world 1 captured with capture-live.lua, keyboard input
+  // replayed from each row's input words.
+  let live = null;
+  try { live = await loadGzJson(ctx, 'tools/attract-capture/live1.capture.json.gz'); } catch { /* absent */ }
+  if (live) {
+    check('the live-play capture holds 1800 consecutive iterations of world 1, sub-level 1', live.rows.length === 1800 && live.rows.every((r, i) => r.done === i));
+    const lr = runLiveConformance(env, live.rows, {});
+    check('at least 1767 of 1798 live-play transitions reproduce every captured entity record byte for byte', lr.entExact >= 1767, `${lr.entExact}/${lr.total}`);
+    check('at least 1752 of 1798 live-play transitions also reproduce every non-scratch global', lr.exact >= 1752, `${lr.exact}/${lr.total} (${lr.raceRows} differ only in sample-race scroll globals)`);
+    note('live-play unported branches still hit', [...lr.unportedHist].map(([k, n]) => `${k} x${n}`).join(', ') || 'none');
+  }
   const top = [...all.unportedHist].sort((a, b) => b[1] - a[1]).slice(0, 6).map(([k, n]) => `${k} x${n}`).join(', ');
   note('unported branches still hit', top || 'none');
   return results;

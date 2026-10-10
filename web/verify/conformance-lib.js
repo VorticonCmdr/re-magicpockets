@@ -5,7 +5,7 @@
 import { rncUnpack } from '../core/rnc.js';
 import { decodeDemoTape } from '../core/demo-tape.js';
 import { DsMemory, ENTITY_ARRAY, ENTITY_ARRAY_END, ENTITY_SIZE } from '../engine/ds-memory.js';
-import { stepIteration } from '../engine/iteration.js';
+import { stepIteration, stepIterationAfterRng } from '../engine/iteration.js';
 import { rebuildVisibleList } from '../engine/entity-behavior.js';
 import { bootAttractDemo } from '../engine/boot.js';
 
@@ -49,6 +49,12 @@ export function loadRow(env, row) {
   m.w16(0xef23, 0xefa5); // world 1's tile table (set by the new-game initializer)
   m.put(GLOBALS_BASE, hexBytes(row.g));
   if (row.q) m.put(0x9270, hexBytes(row.q)); // the spawn queue region (0x9270..0x939B), when captured
+  if (row.p && row.p.length >= 604) { // live capture: the whole pointer array including holes and the front list
+    m.put(ENTITY_ARRAY, hexBytes(row.p));
+    row.e.forEach((e) => m.put(e.ptr, hexBytes(e.hex)));
+    for (const e of row.x || []) m.put(e.ptr, hexBytes(e.hex));
+    return finishLoad(m);
+  }
   for (let o = ENTITY_ARRAY; o < ENTITY_ARRAY_END; o += 2) m.w16(o, 0);
   row.e.forEach((e, i) => { m.w16(ENTITY_ARRAY + 2 * i, e.ptr); m.put(e.ptr, hexBytes(e.hex)); });
   // Live records outside the pointer array: the hero-front entities that the spawn groups 1 and 2
@@ -62,10 +68,18 @@ export function loadRow(env, row) {
     const cls = hexBytes(e.hex)[2] | (hexBytes(e.hex)[3] << 8);
     if (cls !== 0 && cls !== 0x11) { m.w16(front, e.ptr); front -= 2; }
   }
+  return finishLoad(m);
+}
+
+function finishLoad(m) {
   // The captured row has no copy of the 0x91BE list; rebuild it from positions without scrolling.
   const dx = m.u16(0x8bb7), dy = m.u16(0x8bb9);
   m.w16(0x8bb7, 0); m.w16(0x8bb9, 0);
-  rebuildVisibleList(m);
+  // The rebuild walks the array up to the hero's sprite (class 2); a state without one (the hero is gone,
+  // as in the transition to a game over) has no list to rebuild.
+  let hasHero = false;
+  for (let o = ENTITY_ARRAY; o < ENTITY_ARRAY_END && m.u16(o) !== 0xffff; o += 2) if (m.u16(o) !== 0 && m.u16(m.u16(o) + 2) === 2) hasHero = true;
+  if (hasHero) rebuildVisibleList(m);
   m.w16(0x8bb7, dx); m.w16(0x8bb9, dy);
   return m;
 }
@@ -209,4 +223,45 @@ export function diffBootEntities(m, row) {
   const ours = [];
   for (let o = ENTITY_ARRAY; o < ENTITY_ARRAY_END; o += 2) if (m.u16(o) !== 0) ours.push(m.u16(o));
   return { diffs, sameOrder: ours.length === row.e.length && row.e.every((e, i) => e.ptr === ours[i]) };
+}
+
+// [8B58]/[8B5D] and [8C85]-[8C94] are the keyboard ISR's own state, fed from the next row's input words.
+const isLiveScratch = (a) => isScratch(a) || a === 0x8b58 || a === 0x8b5d || (a >= 0x8c85 && a <= 0x8c94);
+
+/**
+ * One-step conformance for a live-play capture (tools/attract-capture/capture-live.lua, rows sampled
+ * right after call #13). The key bytes call #7 copies come from the next row's input words.
+ * @returns {{total:number, entExact:number, exact:number, hist:Map, unportedHist:Map, entFails:string[], shown:string[]}}
+ */
+export function runLiveConformance(env, rows, o = {}) {
+  rows = expandRows(rows);
+  const from = o.from ?? 1, to = Math.min(o.to ?? rows.length - 1, rows.length - 1);
+  const r = { total: 0, entExact: 0, exact: 0, hist: new Map(), unportedHist: new Map(), entFails: [], shown: [], raceRows: 0 };
+  // A poll that lands after the next iteration's call #1 shows the scroll state of that call. These
+  // globals are the only ones it changes.
+  const RACE = (a) => a === 0x8b69 || (a >= 0x8bb7 && a <= 0x8bba) || a === 0x8c15 || a === 0x8c17;
+  for (let k = from; k < to; k++) {
+    const b = rows[k + 1];
+    const m = loadRow(env, rows[k]);
+    const g = hexBytes(b.g);
+    m.w8(0x8b5d, g[0x8b67 - GLOBALS_BASE]); m.w8(0x8b58, g[0x8b68 - GLOBALS_BASE]);
+    m.w8(0x8ded, m.u16(0x8c3c) !== 0 ? 1 : 0); // the screen wipe's first-call flag lives outside the captured globals
+    const ctx = { unported: new Set(), events: [] };
+    stepIterationAfterRng(m, ctx, null);
+    const diffs = [], gdiffs = [];
+    for (const e of b.e) {
+      const want = hexBytes(e.hex), got = m.get(e.ptr, ENTITY_SIZE);
+      for (let off = 0; off < ENTITY_SIZE; off++) if (want[off] !== got[off]) diffs.push(`e${e.ptr.toString(16)} c${want[2]} +0x${off.toString(16)} want ${want[off]} got ${got[off]}`);
+    }
+    for (let off = 0; off < g.length; off++) if (g[off] !== m.u8(GLOBALS_BASE + off) && !isLiveScratch(GLOBALS_BASE + off)) gdiffs.push(GLOBALS_BASE + off);
+    r.total++;
+    if (!diffs.length) r.entExact++; else r.entFails.push(`${rows[k].done}->${b.done}: ${diffs.slice(0, 3).join('; ')} [${[...ctx.unported].join(',')}]`);
+    if (!diffs.length && gdiffs.length && gdiffs.every(RACE)) { r.raceRows++; r.exact++; continue; }
+    if (!diffs.length && !gdiffs.length) { r.exact++; continue; }
+    for (const d of diffs) { const key = d.replace(/ want.*/, '').replace(/^e[0-9a-f]+ /, ''); r.hist.set(key, (r.hist.get(key) || 0) + 1); }
+    for (const a of gdiffs) { const key = `G 0x${a.toString(16)}`; r.hist.set(key, (r.hist.get(key) || 0) + 1); }
+    for (const u of ctx.unported) r.unportedHist.set(u, (r.unportedHist.get(u) || 0) + 1);
+    if (r.shown.length < (o.show ?? 6)) r.shown.push(`${rows[k].done}->${b.done}: ${[...diffs, ...gdiffs.map((a) => `G 0x${a.toString(16)} want ${g[a - GLOBALS_BASE]} got ${m.u8(a)}`)].slice(0, 6).join('; ')} unported ${[...ctx.unported].join(',')}`);
+  }
+  return r;
 }

@@ -21,7 +21,9 @@ export function parseEntityLog(text) {
       e = [];
       for (let i = 0; i + 4 <= m[5].length; i += 4) {
         const ptr = parseInt(m[5].substr(i + 2, 2) + m[5].substr(i, 2), 16);
-        if (ptr === 0 || ptr === 0xffff) break;
+        if (ptr === 0 && m[5].length < 600) break; // demo captures: a 280-byte array that ends at the first hole
+        if (ptr === 0) continue; // live captures hold the whole 302-byte array, holes included
+        if (ptr === 0xffff) break;
         const off = ptr - 0x9398;
         if (off < 0 || off % ENTITY_BYTES !== 0 || (off / ENTITY_BYTES + 1) * ENTITY_BYTES * 2 > m[9].length) throw new Error(`entity ${ptr.toString(16)} is outside the captured block`);
         e.push({ ptr, hex: m[9].substr(off * 2, ENTITY_BYTES * 2) });

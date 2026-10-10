@@ -64,5 +64,40 @@ export function fxUpdateTransition(m, ctx) {
   const al = m.u8(0x8ba2);
   if (al === 0) return;
   if (al === 0x19) { m.w8(0x8ba2, 0); return; }
+  if (al === 0x1) { screenWipeStep(m); return; }
   ctx.unported.add(`Fx_UpdateTransition state 0x${al.toString(16)}`);
+}
+
+/**
+ * 1000:87A1 (state 1): one step of the screen wipe. Only the state it keeps is modelled: the wipe
+ * position [8C3C] (advances by 0x2C up to 0x1130), the two mask words [8C3E]/[8C40] that shrink and
+ * grow as it moves, and the stage counter [8C42]. The video-memory writes are graphics only.
+ * [8DED] (outside the captured globals) remembers that the first call has been made.
+ */
+function screenWipeStep(m) {
+  if (m.u16(0x8c3c) === 0x1130) { wipeDone(m); return; } // 88A8
+  if (m.u8(0x8ded) === 0) {
+    m.w8(0x8ded, 0xff);
+    const cx = (-m.u16(0x8b69)) & 0xf;
+    if (cx !== 0) {
+      m.w8(0x8ded, 1);
+      m.w16(0x8c3e, m.u16(0x8c3e) >> cx);
+      m.w16(0x8c40, (m.u16(0x8c40) << cx) & 0xffff);
+    }
+  }
+  let shift = true;
+  if (m.u16(0x8c40) === 0) { // 8844
+    m.w16(0x8c3e, 0xffff); m.w16(0x8c40, 0xffff);
+    if (m.u16(0x8c42) !== 0x15) { m.w16(0x8c42, m.u16(0x8c42) + 1); shift = false; }
+  }
+  if (shift) { // 885D
+    m.w16(0x8c40, (m.u16(0x8c40) << 1) & 0xffff);
+    m.w16(0x8c3e, m.u16(0x8c3e) >> 1);
+  }
+  if (m.u16(0x8c3c) !== 0x1130) m.w16(0x8c3c, m.u16(0x8c3c) + 0x2c);
+}
+
+function wipeDone(m) { // 88A8
+  m.w8(0x8ba2, 0); m.w8(0x8ded, 0); m.w16(0x8c34, 0x16);
+  m.w16(0x8c3c, 0); m.w16(0x8c3e, 0xffff); m.w16(0x8c40, 0xffff); m.w16(0x8c42, 0);
 }

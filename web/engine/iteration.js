@@ -83,3 +83,21 @@ export function stepIteration(m, ctx, only = null) {
   levelUpdateAnimatedTiles(m, ctx); // call 2
   renderConsumes(m); // call 3: the capture sample is taken after it
 }
+
+/**
+ * One iteration from a state sampled right after call #13 (the live-play capture's sample point,
+ * tools/attract-capture/capture-live.lua) to the next such state: calls 1-3 of the next
+ * iteration, then 5-8, 12 and 13. Input comes from the key bytes [8B5D]/[8B58] that call #7 copies.
+ */
+export function stepIterationAfterRng(m, ctx, only = null) {
+  ctx.rng = rngWithCarry;
+  cameraUpdateScroll(m); // call 1
+  levelUpdateAnimatedTiles(m, ctx); // call 2
+  renderConsumes(m); // call 3
+  fxUpdateTransition(m, ctx); // call 5
+  levelUpdateEventQueue(m, ctx); // call 6
+  demoPlaybackInput(m); // call 7
+  updateAll(m, ctx, only); // call 8
+  hudUpdateScoreDisplay(m, ctx); // call 12
+  rngNext(m); // call 13
+}
