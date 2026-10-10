@@ -603,6 +603,9 @@ export async function checkConformance(ctx) {
       // The same retype campaign in worlds 3 and 2 (god mode, hurt timer pinned); the capture script made 24 class rewrites in all.
       ['live37-retype-w3w2', [[1, 52, 596, 520, true]], 3, false, false, 'live37-retype-w3w2.pokes.json'],
       ['live37-retype-w3w2', [[1, 610, 1579, 955, true]], 2, false, false, 'live37-retype-w3w2.pokes.json'],
+      // The retype campaign in world 4 (sub-levels 1 and 4; a different order of entity types, 24 rewrites): worlds 1-4 have now all run it.
+      ['live38-retype-w4', [[1, 52, 596, 540, true]], 4, false, false, 'live38-retype-w4.pokes.json'],
+      ['live38-retype-w4', [[4, 609, 1579, 935, true]], 4, false, false, 'live38-retype-w4.pokes.json'],
       ['live20-w1c', [[5, 52, 726, 600], [3, 740, 1414, 650], [4, 1427, 2011, 570]], 1, false], // sub-level 5 from a clean warp: the side handler's DI carries over to the ceiling handler
     ]) {
       let cap = null;
