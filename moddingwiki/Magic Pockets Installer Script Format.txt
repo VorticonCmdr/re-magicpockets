@@ -1,0 +1,52 @@
+The <tt>install.txt</tt> file shipped with [[Magic Pockets]] is a short installer configuration and command script. It is the only uncompressed file in the analysed <tt>data</tt> directory; it is not an [[Magic Pockets RNC Compression|RNC]] stream. The checked copy is 382 bytes of ASCII text with CR LF line endings.
+
+== File format ==
+
+Each line contains a directive and optional arguments, separated by spaces or a tab in the supplied sample. The file has an initial configuration block ending with <tt>end_init</tt>, followed by command lines. The original installer's parser has not been reverse engineered, so the following describes observed syntax and values, not a complete command-language specification.
+
+{|class="wikitable"
+!Directive!!Observed arguments!!Interpretation / evidence
+|-
+|<tt>disk_space</tt>||<tt>737280</tt>||Numeric disk-space setting; exact enforcement not established
+|-
+|<tt>name</tt>||<tt>Magic Pockets</tt>||Displayed product-name setting
+|-
+|<tt>ininame</tt>||<tt>Pockets</tt>||Configuration-name setting
+|-
+|<tt>target</tt>||<tt>c</tt>||Target setting
+|-
+|<tt>setnoFkey</tt>||None||Flag directive; effect not established
+|-
+|<tt>id</tt>||<tt>D</tt>||ID setting; this value also appears on line 4 of pockets.ini
+|-
+|<tt>key</tt>||<tt>action label,key label,decimal code</tt>||Five control definitions, comma-separated
+|-
+|<tt>end_init</tt>||None||End of the configuration block
+|-
+|<tt>copy</tt>||Source and target expressions||File-copy command lines; switch grammar unverified
+|-
+|<tt>md</tt>||Target expression||Directory-creation command line
+|-
+|<tt>print</tt>||Message text||Display-message command line
+|-
+|<tt>wait</tt>||None||Wait command line
+|}
+
+These interpretations follow the text and directive names; runtime effects and a general grammar are not verified. A line beginning <tt>'source</tt> and a line consisting of an apostrophe also occur; whether the apostrophe is a comment marker is not established by a decoded consumer.
+
+=== Key definitions ===
+
+The sample lists five keys in Up, Down, Left, Right, Fire order. Arrow codes are 18432, 20480, 19200 and 19712. Its Fire definition uses <tt>j</tt> with DOS code 9322 (<tt>0x246A</tt>), whereas the checked [[Magic Pockets Configuration Format|pockets.ini]] uses Space. The two files should not be assumed to contain identical control defaults.
+
+The numeric codes combine a scan code in the high byte and an ASCII byte in the low byte. There is no binary header, fixed-size record structure or embedded palette.
+
+== Source code ==
+
+From [[Magic Pockets#Tools|re-magicpockets]], the open-source browser port and reverse-engineering project:
+
+* [https://github.com/VorticonCmdr/re-magicpockets/blob/main/web/verify/checks.js web/verify/checks.js] – recognises install.txt as the corpus exception to RNC compression
+* [https://github.com/VorticonCmdr/re-magicpockets/blob/main/docs/memory-map.md docs/memory-map.md] – DOS key-code interpretation for the resulting configuration
+
+== Credits ==
+
+This file format was reverse engineered by [[User:VorticonCmdr|VorticonCmdr]]. Please credit this work in projects that use it; a link back to this wiki is appreciated.

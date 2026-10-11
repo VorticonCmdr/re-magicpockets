@@ -1,0 +1,50 @@
+The attract demo in [[Magic Pockets]] uses <tt>autoplay.pin</tt>, a recording of control states rather than a video. The file has an [[Magic Pockets RNC Compression|RNC method 1]] wrapper. Its decompressed size is 2000 bytes.
+
+== File format ==
+
+There is no header. Read two-byte records until the pair <tt>FF FF</tt>:
+
+{|class="wikitable"
+!Data type!!Name!!Description
+|-
+|UINT8||count||Number of main-loop iterations to apply the state; zero means 256
+|-
+|UINT8||state||Input bitmask
+|}
+
+{|class="wikitable"
+!Bit!!Mask!!Meaning
+|-
+|0||<tt>0x01</tt>||Up
+|-
+|1||<tt>0x02</tt>||Down
+|-
+|2||<tt>0x04</tt>||Left
+|-
+|3||<tt>0x08</tt>||Right
+|-
+|4-6||<tt>0x70</tt>||Unused input bits
+|-
+|7||<tt>0x80</tt>||Fire
+|}
+
+The count comes first, then the state. The word <tt>0xFFFF</tt> terminates playback and is not a 255-iteration input record. Multiple direction and fire bits can be combined in a state byte.
+
+The supplied tape contains 314 records, covering 2342 loop iterations. Its terminator begins at byte 628, followed by zero padding to byte 2000. Padding is outside the recording and must not be treated as further runs.
+
+One playback step corresponds to one call to <tt>Demo_PlaybackInput</tt> in the original main loop. It is not a video refresh, a fixed millisecond interval or one browser animation callback. The original playback counter decrements a byte, which is why a count of zero runs for 256 iterations.
+
+The engine seeds its RNG with <tt>0x3141</tt> when starting the demo. This seed is executable behaviour, not part of the tape. Demo level events and tile layout are separate resources, <tt>level0.pin</tt> and <tt>pcmap.pap</tt>.
+
+== Source code ==
+
+From [[Magic Pockets#Tools|re-magicpockets]], the open-source browser port and reverse-engineering project:
+
+* [https://github.com/VorticonCmdr/re-magicpockets/blob/main/web/core/demo-tape.js web/core/demo-tape.js] – decoder and iteration-based playback cursor
+* [https://github.com/VorticonCmdr/re-magicpockets/blob/main/web/engine/input.js web/engine/input.js] – input-state handling
+* [https://github.com/VorticonCmdr/re-magicpockets/blob/main/docs/formats/pin.md docs/formats/pin.md] – autoplay correction and original consumers
+* [https://github.com/VorticonCmdr/re-magicpockets/blob/main/docs/open-questions-history.md docs/open-questions-history.md] – resolved demo-input investigation
+
+== Credits ==
+
+This file format was reverse engineered by [[User:VorticonCmdr|VorticonCmdr]]. Please credit this work in projects that use it; a link back to this wiki is appreciated.

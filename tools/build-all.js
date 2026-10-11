@@ -88,7 +88,7 @@ function main() {
     run('node', ['tools/extract-level-script.js', rawPath, jsonPath]);
   }
 
-  console.log('\n=== Copying symbols/entity-shapes.json -> build/ (for tools/viewer.html) ===');
+  console.log('\n=== Copying symbols/entity-shapes.json -> build/ (for level.html) ===');
   // Ghidra-derived data (the shape-descriptor table, 6de3:b91a) -- not regenerable from data/,
   // so it's checked into symbols/ like the other Ghidra exports and just copied into build/.
   fs.copyFileSync(path.join('symbols', 'entity-shapes.json'), path.join(PNG_DIR, 'entity-shapes.json'));
@@ -108,7 +108,7 @@ function main() {
     }
   }
 
-  console.log('\n=== Writing build/manifest.json (for tools/viewer.html and tools/midi-player.html) ===');
+  console.log('\n=== Writing build/manifest.json (for level.html and tools/midi-player.html) ===');
   const levelFiles = dataFiles.filter((f) => f.endsWith('.pap')).map((f) => f.replace(/\.pap$/, ''));
   const tilesetFiles = dataFiles
     .filter((f) => /^blocks[1-4]\.pak$/.test(f))

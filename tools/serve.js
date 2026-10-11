@@ -1,9 +1,9 @@
 #!/usr/bin/env node
-// Zero-dependency static file server for the repo root, so tools/viewer.html can fetch()
+// Zero-dependency static file server for the repo root, so level.html can fetch()
 // build/ output (browsers block fetch() of file:// URLs, so a real HTTP origin is required).
 //
 // Usage: node tools/serve.js [port]   (default port 8080)
-//   then open http://localhost:8080/tools/viewer.html
+//   then open http://localhost:8080/level.html
 
 'use strict';
 
@@ -25,7 +25,7 @@ const MIME = {
 
 const server = http.createServer((req, res) => {
   const urlPath = decodeURIComponent(req.url.split('?')[0]);
-  const filePath = path.join(ROOT, urlPath === '/' ? '/tools/viewer.html' : urlPath);
+  const filePath = path.join(ROOT, urlPath === '/' ? '/level.html' : urlPath);
 
   if (!filePath.startsWith(ROOT)) {
     res.writeHead(403);
@@ -47,5 +47,5 @@ const server = http.createServer((req, res) => {
 
 server.listen(PORT, () => {
   console.log(`Serving ${ROOT} at http://localhost:${PORT}/`);
-  console.log(`Open http://localhost:${PORT}/tools/viewer.html`);
+  console.log(`Open http://localhost:${PORT}/level.html`);
 });

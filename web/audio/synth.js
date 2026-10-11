@@ -20,7 +20,7 @@ function noteToFreq(note) {
  * Schedules playback of `midiBytes` (a Uint8Array SMF) on `audioCtx`, starting shortly after now,
  * mixed at `volume` (0-1) into a dedicated GainNode. Returns { stop, durationSeconds }.
  */
-export function playMidi(audioCtx, midiBytes, volume = 0.5) {
+export function playMidi(audioCtx, midiBytes, volume = 0.5, destination = audioCtx.destination) {
   const { division, tracks, tempoEvents } = parseMidi(midiBytes);
   const tickToSeconds = makeTickToSeconds(tempoEvents, division);
 
@@ -30,7 +30,7 @@ export function playMidi(audioCtx, midiBytes, volume = 0.5) {
 
   const master = audioCtx.createGain();
   master.gain.value = volume;
-  master.connect(audioCtx.destination);
+  master.connect(destination);
 
   const startAt = audioCtx.currentTime + 0.03;
   const active = new Map(); // "channel:note" -> {osc, gain}

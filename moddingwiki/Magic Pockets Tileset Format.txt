@@ -1,0 +1,68 @@
+{{Tileset Infobox
+ | Hardware1 = EGA
+ | Hardware2 = VGA
+ | MaxTiles = 120
+ | Palette = External
+ | Names = N
+ | TileMinSize = 32&times;16
+ | TileMaxSize = 32&times;16
+ | NumPlanes = 4
+ | PlaneArrangement = Consecutive complete planes within each tile
+ | HasTransparency = N
+ | HasHitmap = N
+ | Metadata = None
+ | Subtilesets = N
+ | Compressed = Y
+ | Hidden = N
+ | Games =
+   {{Game|Magic Pockets}}
+}}
+
+Background tiles in [[Magic Pockets]] are stored in <tt>blocks1.pak</tt> through <tt>blocks4.pak</tt>, one tileset for each world. Decompress the [[Magic Pockets RNC Compression|RNC method 1]] wrapper first. These files share an extension with [[Magic Pockets Sprite Format|sprite banks]], but have a different layout.
+
+== File format ==
+
+Each decompressed file is 30720 bytes: 120 tiles of 256 bytes each. There is no header or palette. Each tile is 32&times;16 pixels with four consecutive 64-byte colour planes, and no mask plane.
+
+{|class="wikitable"
+!Offset within tile!!Size!!Contents
+|-
+|<tt>0x00</tt>||64||Colour plane 0
+|-
+|<tt>0x40</tt>||64||Colour plane 1
+|-
+|<tt>0x80</tt>||64||Colour plane 2
+|-
+|<tt>0xC0</tt>||64||Colour plane 3
+|}
+
+Rows within each plane contain four bytes. A byte's most significant bit is the leftmost pixel; plane ''k'' supplies bit ''k'' of the palette index. The byte for tile ''t'', plane ''k'', pixel (''x'', ''y'') is:
+
+ offset = t * 256 + k * 64 + y * 4 + floor(x / 8)
+ bit number = 7 - (x % 8)
+
+=== Tile numbering ===
+
+Tiles in the bank are numbered 0-119. A cell value ''v'' in a [[Magic Pockets Map Format|PAP map]] selects tile <tt>v - 1</tt>, so the map's normal values are 1-120. Each world uses its matching <tt>blocksN.pak</tt> bank.
+
+=== Palette ===
+
+The palette is external, in the game's executable. Use the world palette and the VGA DAC conversion implemented by the palette decoder. The same world palette is used for the corresponding sprite banks.
+
+=== Collision ===
+
+No collision mask or hitmap is stored in a tileset or in a separate plane of a PAP map. The executable's ground table at <tt>GAMEU DS:F189</tt> supplies tile classifications, interpreted by the ground-collision code. Changing only the artwork does not change a tile's collision behaviour.
+
+== Source code ==
+
+From [[Magic Pockets#Tools|re-magicpockets]], the open-source browser port and reverse-engineering project:
+
+* [https://github.com/VorticonCmdr/re-magicpockets/blob/main/web/core/pak.js web/core/pak.js] – blocks layout and tile slicing
+* [https://github.com/VorticonCmdr/re-magicpockets/blob/main/web/core/ega.js web/core/ega.js] – opaque planar decoding
+* [https://github.com/VorticonCmdr/re-magicpockets/blob/main/web/core/tile-collision.js web/core/tile-collision.js] – ground-table classifications
+* [https://github.com/VorticonCmdr/re-magicpockets/blob/main/web/engine/ground-collision.js web/engine/ground-collision.js] – collision consumers
+* [https://github.com/VorticonCmdr/re-magicpockets/blob/main/docs/formats/pak.md docs/formats/pak.md] – original tileset layout
+
+== Credits ==
+
+This file format was reverse engineered by [[User:VorticonCmdr|VorticonCmdr]]. Please credit this work in projects that use it; a link back to this wiki is appreciated.

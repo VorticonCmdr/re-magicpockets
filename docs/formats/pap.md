@@ -58,7 +58,7 @@ are genuinely 32×16, rendered 1:1 against the `blocksN.pak` atlas, one map cell
 dosbox-x trace needed; the byte-range match alone was conclusive.
 
 **Still open**: `pcmap.pap` and `sea.pap` have no world digit in their filenames, so which
-`blocksN.pak` (if any single one) they render against is unconfirmed — `tools/viewer.html`
+`blocksN.pak` (if any single one) they render against is unconfirmed — `level.html`
 defaults them to `blocks1` but lets the tileset be picked manually.
 
 ## Verification
@@ -66,4 +66,4 @@ defaults them to `blocks1` but lets the tileset be picked manually.
 `node tools/extract-pap.js build/raw/<file>.pap.raw` dumps the **row-major** grid (the
 confirmed on-disk format) as a tile-index heatmap PNG, plus the raw grid as JSON. For an actual
 rendered level (real tiles, not the heatmap), run `node tools/serve.js` and open
-`tools/viewer.html` — see `docs/viewer.md`.
+`level.html` — see `docs/viewer.md`.

@@ -26,12 +26,17 @@
   arena: the actual per-tile ground-collision table (<code>6de3:f189</code>, referenced but never
   dumped since Phase 3) was read directly out of the binary, and it's a clean, real
   solid/passable/special classification indexed by the exact on-disk tile value — see
-  <code>web/core/tile-collision.js</code> and <code>docs/engine.md</code>. Spawn point, pickups,
-  and the exit are found by scanning this real collision for standable spots. <b>Level 1a's
-  spawn point is now the REAL authored position</b> (X=144, Y=80), read live out of a running
-  DOSBox instance's memory (confirmed via a byte-identical re-read while paused) — the other 7
-  levels still use the generic standable-spot search, since that live read wasn't repeated for
-  them. <b>The player also renders as a real sprite</b> from
+  <code>web/core/tile-collision.js</code> and <code>docs/engine.md</code>. <b>Spawn point, pickups,
+  and the exit are placeholder for every level, no exceptions</b> — a generic real-collision
+  standable-spot search, not real authored data. Two separate attempts at recovering the real
+  positions were both walked back: the <code>.pin</code> level-script's own type-3/player entity
+  record turned out to be the exact same hardcoded (144, 80) in <i>every</i> level of <i>every</i>
+  world (authoring-tool boilerplate, not real data), and a live DOSBox read that seemed to
+  independently confirm that value for level 1a turned out to have read a frozen, non-live entity
+  — a longer session found the real position-tracking entity elsewhere, in a coordinate space not
+  yet mapped back to <code>.pap</code> tile-grid pixels. See <code>docs/formats/pin-level-script.md</code>
+  and <code>docs/port-plan.md</code> for the full trail.
+  <b>The player also renders as a real sprite</b> from
   its confirmed character bank (cap + sunglasses), not an orange box -- a hand-verified
   representative pose (an earlier attempt landed on a genuinely empty tile and silently rendered
   nothing; see docs/port-plan.md's "Follow-up fix" entry for how that was found and fixed).

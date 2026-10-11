@@ -1,0 +1,80 @@
+The logo program supplied with [[Magic Pockets]] stores its images in an EJWLIB archive appended to its DOS executable. The analysed unpacked copy is <tt>KLOGOPOU.EXE</tt>, derived from <tt>KLOGOPOK.EXE</tt>. Its archive begins at file offset 15228, immediately after the MZ load image.
+
+== File format ==
+
+=== Locating the archive ===
+
+Use the DOS MZ header's declared image size, rather than assuming a fixed offset in every executable. For the analysed file, the last-page byte count is nonzero and the archive base is:
+
+ archive base = (MZ page count - 1) * 512 + MZ last-page byte count
+
+The page count is UINT16LE at MZ offset 4 and the last-page byte count is UINT16LE at offset 2. The verified offset applies to the unpacked executable; a packed executable must be unpacked before using this layout.
+
+=== Header ===
+
+{|class="wikitable"
+!Offset from archive base!!Data type!!Name!!Description
+|-
+|0||UINT16LE||count||Number of directory entries; 3 in the checked archive
+|-
+|2||UINT16LE||key||Initial directory obfuscation key; 0x3139 in the checked archive
+|-
+|4||char[6]||signature||ASCII EJWLIB
+|-
+|10||BYTE[count * 22]||directory||Obfuscated fixed-size directory entries
+|}
+
+=== Directory decoding ===
+
+Let <tt>al</tt> be the low byte of the key and <tt>ah</tt> its high byte. Decode each directory byte in sequence:
+
+ decoded_byte = stored_byte XOR al
+ al = (al + ah) & 0xFF
+
+The high byte remains fixed. The running low byte continues across record boundaries; do not reset it for each entry. The header and resource streams are not subject to this directory XOR.
+
+Each decoded entry occupies 22 bytes:
+
+{|class="wikitable"
+!Offset within entry!!Data type!!Name!!Description
+|-
+|<tt>0x00</tt>||char[12]||name||NUL-terminated filename; bytes after the terminator need not be zero
+|-
+|<tt>0x0C</tt>||BYTE[2]||unknown||Nonzero opaque metadata in the checked entries
+|-
+|<tt>0x0E</tt>||UINT16LE||size low||Compressed resource size read by the current parser
+|-
+|<tt>0x10</tt>||BYTE[2]||size high / unknown||Zero in the checked entries; intended wider field layout not established
+|-
+|<tt>0x12</tt>||UINT24LE||offset low||Resource offset relative to the archive base, read by the current parser
+|-
+|<tt>0x15</tt>||UINT8||offset high / unknown||Zero in the checked entries; intended wider field layout not established
+|}
+
+The current parser establishes the low 16 size bits and low 24 offset bits. The zero high bytes are not proof that arbitrary archives use a 16-bit size or 24-bit offset. Preserve unknown directory bytes when writing an archive editor.
+
+=== Resources ===
+
+{|class="wikitable"
+!Name!!Archive-relative offset!!Compressed bytes!!Decompressed bytes
+|-
+|<tt>LOGO1.HUF</tt>||76||6455||32000
+|-
+|<tt>LOGO2_4.HUF</tt>||6531||4155||32000
+|-
+|<tt>LOGO3.HUF</tt>||10686||3092||16000
+|}
+
+Each resource begins with an LZHUF decoded-size field and compressed stream; see [[Magic Pockets Logo Image Format]]. This archive does not wrap its entries in RNC. In the checked file the directory occupies 66 bytes after the 10-byte header, so the first resource starts immediately at archive-relative offset 76.
+
+== Source code ==
+
+From [[Magic Pockets#Tools|re-magicpockets]], the open-source browser port and reverse-engineering project:
+
+* [https://github.com/VorticonCmdr/re-magicpockets/blob/main/web/engine/klogo.js web/engine/klogo.js] – archiveEntries and readArchiveEntry
+* [https://github.com/VorticonCmdr/re-magicpockets/blob/main/web/core/lzhuf.js web/core/lzhuf.js] – resource decompressor
+* [https://github.com/VorticonCmdr/re-magicpockets/blob/main/docs/launcher.md docs/launcher.md] – archive location and original logo loader
+
+== Credits ==
+
+This file format was reverse engineered by [[User:VorticonCmdr|VorticonCmdr]]. Please credit this work in projects that use it; a link back to this wiki is appreciated.

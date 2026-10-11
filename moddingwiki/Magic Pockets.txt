@@ -1,0 +1,77 @@
+{{Game Infobox
+ | Levels = Some
+ | Tiles = Some
+ | Sprites = Some
+ | Fullscreen = Some
+ | Sound = Some
+ | Music = Some
+ | Text = Some
+ | Story = Unknown
+ | Interface = Some
+ | Demo = Some
+}}
+
+'''Magic Pockets''' uses several compact binary formats for its DOS graphics, maps, level events and sound. These pages describe the DOS asset collection analysed by the re-magicpockets project.
+
+Sixty files in the supplied <tt>data</tt> directory have an [[Magic Pockets RNC Compression|RNC ProPack method 1]] wrapper. Decompress these before interpreting the formats below. <tt>install.txt</tt> and <tt>pockets.ini</tt> are uncompressed text; the logo resources embedded in the unpacked logo executable use a separate archive and LZHUF compression.
+
+The filename matters as much as the extension. In particular, <tt>.pin</tt> identifies several unrelated formats, and <tt>.pak</tt> contains three different fixed-size graphics layouts.
+
+== Tools ==
+
+{|class="wikitable"
+!Name!!Platform!!Archives!!Levels!!Graphics!!Music!!Sounds!!Text!!Saves!!.exe patch!!Notes
+|-
+|[https://github.com/VorticonCmdr/re-magicpockets re-magicpockets]||Web browser / Node.js||Extract||View||Export||Export||Some||Some||No||No||Open-source vanilla JavaScript port, unified asset viewer and command-line extractors. Requires original game files. The viewer exports PNG and plain MIDI; the engine has a separate original-driver AdLib playback path.
+|}
+
+== File formats ==
+
+{|class="wikitable"
+!Filename!!Format!!Details
+|-
+|<tt>*.pak</tt>, <tt>*.pap</tt>, <tt>*.pip</tt>, <tt>*.pin</tt>||[[Magic Pockets RNC Compression]]||Outer compression used by all 60 binary files in the analysed data directory
+|-
+|<tt>bitkid.pak</tt>, <tt>ape.pak</tt>, <tt>nasty1-4.pak</tt>, <tt>special1-4.pak</tt>, <tt>kidx1-4.pak</tt>, <tt>extras.pak</tt>, <tt>extrax1-4.pak</tt>||[[Magic Pockets Sprite Format]]||32×32 or 16×16 masked planar tiles
+|-
+|<tt>blocks1-4.pak</tt>||[[Magic Pockets Tileset Format]]||120 opaque 32×16 tiles per world
+|-
+|<tt>level1a-4b.pap</tt>, <tt>pcmap.pap</tt>, <tt>sea.pap</tt>||[[Magic Pockets Map Format]]||Ten 128×128 tile grids; level filenames use a world number and A/B suffix
+|-
+|<tt>new.pip</tt>, <tt>endscrn.pip</tt>, <tt>intro0-5.pip</tt>||[[Magic Pockets Image Format]]||DEGAS low-resolution planar images, including a shorter caption-font image
+|-
+|<tt>level0.pin</tt>, <tt>new1.pin</tt>, <tt>level2.pin</tt>, <tt>level3a-c.pin</tt>, <tt>level4.pin</tt>||[[Magic Pockets Level Script Format]]||Entity placement and level-event streams
+|-
+|<tt>adlib.pin</tt>, <tt>adlib2-3.pin</tt>, <tt>roland.pin</tt>, <tt>roland2.pin</tt>, <tt>soundbnk.pin</tt>||[[Magic Pockets Music Format]]||MIDI cue banks, with some dictionary-compressed entries
+|-
+|<tt>autoplay.pin</tt>||[[Magic Pockets Demo Format]]||Run-length encoded input for the attract demo
+|-
+|<tt>player.pin</tt>, <tt>beeper.pin</tt>, <tt>tandy.pin</tt>||[[Magic Pockets Sound Driver Format]]||Loadable 8086 code, rather than an audio data format
+|-
+|<tt>sblaster.pin</tt>||[[Magic Pockets Sound Blaster Data Format]]||Undecoded payload; filename alone does not establish its internal format
+|-
+|<tt>extra_2.pin</tt>||[[Magic Pockets Extra Data Format]]||Unclassified payload
+|-
+|<tt>pockets.ini</tt>||[[Magic Pockets Configuration Format]]||Positional hardware and control settings
+|-
+|<tt>install.txt</tt>||[[Magic Pockets Installer Script Format]]||Text configuration and commands for the installer
+|-
+|Archive appended to <tt>KLOGOPOU.EXE</tt>||[[Magic Pockets Resource Archive Format]]||EJWLIB resource directory with an XOR-obfuscated directory
+|-
+|<tt>LOGO1.HUF</tt>, <tt>LOGO2_4.HUF</tt>, <tt>LOGO3.HUF</tt> inside that archive||[[Magic Pockets Logo Image Format]]||LZHUF-compressed resources; LOGO1 has a verified planar image layout
+|}
+
+== Notes ==
+
+* Sizes and offsets on the format pages refer to decompressed data unless explicitly stated otherwise.
+* Big-endian level records and picture words coexist with little-endian sound tables and 8086 executable code. There is no universal byte order.
+* Sprite palettes, animation descriptors and tile collision classifications are held in the executable, rather than in the sprite or map files.
+* The RE notes retain older hypotheses alongside later corrections. The image and music pages use the newer DEGAS and dictionary-MIDI findings. Unknown layouts remain marked as unknown.
+* Viewing or exporting a format does not imply that an editor or a compressor is available. The capability flags above indicate partial support.
+
+== External links ==
+
+* [https://github.com/VorticonCmdr/re-magicpockets re-magicpockets on GitHub] – browser port, parsers and reverse-engineering documentation
+* [https://github.com/VorticonCmdr/re-magicpockets/tree/main/docs/formats File-format notes] – evidence and original consumer addresses
+
+[[Category:Game Intro Page]]

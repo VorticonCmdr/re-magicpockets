@@ -51,7 +51,7 @@ export class AssetCache {
 
   /** Decoded tile atlas for a .pak file under the given palette (array of [r,g,b] triples). */
   async getPak(filename, palette) {
-    const key = `pak:${filename.toLowerCase()}`;
+    const key = `pak:${filename.toLowerCase()}:${JSON.stringify(palette)}`;
     if (this.decodedCache.has(key)) return this.decodedCache.get(key);
     const raw = await this.getRaw(filename);
     const decoded = decodePak(filename, raw, palette);

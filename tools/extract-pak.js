@@ -159,7 +159,7 @@ function main() {
 
   fs.writeFileSync(outputPath, encodePng(sheetWidth, sheetHeight, sheet));
 
-  // Atlas layout sidecar -- lets consumers (e.g. tools/viewer.html) compute each tile's
+  // Atlas layout sidecar -- lets consumers (e.g. level.html) compute each tile's
   // source rect without hardcoding sheetCols/tile pixel size assumptions.
   const jsonPath = outputPath.replace(/\.png$/, '.json');
   fs.writeFileSync(

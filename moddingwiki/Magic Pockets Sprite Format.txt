@@ -1,0 +1,86 @@
+{{Image Infobox
+ | Hardware1 = EGA
+ | Hardware2 = VGA
+ | Depth = 4-bit (EGA)
+ | MinSize = 16&times;16
+ | MaxSize = 32&times;32
+ | Palette = External
+ | NumPlanes = 4
+ | HasTransparency = P
+ | HasHitmap = No
+ | Games =
+   {{Game|Magic Pockets}}
+}}
+
+Sprites in [[Magic Pockets]] are arrays of masked planar tiles in <tt>.pak</tt> files. They have an [[Magic Pockets RNC Compression|RNC method 1]] wrapper. There are 19 sprite banks; the four <tt>blocks</tt> banks instead use [[Magic Pockets Tileset Format]].
+
+== File format ==
+
+After decompression there is no header, tile count, palette or frame directory. Choose the layout by filename, then divide the length by the tile size. Size divisibility alone is ambiguous.
+
+{|class="wikitable"
+!Files!!Dimensions!!Bytes per plane!!Bytes per tile!!Tiles per file
+|-
+|<tt>bitkid.pak</tt>, <tt>ape.pak</tt>, <tt>nasty1-4.pak</tt>||32×32||128||640||60
+|-
+|<tt>special1-4.pak</tt>, <tt>kidx1-4.pak</tt>||32×32||128||640||20
+|-
+|<tt>extras.pak</tt>||16×16||32||160||240
+|-
+|<tt>extrax1-4.pak</tt>||16×16||32||160||80
+|}
+
+Each tile stores five complete planes, consecutively: the AND mask followed by colour planes 0, 1, 2 and 3. Within a plane, rows are consecutive, with 4 bytes per row for 32-pixel tiles or 2 for 16-pixel tiles. The most significant bit is the leftmost pixel of each byte. Colour plane ''k'' supplies bit ''k'' of the 4-bit palette index.
+
+For tile index ''t'', width ''w'', height ''h'' and bytes per plane <tt>P = (w / 8) * h</tt>:
+
+ mask byte = t * 5 * P + y * (w / 8) + floor(x / 8)
+ colour-plane k byte = t * 5 * P + (k + 1) * P + y * (w / 8) + floor(x / 8)
+ bit number = 7 - (x % 8)
+
+=== Transparency ===
+
+A mask bit of 1 preserves the destination pixel. A mask bit of 0 permits an opaque pixel. For RGBA export, use the mask for alpha; palette index 0 is not itself a transparency rule. The original renderer ANDs the destination with the mask before applying the colour planes.
+
+=== Palette ===
+
+No palette is stored in a sprite bank. Use the world's 16-colour palette from the executable. The palette decoder in the source section implements the game's VGA DAC conversion; a default EGA palette does not reproduce the game's colours.
+
+== Sprite numbering ==
+
+The renderer uses executable-resident descriptors and frame streams to select tiles. A tile index is not an entity type or necessarily a complete animation frame. Several banks are assembled from a shared file and a world-specific extension:
+
+{|class="wikitable"
+!Runtime bank!!Files, in order!!Combined tile count
+|-
+|2||<tt>bitkid.pak</tt> + <tt>kidxN.pak</tt>||80
+|-
+|3||<tt>specialN.pak</tt>||20
+|-
+|6||<tt>extras.pak</tt> + <tt>extraxN.pak</tt>||320
+|-
+|7||<tt>nastyN.pak</tt>||60
+|}
+
+Here ''N'' is the world number. The 96 shape descriptors at <tt>GAMEU DS:B91A</tt>, the descriptor pointer table at <tt>DS:C39A</tt> and associated frame streams supply rendering metadata. They are not a header inside <tt>.pak</tt>.
+
+== Notes ==
+
+* A 38400-byte file can mean 60 large sprites or 240 small sprites. Preserve the filename when extracting.
+* These banks contain no hitmap or entity-placement records. Placement is in [[Magic Pockets Level Script Format|level scripts]].
+* The plane-to-index mapping is the identity mapping. An earlier palette-compensating plane permutation in the RE notes was superseded.
+
+== Source code ==
+
+From [[Magic Pockets#Tools|re-magicpockets]], the open-source browser port and reverse-engineering project:
+
+* [https://github.com/VorticonCmdr/re-magicpockets/blob/main/web/core/pak.js web/core/pak.js] – bank layout selection and tile slicing
+* [https://github.com/VorticonCmdr/re-magicpockets/blob/main/web/core/ega.js web/core/ega.js] – masked planar decoding
+* [https://github.com/VorticonCmdr/re-magicpockets/blob/main/web/core/palette.js web/core/palette.js] – world palettes and DAC conversion
+* [https://github.com/VorticonCmdr/re-magicpockets/blob/main/web/core/exe-data.js web/core/exe-data.js] – executable-resident metadata
+* [https://github.com/VorticonCmdr/re-magicpockets/blob/main/web/render/sprites.js web/render/sprites.js] – frame composition
+* [https://github.com/VorticonCmdr/re-magicpockets/blob/main/docs/formats/pak.md docs/formats/pak.md] – consumer disassembly and layout evidence
+
+== Credits ==
+
+This file format was reverse engineered by [[User:VorticonCmdr|VorticonCmdr]]. Please credit this work in projects that use it; a link back to this wiki is appreciated.

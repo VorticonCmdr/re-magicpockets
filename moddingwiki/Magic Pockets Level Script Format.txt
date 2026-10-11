@@ -1,0 +1,101 @@
+Authored entities and level events in [[Magic Pockets]] are stored in seven <tt>.pin</tt> files. These use an [[Magic Pockets RNC Compression|RNC method 1]] wrapper. They are unrelated to [[Magic Pockets Music Format|sound-bank PIN files]] and [[Magic Pockets Sound Driver Format|driver modules]].
+
+{|class="wikitable"
+!File!!Use!!Decompressed bytes
+|-
+|<tt>level0.pin</tt>||Attract-demo level events||5888
+|-
+|<tt>new1.pin</tt>||World 1||16662
+|-
+|<tt>level2.pin</tt>||World 2||13946
+|-
+|<tt>level3a.pin</tt>||World 3 variant A||5744
+|-
+|<tt>level3b.pin</tt>||World 3 variant B||7680
+|-
+|<tt>level3c.pin</tt>||World 3 variant C||4882
+|-
+|<tt>level4.pin</tt>||World 4||16662
+|}
+
+== File format ==
+
+All multi-byte values are big-endian. The header is a sequence of 16-bit offsets into the same decompressed file. Read offsets until reaching a word greater than or equal to the file length; the shipped tables use the file length as a sentinel. There is no leading entry count.
+
+Each offset starts a record stream. Entries can overlap: several starting points may lead into the same physical tail. Do not infer a room count from the number of header entries, or split streams at the next header offset.
+
+=== Control records ===
+
+Read a 16-bit marker before each record:
+
+{|class="wikitable"
+!Marker!!Record size!!Meaning
+|-
+|<tt>0xAAAA</tt>||2 bytes||End this stream; the engine also handles a particular world-1 cutscene at this terminal
+|-
+|<tt>0xBBBB</tt>||4 bytes||Following UINT16BE selects a sublevel-position lookup
+|-
+|<tt>0xCCCC</tt>||4 bytes||Following UINT16BE is a target for the event-stream wait counter
+|-
+|<tt>0xDDDD</tt>||2 bytes||Start the attract demo and end the stream
+|-
+|Other value||6 bytes + payload||Entity-spawn record; ordinary records use 0xEEEE
+|}
+
+The ordinary marker is a discriminant, not an additional entity parameter; the original consumer checks the four special values, rather than requiring <tt>0xEEEE</tt>.
+
+=== Entity records ===
+
+{|class="wikitable"
+!Data type!!Name!!Description
+|-
+|UINT16BE||marker||Any non-control marker
+|-
+|UINT16BE||layout||BX layout selector passed to the entity factory
+|-
+|UINT16BE||type||Entity type passed in AX
+|-
+|UINT16BE[words]||payload||Length selected by layout
+|}
+
+{|class="wikitable"
+!Layout!!Payload words!!Generic fields
+|-
+|2 or 3||2||X, Y
+|-
+|4||3||X, Y, animation-set field at entity +0x14
+|-
+|5||4||As above, plus state/script-table selector
+|-
+|6||5||As above, plus entity field +0x10
+|-
+|7||6||As above, plus entity field +0x26
+|-
+|8||6||Same total length, but a different byte-level interpretation of the tail
+|}
+
+The first two payload words represent signed 16-bit coordinates. Preserve their full bit patterns, including negative values. The layout number is not a literal word count. The later generic words select or initialise runtime fields; they are not independently stored animation scripts.
+
+=== Special entity types ===
+
+For type <tt>0x1F</tt> with layout 7, the six words mean X, Y, Z, one discarded word, and two direction-setup arguments stored at <tt>DS:8C1F</tt> and <tt>DS:8C21</tt>. Type <tt>0x1F</tt> with another layout falls back to the generic interpretation. Type <tt>0x2B</tt> sets some fixed runtime fields before consuming the normal generic payload.
+
+The entity factory also serves runtime spawn queues, including branches whose payload contains a live entity pointer. Those branches are not a general authoring format for static file records. Keep byte-length rules and entity-specific semantics separate when writing an editor.
+
+=== Related data ===
+
+Tile layout is in [[Magic Pockets Map Format|PAP files]]. Sprite-bank selection, frame composition and the runtime entity-script VM are in the executable. Runtime-generated pickups and projectiles need not have a record in this authored stream.
+
+== Source code ==
+
+From [[Magic Pockets#Tools|re-magicpockets]], the open-source browser port and reverse-engineering project:
+
+* [https://github.com/VorticonCmdr/re-magicpockets/blob/main/web/core/pin-level-script.js web/core/pin-level-script.js] – offset table and record decoder
+* [https://github.com/VorticonCmdr/re-magicpockets/blob/main/tools/extract-level-script.js tools/extract-level-script.js] – JSON exporter
+* [https://github.com/VorticonCmdr/re-magicpockets/blob/main/web/engine/script-runner.js web/engine/script-runner.js] – level-event execution
+* [https://github.com/VorticonCmdr/re-magicpockets/blob/main/web/engine/spawn.js web/engine/spawn.js] – entity factory
+* [https://github.com/VorticonCmdr/re-magicpockets/blob/main/docs/formats/pin-level-script.md docs/formats/pin-level-script.md] – record sizes and special-type disassembly
+
+== Credits ==
+
+This file format was reverse engineered by [[User:VorticonCmdr|VorticonCmdr]]. Please credit this work in projects that use it; a link back to this wiki is appreciated.

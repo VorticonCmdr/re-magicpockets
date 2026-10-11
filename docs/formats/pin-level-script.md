@@ -84,10 +84,52 @@ known type constants from `Gfx_DrawObject`'s dispatch (e.g. `0x2b`/43 is the "ch
 entity `Entity_ThinkChargingHazard` already documented in `docs/engine.md`).
 
 Nine type values (`0x11, 0x1d, 0x1f, 0x25, 0x2b, 0x2f, 0x44, 0x53, 0x5e`) get bespoke field
-layouts in `Entity_SpawnFromQueuedEvent` instead of the generic one (linked-child spawns, boss
-segments, direction-vector setups, etc.) — **not decoded field-by-field here**, but their `X`/`Y`
-extraction still works because every branch checked writes the same entity `+6`/`+8` fields from
-the same leading payload positions.
+layouts in `Entity_SpawnFromQueuedEvent` — see the next section for the full, field-by-field
+decode of every one of them from `1000:c2f3`'s raw disassembly (not the decompiled pseudo-C, which
+obscures the exact `BX`/`SI` pointer arithmetic that determines both field meaning *and* how many
+payload bytes each record actually consumes).
+
+## The nine special-opcode types, fully decoded — and why only two of them appear in real levels
+
+`Entity_SpawnFromQueuedEvent` (`1000:c2f3`) is **not exclusively a level-script consumer** — it's
+also the target of the runtime dynamic spawn queue (`[0x8bb5]`, pushed via
+`Entity_PushSpawnEvent`/`Entity_PushPositionEvent`, e.g. an enemy's AI script spawning a
+projectile or effect while playing). Both callers set up the same three inputs (`AX`=type,
+`BX`=layout selector, `SI`=payload pointer) before calling in; the factory has no way to tell which
+caller it came from. Tracing the raw disassembly of all nine bespoke branches — specifically how
+far each one advances `BX` through the payload before falling into the shared tail/return logic —
+settles which of the nine can plausibly appear in a static `.pin` file at all:
+
+| type | consumes | payload meaning | file-compatible? |
+|---|---|---|---|
+| `0x11` (17) | **1 word** | `payload[0]` is read **directly as a pointer** (`MOV DI,[BX]`) to an existing live entity struct — dereferenced immediately (`[DI+1]`, `[DI+2]`, `[DI+0x2c]`, `[DI+0x40]`) to decide whether to attach a new one-shot child at the parent's position (`parent.X`, `parent.Y-8`). Aborts (no spawn) if the parent is already dying, already has a child, or has an invalid type. | **No** — a file can't encode a valid runtime memory address. |
+| `0x25` (37) | **1 word** | Same pointer-read pattern (`MOV BX,[BX]`), but keeps the new child linked more richly (copies parent `+6/+8/+14`, computes a type-dependent Y offset, and — new here — evicts any *existing* child of that parent by marking it dying first, then calls `Entity_FindArraySlotForEntity` for its own list-insertion point instead of using the shared priority-insertion tail). | **No** — same reasoning as `0x11`. |
+| `0x1d` (29) | **1 word** | Same pointer-read (`MOV DI,[BX]`), copies parent `+6/+8/+14` into the new entity, sets extended-state byte from `[0x8bf9]`. No abort checks, no back-reference (parent's own `+0x2c` is left untouched — a one-way "spawn near/tracking a live entity" rather than `0x11`/`0x25`'s two-way link). | **No** — same reasoning. |
+| `0x2f` (47) | **1 word** | Same pointer-read again, copies parent `+6/+8/+14` (with a `-0x10` Y offset), links two-way, then **tail-jumps into `FUN_1000_c890`** instead of the shared insertion dispatch at `LAB_1000_c4de` — a completely different list-splice path. | **No** — same reasoning. |
+| `0x44` (68) | **4 words** (fixed, ignores `BX`) | `X, Y, +0x14, kind-byte→+0xc table lookup` via **byte-swapped** reads (`XCHG AL,AH` after each word load — net effect identical to the generic branch's big-endian `MOV AH,[BX]`/`MOV AL,[BX+1]` idiom, just implemented differently), plus `entity+0x26 = [0x8b6b] & 0x70f` (a live RNG/frame-counter global, not payload data). Structurally identical to the *generic* layout's `BX`-selector-5 case (same 4 fields, same meaning) — this branch just hardcodes that count instead of reading `[0x8c1b]`. | Byte-layout-compatible with a real file record (if one used `BX=5`), but never observed — see below. |
+| `0x53` (83) | **5 words**, *conditionally* | First **peeks** (without consuming) `payload[3]`; if non-zero, abandons the whole bespoke path and falls through to the ordinary generic branch instead (using the file's real `BX` selector for length). If zero: reads `X, Y, +0x14`, **skips one word** (`ADD BX,4` instead of `2` right after the `+0x14` read — the file's 4th payload word is present but discarded, unused), then reads one more word into `+10`. Fixed `+1`=`0x3b`, `+0xc`=`table[0x3b]`, `+0x26`=`0x204`. | Only self-consistent if paired with `BX=6` (the generic 5-word count) in the file — never observed. |
+| `0x2b` (43) | **0 words of its own** | Sets three fixed fields (`state=0`, extended-state `0x14`, "charge" `0x36=0x32` — matching `Entity_ThinkChargingHazard`'s known threshold, `+0x14`(anim-set)`=4`), then **falls straight through** (`JMP c40c`) into the ordinary generic branch, consuming exactly whatever the file's own `BX` selector says (X, Y, and beyond). | **Yes** — this is really just "generic record with 3 extra hardcoded fields." |
+| `0x5e` (94) | **0 words of its own** | Rolls a `Rng_NextValue()&3` to pick one of 4 fixed animation-frame ranges (the firework/particle burst — `docs/enemies.md`'s confirmed `Game_WarpToLevelStageAndRunLoop` ending-sequence effect), then **falls through** to the generic branch exactly like `0x2b`. | **Yes** — same reasoning. |
+| `0x1f` (31) | **6 words**, *conditionally* | Only if the file's `BX` selector `== 7`; otherwise falls straight to the generic branch (`JMP c40c`, using whatever `BX` the file has). When it does apply: reads `X, Y, Z` (3 words, `Z`→`+0xa`), a 4th word (loaded into `CX`, never stored — dead read), a 5th word into global `[0x8c1f]`, and a 6th into global `[0x8c21]`, which is then used as the parameter to `CALL 1000:30b3` (a direction-vector/velocity setup, matching the decompile's "`Entity_SetupDirectionVector`" label). Total consumed (6 words) exactly matches the generic layout's own `BX=7` count, so byte-length bookkeeping is identical either way. | **Yes, when paired with `BX=7`** — and this is the one bespoke type actually shipped. |
+
+**Verified against the real data** (all six unpacked `.pin` files, 3811 entity records total): only
+**`0x1f`** and **`0x2b`** ever appear. `0x1f` always carries `BX=7` (matching its required
+condition) in every file except `level3c.pin`, which also has some at `BX=6` — those fall through
+to the ordinary generic 5-word layout instead, which is exactly what the code above predicts, not
+a decoder bug. `0x2b` appears exactly once, in `level4.pin`. **`0x11`, `0x1d`, `0x25`, `0x2f`,
+`0x44`, `0x53`, `0x5e` never appear** — confirming the "raw pointer" branches are runtime-only,
+never authored, and that `0x44`/`0x53`'s fixed-length bespoke paths (which *could* theoretically
+appear with the matching `BX`) simply weren't used by the level designers, who presumably always
+reached the same effect through the plain generic layout instead.
+
+**Practical upshot for `web/core/pin-level-script.js`**: the existing decoder — which determines
+record length purely from the file's own `BX`/layout-selector word via `WORDS_BY_BX`, ignoring
+`type` entirely — was already exactly correct. Verified two independent ways: (1) tracing every
+bespoke branch's real `BX`-pointer advancement in raw disassembly shows it always consumes exactly
+`WORDS_BY_BX[bx]` words in total, for every type that can legally appear in a file; (2) empirically,
+none of the six files ever desyncs (every sub-level's stream reaches a genuine `0xAAAA` terminator,
+never garbage). No decoder change was needed — this closes the "not decoded field-by-field" gap
+the previous pass left open, with proof rather than a plausibility argument.
 
 ## Entity sprite rendering (which tile does entity type `T` actually draw?)
 
@@ -151,7 +193,7 @@ The key evidence, in order:
 | 6 | `0x5c53` | `extras.pak` (240 tiles, index 0-239) + `extraxN.pak` (80 tiles, index 240-319) | 320 |
 | 7 | `0x20e9` | `nastyN.pak` alone (no prefix file) | 60 |
 
-`tools/viewer.html` now resolves any entity whose descriptor has `frameSourceMode === 1` (or bank
+`level.html` now resolves any entity whose descriptor has `frameSourceMode === 1` (or bank
 id 6, which is always direct) to its real sprite tile, loading whichever atlas file(s) the
 `bankAtlas` entry lists for the current world. Verified two ways: (1) the direct-mode `animStart`
 values for every bank now fall exactly inside that bank's own tile budget (0-79 for bank 2, 0-19
@@ -165,7 +207,7 @@ walk cycles, bubble/foam effects, player-costume frames) — not noise.
 — roughly a third of bank 7's entities, the bulk of bank 2's, and a handful of bank 3's. The full
 addressing mechanism is now known (see above) but the three tables' target byte-streams
 (`6de3:e4fa`/`e906`/`dea2`) haven't been dumped and mapped per-`kind`/per-frame-index yet. `kind`
-is exported in `entity-shapes.json` for exactly this follow-up. `tools/viewer.html` falls back to
+is exported in `entity-shapes.json` for exactly this follow-up. `level.html` falls back to
 a colored dot for these, and for `frameSourceMode === 0xffff` (video-memory effects, which have no
 static tile to show at all).
 
@@ -190,22 +232,96 @@ a row of collectibles or a patrol line of enemies would produce.
 
 ## Open questions
 
-- **A meaningful fraction of records have negative or far out-of-frame X/Y** (a consistent
-  "noise band" near Y≈0 appears in every world tested). Not yet explained — candidates: (a)
-  genuinely off-map spawn triggers (falling/dropped-in enemies, pre-staged items) which is a
-  normal platformer pattern, or (b) a per-sub-level coordinate base this extractor doesn't apply
-  (`Level_LookupSublevelPosition`'s `[8c65]`/`[8c67]` output doesn't obviously feed back into
-  subsequent entity coordinates from the code read so far, but hasn't been fully ruled out).
-- **The nine special-opcode types' extra fields** (beyond X/Y) are not decoded — direction
-  vectors, linked-parent/child relationships, hitbox extents, animation-set selectors.
+- **RESOLVED — "negative/out-of-frame X/Y" is not noise; it's content for OTHER rooms sharing the
+  same byte stream.** Dumping one sub-level's records in file order (`new1.pin` sub-level 0, world
+  1's level-1a stream) shows the negative-Y entities are **not garbage**: X stays in a plausible
+  0-2000px range throughout, and Y values cluster into clean, tile-row-aligned bands (multiples of
+  16px — `-48, -80, -96, -160, -176, -240, -288, -304, -432, -480, -496, -624, -832, ...`), exactly
+  the pattern a level designer placing evenly-spaced rows of enemies would produce, just far above
+  where level 1a's own `.pap` (0-2048px tall) can render them.
+
+  The likely mechanism: `FUN_1000_59a9` (a trigger-entity update routine, gated on a hardcoded
+  entity type `0x9e`/158 sitting at the exact position `X=0x90(144), Y=0x50(80)` — the same pixel
+  as level 1a's own player spawn, strongly suggesting this trigger entity is itself spawned as a
+  runtime-only linked child of the player, via one of the pointer-based opcodes above, not from
+  static file data) checks the **"camera position" globals `[0x8bbb]`/`[0x8bbd]`** (set per-sublevel
+  by `Level_InitStateForSublevel`, see `docs/port-plan.md`'s spawn-position follow-up entry) against
+  a small table of seven hardcoded `(X, Y)` trigger anchors, e.g. `(-0x730, -0x5e0)` = `(-1840,
+  -1504)` — squarely inside the same negative range as the level-script's own out-of-bounds
+  entities. Each match pokes several state globals and **re-invokes `Level_RunScriptedEventStream`**
+  from a different `[0x8c63]` entry pointer. This is a genuine room/checkpoint-warp dispatcher:
+  world 1 has more than one screen's worth of authored content living inside `new1.pin`'s single
+  byte stream, and a room's "local" entities are simply whichever records' `(X, Y)` happen to fall
+  within that room's own camera window — which is also, incidentally, exactly what
+  `web/main.js`'s existing `e.x/e.y` bounds-filter against `scene.widthPx/heightPx` already does
+  when spawning entities for the currently-loaded level, so **this port's existing pragmatic
+  filtering approach turns out to be the structurally correct one**, not a placeholder workaround.
+  **Not fully closed**: the exact per-room coordinate origins (which would let every one of world
+  1's other rooms be extracted precisely, not just level 1a) aren't mapped — `[0x8bbb]`/`[0x8bbd]`'s
+  own static source table was already traced in the port-plan follow-up and found to be
+  runtime-populated, not literal file bytes, so completing this would need either a live read per
+  room or locating that table's true runtime-copy source.
+- **RESOLVED — the nine special-opcode types' extra fields.** See the new section above: all nine
+  are now decoded field-by-field from raw disassembly, with the added finding that seven of them
+  (`0x11, 0x1d, 0x25, 0x2f, 0x44, 0x53, 0x5e`) never actually appear in shipped level data — four
+  of those seven are provably runtime-only (their payload word is read as a live entity pointer,
+  which a static file cannot encode).
+- **PARTIALLY RESOLVED — why 13 sub-level entries exist per world file.** The room/checkpoint-warp
+  mechanism found above (`FUN_1000_59a9` and friends) supports the existing "difficulty stage /
+  checkpoint restart" hypothesis: multiple screens' worth of content genuinely does live inside one
+  world's `.pin` file, addressed by a small per-room trigger-position table, not by a 1:1 mapping to
+  `.pap` files.
+
+  **Follow-up pass**: tried to assign each sub-level entry to a specific `.pap` map without a live
+  read, via a pure-geometry fit test — for every sub-level's entity list, what fraction of entities
+  land on a *non-solid* real-collision cell in level-A's map vs. level-B's map (`web/engine/
+  real-terrain.js`'s own `buildRealCollisionGrid`, same table used for the port's collision). World
+  1 (`new1.pin`, 2 candidate maps): weak but directionally consistent signal — sub-level 0 fits
+  `level1a.pap` best (already hard-confirmed via the live DOSBox read in the previous port-plan
+  entry) and sub-level 1 fits `level1b.pap` best, matching the ordinal `1a→index 0, 1b→index 1`
+  assumption `web/engine/level-registry.js` already uses. Sub-levels 2–12 split close to evenly
+  between the two maps with low absolute fit percentages (3–16%) — consistent with them being
+  **checkpoint/scripted-sequence re-entries into the same one or two physical rooms**, not
+  additional distinct rooms, rather than a fit-test failure (this game's terrain is extremely
+  dense — see the earlier spawn-position investigation — so even a *correct* map only "fits" a
+  modest fraction of positions). World 2 (`level2.pin`) shows a clearer split (sub-levels 0/1/5
+  fit `level2b.pap` best, 2/3/4/6/7 fit `level2a.pap` best, at 35–70% either way) — plausibly closer
+  to genuine alternation between the two rooms. World 4 (`level4.pin`, 15 header entries) is
+  mostly uninformative (near-0% either way for most entries) and its last 5 entries are dead
+  padding pointing at the same harmless offset (already noted in the Verification section above,
+  confirmed again here as `BAIL`/0-entity). **Not strong enough evidence to assert a definitive
+  per-entry room mapping beyond the two already-confirmed world-1 cases** — left as a soft,
+  documented lead rather than a closed answer.
 - **RESOLVED for AI-driven enemy types**: `docs/enemies.md` cross-references every type value
   reachable through `Entity_UpdateBehavior`'s two per-world × per-type AI dispatch tables
   (`Entity_DispatchUpdateByKind`/`Entity_DispatchHitReactionByKind`) against a movement-pattern
   catalog (patrol, chase/flee, gates, sleepers, charging hazard, vertical pathfinder) and against
   `entity-shapes.json`'s sprite-bank data — every one of those types resolves to bank 7 (`nastyN.pak`)
-  except the cross-world-shared type `0x2c` (bank 6, `extras`). Non-AI type classes (items,
-  pickups, background decoration, the player itself) are not covered by that doc and remain
-  unmapped here.
-- **Why 13 sub-level entries exist per world file** when each world only has 1-2 `.pap` maps —
-  overlapping entry points suggest these may be authored "difficulty stage" or "checkpoint restart"
-  variants (`Game_WarpToLevelStageAndRunLoop`, already documented) rather than distinct rooms.
+  except the cross-world-shared type `0x2c` (bank 6, `extras`).
+  **RESOLVED (in the negative) for items/pickups/bonus rewards**: `docs/engine.md`'s
+  `Entity_ChooseAndSpawnBonusItem` writeup already fully decoded the real collectible/reward-item
+  type set — exactly ten values, `0x35, 0x36, 0x37, 0x38, 0x39, 0x3a, 0x3b, 0x3c, 0x3d, 0x3f`, every
+  one confirmed via its own decompile branch and cross-checked against `entity-shapes.json`'s
+  sprite-bank data (bank 3/6, except `0x3f` which is bank 2). Checking all six `.pin` files' full
+  entity census against that exact set: **zero matches, in any file.** Combined with that function's
+  own mechanism (`Entity_PushSpawnEvent`, the *runtime* dynamic queue, fired from a 100-frame
+  periodic timer and a set of difficulty counters, never from the level-script interpreter) this is
+  conclusive, not just suggestive: **real bonus/pickup items are never level-authored** — they are
+  100% procedurally spawned during gameplay, so there is no "pickup" record to find in the static
+  file, and the earlier attempt (matching `Entity_InteractionPhaseType1bHandler`'s pickup-collection
+  tags against a spawned entity's `+10` field) was chasing the wrong layer — `+10` gets set from the
+  shape-descriptor table at spawn (copying the descriptor's own `animStart`-adjacent fields, not
+  payload data) and evidently mutates further at runtime as the entity's own AI/animation
+  progresses; it was never going to correlate with static file bytes.
+  What remains genuinely unmapped is the ~40 *other* static entity types (neither AI-dispatch enemy
+  nor bonus item) — background/environmental decoration and hazard-adjacent set dressing, per the
+  bank census below. `docs/enemies.md` is the right home for any further per-type tracing, not this
+  format doc.
+
+  | bank | tile catalog | static `.pin` types observed |
+  |---|---|---|
+  | 2 (`bitkid`/`kidxN`, player-adjacent) | 80 tiles | `0x15, 0x19, 0x2b, 0x43, 0x56` |
+  | 3 (`specialN`) | 20 tiles | `0x41` |
+  | 5 | — | `0x1` |
+  | 6 (`extras`/`extraxN`) | 320 tiles | the majority of the remaining types (decoration/effects) |
+  | 7 (`nastyN`) | 60 tiles | mostly already covered by `docs/enemies.md`'s AI-dispatch census |

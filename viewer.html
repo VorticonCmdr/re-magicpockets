@@ -1,0 +1,51 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#173b32">
+  <title>Magic Pockets · Asset explorer</title>
+  <link rel="stylesheet" href="/web/viewer/viewer.css">
+</head>
+<body>
+  <aside class="sidebar">
+    <a class="brand" href="/viewer.html"><span class="brand-mark">MP</span><span>Magic Pockets<small>ASSET EXPLORER</small></span></a>
+    <div class="eyebrow">COLLECTION</div>
+    <nav id="categories" aria-label="Asset categories"></nav>
+    <div class="sidebar-bottom">
+      <div class="source-indicator"><i></i><span id="source-label">Connecting to local files…</span></div>
+      <button id="choose-folder" class="secondary">Choose asset folder</button>
+      <input id="folder" type="file" webkitdirectory multiple hidden>
+      <button id="reload" class="text-button">Reload local assets</button>
+      <div class="sidebar-links"><a href="/level.html">Classic level viewer ↗</a><a href="/web/index.html">Game prototype ↗</a></div>
+      <p>Original files, decoded in your browser.<br>Folder selection stays on this device.</p>
+    </div>
+  </aside>
+  <main>
+    <header class="topbar"><span class="breadcrumb">MAGIC POCKETS <span>/</span> LIBRARY</span><span class="small">A closer look at the game</span></header>
+    <section class="collection-header">
+      <div><div class="eyebrow">THE ORIGINAL ASSETS</div><h1 id="collection-title">All assets</h1><p id="collection-description">Sprites, worlds, pictures, and the sounds between them.</p></div>
+      <span class="collection-total" id="collection-total">—</span>
+    </section>
+    <div class="toolbar">
+      <label class="search"><span aria-hidden="true">⌕</span><input id="search" type="search" placeholder="Search by filename…" aria-label="Search assets"><kbd>/</kbd></label>
+      <label class="select-label">World <select id="world"><option value="all">All worlds</option><option value="shared">Shared / unknown</option><option value="1">World 1</option><option value="2">World 2</option><option value="3">World 3</option><option value="4">World 4</option></select></label>
+      <label class="select-label">Sort <select id="sort"><option value="name">Name</option><option value="kind">Type</option><option value="size">File size</option></select></label>
+    </div>
+    <div id="notice" class="notice" role="status" aria-live="polite">Reading the collection…</div>
+    <div class="workspace">
+      <section class="library" aria-label="Asset library"><div class="results-line"><span id="results-count"></span><span>SELECT AN ASSET TO EXPLORE</span></div><div id="cards" class="cards"></div></section>
+      <aside id="inspector" class="inspector" aria-label="Asset inspector"><div class="inspector-empty"><span>✦</span><h2>Every file has a story.</h2><p>Select an asset to see its pixels,<br>records, or playable MIDI cues.</p></div></aside>
+    </div>
+    <footer><span>MAGIC POCKETS · THE BITMAP BROTHERS</span><span>Pixel by pixel, file by file.</span></footer>
+  </main>
+  <dialog id="expanded"><div class="dialog-header"><strong id="expanded-title"></strong><label>Zoom <select id="expanded-zoom"><option value="0.25">25%</option><option value="0.5">50%</option><option value="1" selected>100%</option><option value="2">200%</option><option value="4">400%</option><option value="8">800%</option></select></label><button id="close-expanded" autofocus>Close <kbd>Esc</kbd></button></div><div id="expanded-stage" class="checker"></div></dialog>
+  <div id="player" class="player" hidden>
+    <button id="previous-cue" aria-label="Previous cue" title="Previous cue">‹</button><button id="toggle-play" aria-label="Pause playback">Ⅱ</button><button id="next-cue" aria-label="Next cue" title="Next cue">›</button>
+    <div class="now-playing"><strong id="track-name"></strong><span id="track-time">0:00</span><progress id="track-progress" value="0" max="1" aria-label="Playback progress"></progress></div>
+    <label class="player-option"><input id="autoplay" type="checkbox"> Auto-next</label><label class="player-option"><input id="loop-cue" type="checkbox"> Loop</label>
+    <label class="volume">Volume <input id="volume" type="range" min="0" max="1" step="0.01" value="0.35" aria-label="Volume"></label><button id="stop" aria-label="Stop playback">✕</button>
+  </div>
+  <script type="module" src="/web/viewer/main.js"></script>
+</body>
+</html>

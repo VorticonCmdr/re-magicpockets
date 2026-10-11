@@ -1,6 +1,6 @@
 // Entity shape-descriptor resolution -- given an entity's level-script `type` and the
 // Ghidra-derived symbols/entity-shapes.json table, work out which .pak tile (if any) it draws.
-// Port of tools/viewer.html's resolveEntitySprite, split out as a pure function so the engine can
+// Port of level.html's resolveEntitySprite, split out as a pure function so the engine can
 // call it without any DOM/fetch coupling. See docs/formats/pin-level-script.md's "Entity sprite
 // rendering" section -- frameSourceMode gates three addressing modes; only frameSourceMode===1
 // (or bankId 6, always-direct) is a confirmed direct animStart -> tile-index mapping today.

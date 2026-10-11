@@ -546,4 +546,4 @@ Found while naming `Entity_UpdateBehavior`'s callee graph, this resolves the ope
   and the entity-spawn record layout giving type + X/Y position — is documented in
   `docs/formats/pin-level-script.md`. This is exactly the "sprite placement/identity metadata"
   `docs/formats/pak.md` had flagged as living "elsewhere, not yet traced". Extracted and
-  overlaid on rendered levels via `tools/extract-level-script.js` + `tools/viewer.html`.
+  overlaid on rendered levels via `tools/extract-level-script.js` + `level.html`.

@@ -1,5 +1,5 @@
 // Canvas2D rendering helpers. Background tiles are baked into one offscreen canvas once per level
-// (same technique tools/viewer.html validated) since they're static and large; the per-frame
+// (same technique level.html validated) since they're static and large; the per-frame
 // render path (loop.js) is a single cropped drawImage of that canvas at the camera's current
 // (possibly fractional) pixel position -- no hardware pixel-panning register to emulate, see
 // engine/camera.js. Entities are drawn live, every frame, straight from the entity pool (Phase 4
@@ -75,7 +75,7 @@ export async function loadSpritePaks(cache, entityShapes, world, palette) {
       try {
         spritePaks[name] = await cache.getPak(filename, palette);
       } catch {
-        // best-effort, same as tools/viewer.html
+        // best-effort, same as level.html
       }
     })
   );

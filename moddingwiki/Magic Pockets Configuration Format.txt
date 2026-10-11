@@ -1,0 +1,72 @@
+[[Magic Pockets]] stores hardware and control settings in <tt>pockets.ini</tt>. It is an uncompressed positional text file, despite its INI extension. There are no bracketed sections or key/value assignments.
+
+== File format ==
+
+The supplied file has ten CR LF-terminated lines:
+
+{|class="wikitable"
+!Line!!Example!!Meaning
+|-
+|1||<tt>Beeper</tt>||Sound selector
+|-
+|2||<tt>Colour VGA</tt>||Graphics selector
+|-
+|3||<tt>Keyboard</tt>||Control method
+|-
+|4||<tt>D</tt>||Not established; matches the installer script's id value
+|-
+|5||<tt>5</tt>||Not established
+|-
+|6||<tt>18,432 Up Arrow</tt>||Up: DOS key code 18432 (0x4800)
+|-
+|7||<tt>20,480 Down Arrow</tt>||Down: DOS key code 20480 (0x5000)
+|-
+|8||<tt>19,200 Left Arrow</tt>||Left: DOS key code 19200 (0x4B00)
+|-
+|9||<tt>19,712 Right Arrow</tt>||Right: DOS key code 19712 (0x4D00)
+|-
+|10||<tt>14,624 Space</tt>||Fire: DOS key code 14624 (0x3920)
+|}
+
+The final five lines are control bindings, in Up, Down, Left, Right, Fire order. In the checked sample the decimal code is displayed with a thousands comma and a readable key name. A DOS key code combines the scan code in the high byte and the ASCII code in the low byte. The example arrow bindings have a zero ASCII byte; the space binding has ASCII <tt>0x20</tt>.
+
+The precise grammar accepted by the original text reader, and the meanings of lines 4 and 5, are not fully specified by the current RE notes. Preserve those lines when editing an existing installation. The older memory-map note locating key bindings on lines 4-8 does not match the checked ten-line file.
+
+=== Sound devices ===
+
+The consumer uses the first character of the sound-name line:
+
+{|class="wikitable"
+!First character!!Device!!Known relationship
+|-
+|<tt>A</tt>||AdLib||player.pin with adlib.pin on the verified GAMEU path
+|-
+|<tt>R</tt>||Roland||Roland sound path and banks
+|-
+|<tt>S</tt>||Sound Blaster-compatible||GAMEU reaches the same AdLib bank loading path analysed in pin-sound.md
+|-
+|<tt>B</tt>||Beeper||PC speaker driver
+|-
+|<tt>T</tt>||Tandy||Tandy driver
+|}
+
+=== Graphics modes ===
+
+The game stores the first character of line 2 as its video selector. The <tt>M</tt> selector is converted to <tt>C</tt> by GAMEU's configuration parser. The supplied value <tt>Colour VGA</tt> therefore selects <tt>C</tt>. The launcher has its own mapping from selector letters to the logo program's mode digits; it is separate from this INI file's text layout.
+
+=== Controls ===
+
+Line 3 selects joystick mode for <tt>J</tt>, otherwise the keyboard path. Key bindings initialise the executable's scancode-to-action table at <tt>CS:1E27</tt>. [[Magic Pockets Demo Format|Demo tapes]] store the resulting action bits rather than DOS key codes.
+
+== Source code ==
+
+From [[Magic Pockets#Tools|re-magicpockets]], the open-source browser port and reverse-engineering project:
+
+* [https://github.com/VorticonCmdr/re-magicpockets/blob/main/docs/memory-map.md docs/memory-map.md] – configuration consumer and keyboard ISR; earlier line numbering needs the correction above
+* [https://github.com/VorticonCmdr/re-magicpockets/blob/main/docs/formats/pin-sound.md docs/formats/pin-sound.md] – verified sound-loading path
+* [https://github.com/VorticonCmdr/re-magicpockets/blob/main/docs/launcher.md docs/launcher.md] – launcher selector mapping
+* [https://github.com/VorticonCmdr/re-magicpockets/blob/main/web/verify/checks.js web/verify/checks.js] – checks against the original configuration and executable
+
+== Credits ==
+
+This file format was reverse engineered by [[User:VorticonCmdr|VorticonCmdr]]. Please credit this work in projects that use it; a link back to this wiki is appreciated.

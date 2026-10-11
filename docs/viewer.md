@@ -1,4 +1,32 @@
-# `tools/viewer.html` — JS level viewer
+# Asset viewers
+
+The main asset browser is `/viewer.html`, opened by default at `/` with Vite.
+
+```sh
+npm install
+npm run dev
+```
+
+Local development and `npm run preview` discover original files in `data/` automatically.
+You can also select your original asset folder in the browser. Files selected this way stay
+on your device; they are not uploaded. No extraction step is needed for the unified viewer.
+
+The library includes searchable sprite/tile atlases, all maps, verified game pictures,
+level-script records, and MIDI banks. Select a card for details. The inspector supports world
+palette overrides, individual tile selection, PNG/JSON/MIDI downloads, and a zoomable image
+view with drag-to-pan. Map tilesets and entity scripts can be changed manually. MIDI controls
+include cue filtering, play-all, pause/resume, previous/next, loop, and live volume. Press `/`
+to search; use left/right arrows on focused cards to navigate. Unverified intro pictures and
+sound-driver payloads remain visible with explanations and decompressed-byte downloads.
+
+`npm run build` produces `dist/`; `npm run preview` checks it locally. Game assets are not
+copied into `dist/`. On a static host, use the folder picker. The existing gameplay prototype
+is at `/web/index.html`; the standalone old MIDI player remains at `/tools/midi-player.html`.
+
+The original level-only viewer was moved from `tools/viewer.html` to `/level.html`. It still
+uses extraction output, as described below.
+
+# `level.html` — JS level viewer
 
 Renders actual `.pap` levels using the real `blocksN.pak` tile atlases (not the tile-index
 heatmap `tools/extract-pap.js` produces on its own) — a canvas-based, dependency-free static
@@ -9,7 +37,7 @@ page over `build/` output.
 ```
 node tools/build-all.js   # regenerate build/ (needed once, or after any decoder change)
 node tools/serve.js       # zero-dependency static server (browsers block fetch() on file://)
-# open http://localhost:8080/tools/viewer.html
+# open http://localhost:8080/level.html
 ```
 
 Pick a level from the dropdown; the matching world's tileset (`blocksN.pak`, matched by the

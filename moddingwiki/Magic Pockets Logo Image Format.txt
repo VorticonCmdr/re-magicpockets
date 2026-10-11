@@ -1,0 +1,98 @@
+{{Image Infobox
+ | Hardware1 = EGA
+ | Hardware2 = VGA
+ | Depth = 4-bit (EGA)
+ | MinSize = 320&times;200 (LOGO1)
+ | MaxSize = 320&times;200 (LOGO1)
+ | Palette = External
+ | NumPlanes = 4
+ | HasTransparency = N
+ | HasHitmap = No
+ | Games =
+   {{Game|Magic Pockets}}
+}}
+
+The opening Konami/Renegade logo in [[Magic Pockets]] comes from <tt>LOGO1.HUF</tt>, stored inside the [[Magic Pockets Resource Archive Format|EJWLIB archive]] appended to the unpacked logo executable. These resources use LZHUF, not the game's RNC asset wrapper.
+
+The archive also contains <tt>LOGO2_4.HUF</tt> and <tt>LOGO3.HUF</tt>. Their streams can be decompressed, but their pixel layouts and palettes for the other video modes have not been verified. The image infobox and bitmap description below apply to LOGO1 only.
+
+== File format ==
+
+=== Compression wrapper ===
+
+{|class="wikitable"
+!Data type!!Name!!Description
+|-
+|UINT32LE||size||Decoded byte count
+|-
+|BYTE[]||stream||MSB-first LZHUF stream, bounded by the archive entry size
+|}
+
+This is the Okumura/Yoshizaki LZSS plus adaptive Huffman variant implemented by the original logo program. Its parameters are:
+
+{|class="wikitable"
+!Parameter!!Value
+|-
+|Ring-buffer size N||4096
+|-
+|Maximum match length F||60
+|-
+|Literal/match threshold||2
+|-
+|Huffman symbols||314
+|-
+|Huffman tree nodes||627
+|-
+|Root node index||626
+|-
+|Frequency reconstruction threshold||0x8000
+|-
+|Initial ring contents||0x20 (space)
+|-
+|Initial ring write position||4036 (0xFC4)
+|}
+
+Decode symbols with the adaptive Huffman tree, updating frequencies after each symbol and reconstructing the tree at the threshold. Symbols below 256 are literal bytes. For a symbol ''c'' of 256 or more, the match length is <tt>c - 253</tt>, giving lengths 3-60.
+
+Match positions use the fixed LZHUF position prefix table: 64 high-part codes with lengths 3, 4, 5, 6, 7 and 8, distributed as 1, 3, 8, 12, 24 and 16 codes respectively, followed by the low six distance bits. Copy from <tt>(write_position - distance - 1) & 4095</tt>, allowing overlapping copies. Stop after producing the declared decoded size.
+
+=== Bitmap ===
+
+LOGO1 expands to 32000 bytes: a 320&times;200 four-plane image. Storage is row-planar, not DEGAS word-interleaved and not four full-image planes. Each row contains a 40-byte row for plane 0, then planes 1, 2 and 3, for 160 bytes per image row.
+
+ byte offset = y * 160 + plane * 40 + floor(x / 8)
+ bit number = 7 - (x % 8)
+
+Plane ''k'' supplies index bit ''k''. The most significant bit is the leftmost pixel of each byte. There is no mask plane.
+
+=== Palette ===
+
+The palette is not inside the HUF stream. For the verified mode-1 logo, it is a table of 16 RGB triples, with six-bit DAC components, at <tt>KLOGOPOU DS:04A6</tt>. In the analysed executable DS begins at file offset <tt>0x30 + 0x3660</tt>. To display an eight-bit component, the port uses <tt>round(component * 255 / 63)</tt>.
+
+Palette fades are code-driven: the logo starts black, approaches the target in 32 steps of +2 per component, holds, then fades with steps of -2. They are not animation frames stored in the image.
+
+== Files ==
+
+{|class="wikitable"
+!Resource!!Decoded bytes!!Known interpretation
+|-
+|<tt>LOGO1.HUF</tt>||32000||Verified 320×200 row-planar four-colour-plane bitmap
+|-
+|<tt>LOGO2_4.HUF</tt>||32000||Alternative video-mode resource; exact bitmap layout unverified
+|-
+|<tt>LOGO3.HUF</tt>||16000||Alternative video-mode resource; exact bitmap layout unverified
+|}
+
+The logo is the Konami/Renegade screen, not the separate Bitmap Brothers/title sequence represented by the [[Magic Pockets Image Format|intro PIP files]].
+
+== Source code ==
+
+From [[Magic Pockets#Tools|re-magicpockets]], the open-source browser port and reverse-engineering project:
+
+* [https://github.com/VorticonCmdr/re-magicpockets/blob/main/web/core/lzhuf.js web/core/lzhuf.js] – adaptive Huffman and LZSS decoder
+* [https://github.com/VorticonCmdr/re-magicpockets/blob/main/web/engine/klogo.js web/engine/klogo.js] – verified LOGO1 bitmap, palette and fades
+* [https://github.com/VorticonCmdr/re-magicpockets/blob/main/docs/launcher.md docs/launcher.md] – logo-program disassembly and video evidence
+
+== Credits ==
+
+This file format was reverse engineered by [[User:VorticonCmdr|VorticonCmdr]]. Please credit this work in projects that use it; a link back to this wiki is appreciated.

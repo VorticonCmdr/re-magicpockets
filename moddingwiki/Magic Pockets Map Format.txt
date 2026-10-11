@@ -1,0 +1,45 @@
+{{Map Infobox
+ | Type = 2D tile-based
+ | Layers = 1
+ | Tile size = 32&times;16
+ | Viewport = 320&times;192
+ | Games =
+   {{Game|Magic Pockets}}
+}}
+
+Maps in [[Magic Pockets]] are stored in <tt>.pap</tt> files, with an [[Magic Pockets RNC Compression|RNC method 1]] compression wrapper. Each map is 128&times;128 cells, covering 4096&times;2048 pixels at the game's 32&times;16 tile size.
+
+The eight world map files are <tt>level1a.pap</tt>, <tt>level1b.pap</tt> through <tt>level4a.pap</tt>, <tt>level4b.pap</tt>. The collection also includes <tt>pcmap.pap</tt> for the attract demo and <tt>sea.pap</tt>, whose game use is not established.
+
+== File format ==
+
+The decompressed file is exactly 16384 bytes, with no header: one unsigned byte per cell, in row-major order. There are no multi-byte fields.
+
+{|class="wikitable"
+!Data type!!Name!!Description
+|-
+|UINT8[128][128]||tiles||128 rows of 128 cell values
+|}
+
+For column ''x'' and row ''y'', the cell is at <tt>y * 128 + x</tt>. Each value ''v'' selects tile <tt>v - 1</tt> in the matching [[Magic Pockets Tileset Format|blocks tileset]]. The original loader transposes the grid to column-major order in memory; this does not change the on-disk order.
+
+=== Tiles and collision ===
+
+The map contains only one tile-number layer. It has no separate collision plane, object block, trigger directory or text. Collision classification is looked up from the executable's ground table. The shipped grids use positive tile indices; a viewer's treatment of zero as empty does not establish an original-game authoring rule for zero.
+
+=== Objects and level events ===
+
+Entity placement and authored transitions are stored separately in [[Magic Pockets Level Script Format|level-script PIN files]]. The A/B map filename suffix is not a count of level-script entry points: several script entries can share a single map and overlapping event streams.
+
+== Source code ==
+
+From [[Magic Pockets#Tools|re-magicpockets]], the open-source browser port and reverse-engineering project:
+
+* [https://github.com/VorticonCmdr/re-magicpockets/blob/main/web/core/pap.js web/core/pap.js] – row-major grid decoder
+* [https://github.com/VorticonCmdr/re-magicpockets/blob/main/web/engine/tiles.js web/engine/tiles.js] – map access and runtime representation
+* [https://github.com/VorticonCmdr/re-magicpockets/blob/main/web/core/tile-collision.js web/core/tile-collision.js] – external tile classifications
+* [https://github.com/VorticonCmdr/re-magicpockets/blob/main/docs/formats/pap.md docs/formats/pap.md] – load-site and map-layout evidence
+
+== Credits ==
+
+This file format was reverse engineered by [[User:VorticonCmdr|VorticonCmdr]]. Please credit this work in projects that use it; a link back to this wiki is appreciated.

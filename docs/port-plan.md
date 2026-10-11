@@ -5,7 +5,7 @@ unmodified game data files** (`data/*.pak`/`.pap`/`.pip`/`.pin`, still RNC-ProPa
 exactly as shipped) directly at load time — no offline extraction step, no baked PNG/JSON
 artifacts committed to the repo or generated as a prerequisite to play. The existing
 `build/`-based pipeline (`tools/build-all.js` → `build/raw`/`build/png`) stays exactly as it is
-today, as a **debugging/verification aid** (the CLI extractors + `tools/viewer.html` are how we
+today, as a **debugging/verification aid** (the CLI extractors + `level.html` are how we
 validate a decoder before trusting it in the live engine) — it is not the runtime data path for
 the port itself.
 
@@ -61,7 +61,7 @@ and mostly non-blocking.
   only if Phase 7 (audio) needs frame-accurate MIDI timing; non-blocking for Phase 2 onward.
 - **`frameSourceMode === 0` indirect sprite addressing** (~30% of bank 7 entities, most of bank
   2's, some of bank 3's): tile index comes from an undecoded near-pointer table walk. Non-blocking
-  for a first playable build — falls back to a colored placeholder like `tools/viewer.html`
+  for a first playable build — falls back to a colored placeholder like `level.html`
   already does; revisit once the core loop is playable.
 - **Sound**: only MIDI-cue playback (`roland.pin`/`adlib.pin`/`roland2.pin`) is asset-ready; the
   native OPL2/OPL3 register-stream format (`adlib2/adlib3/sblaster.pin`) is undecoded. Per the
@@ -103,7 +103,7 @@ and mostly non-blocking.
    instead of at a separate build step, which is cheap (RNC depack of a full 60-file asset set
    already runs well under a second in Node; per-level lazy loading in-browser will be faster
    still since only the current world's files load).
-5. `tools/build-all.js`/`build/`/`tools/viewer.html` are **kept as-is** — they remain the fast
+5. `tools/build-all.js`/`build/`/`level.html` are **kept as-is** — they remain the fast
    offline way to sanity-check a decoder change (diff a PNG, inspect JSON) without booting the
    full engine. They just stop being upstream of the playable build.
 
@@ -136,7 +136,7 @@ web/
     hud.js                  # score/glyph rendering
     loop.js                 # the 14-call frame driver, requestAnimationFrame-paced
   render/
-    canvas.js               # blit atlases onto a Canvas2D backbuffer at the game's native 320x192 (or 352-virtual-width w/ pixel-panning) resolution, scaled up via CSS (image-rendering: pixelated) -- same technique tools/viewer.html already validated
+    canvas.js               # blit atlases onto a Canvas2D backbuffer at the game's native 320x192 (or 352-virtual-width w/ pixel-panning) resolution, scaled up via CSS (image-rendering: pixelated) -- same technique level.html already validated
   audio/
     midi-player.js          # adapted from tools/midi-player.html's Web-Audio oscillator synth
   main.js                   # boot: asset picker -> world/level select -> loop.start()
@@ -160,7 +160,7 @@ and catches transliteration mistakes early rather than at the end.
   and `tools/extract-level-script.js`'s record parser off `Buffer`/`fs` onto `Uint8Array`/`DataView`.
 - Build `web/loader/asset-source.js` + `asset-cache.js`.
 - **Checkpoint**: a bare HTML page that lets you pick a `data/` folder, depacks `blocks1.pak` and
-  `level1a.pap` in-browser, and draws the level to a `<canvas>` — i.e. `tools/viewer.html`'s
+  `level1a.pap` in-browser, and draws the level to a `<canvas>` — i.e. `level.html`'s
   functionality, but with real-file-picker input and in-browser RNC depack instead of reading
   pre-extracted `build/png/*.json`. This *is* the proof that the runtime-loading constraint works
   end to end before any gameplay code is written.
@@ -169,10 +169,10 @@ and catches transliteration mistakes early rather than at the end.
 - Port the sprite-shape-descriptor resolution (`Entity_LookupShapeDescriptor`,
   `symbols/entity-shapes.json`) and the level-script entity-placement decoder.
 - Render a full level: background tiles (`blocksN.pak` via `.pap`) + every placed entity's sprite
-  (reusing `tools/viewer.html`'s already-proven `frameSourceMode`-based resolution logic) as a
+  (reusing `level.html`'s already-proven `frameSourceMode`-based resolution logic) as a
   static scene, no simulation yet.
 - **Checkpoint**: every world's level(s) render correctly, side-by-side comparable to
-  `tools/viewer.html`'s existing output (which is itself already checked against DOSBox
+  `level.html`'s existing output (which is itself already checked against DOSBox
   screenshots for palette correctness).
 
 ### Phase 2 — Core loop skeleton + camera + input
@@ -291,7 +291,7 @@ and catches transliteration mistakes early rather than at the end.
 ### Phase 6 — World/level flow (DONE, with scope changes)
 - **`web/engine/level-registry.js`**: all 8 real levels (2 sub-levels x 4 worlds, straight from
   the shipped filenames -- `docs/formats/pin-level-script.md`'s world-1-script-is-named-`new1.pin`
-  oddity and world 3's `a`/`b`-suffixed script-variant pairing, matching `tools/viewer.html`'s
+  oddity and world 3's `a`/`b`-suffixed script-variant pairing, matching `level.html`'s
   existing heuristic). `World1-4_LoadBanks` itself isn't ported as a distinct function -- this
   port's `AssetCache` already lazily loads+depacks whatever a level needs on demand, a strict
   superset of that function's job, so there's nothing left for a dedicated port to do.
@@ -496,6 +496,217 @@ instance again and read the REAL spawn position out of guest memory.
   better match to what a level's actual opening should look like than the old arbitrary
   first-standable-spot pick.
 
+### Follow-up — spawn positions turned out to be static level data after all
+
+User asked the obvious next question the previous entry's "not done for the other 7 levels"
+caveat invited: "Shouldn't the starting positions be part of the level data (files)?" — i.e., why
+was a live DOSBox memory read needed at all, when this port already has a level-data pipeline.
+
+- **First avenue (dead end)**: traced `Level_InitStateForSublevel`/`Level_InitStateForWorld1Sublevel1`
+  (`1000:0d7b`/`1000:0cf6`) in Ghidra — both read a per-sublevel "camera position" record through a
+  small offset table at the very start of the resident data segment (`6de3:0000`). That table reads
+  as all-zero in the static EXE image and has **zero xrefs** to that fixed address — it's genuinely
+  populated at runtime through a computed pointer, not literal file bytes at a fixed offset. A
+  byte-pattern search for the expected value (144/80 as adjacent big-endian words) also found no
+  match anywhere in the EXE. Dead end for this specific table.
+- **Second avenue (the actual answer)**: `web/core/pin-level-script.js` already fully decodes each
+  world's `.pin` level-script file (see `docs/formats/pin-level-script.md`) into per-sub-level
+  entity-spawn records, each with its own `type`/`x`/`y` — and `main.js` was **already loading and
+  decoding this file** for every level (`scene.levelScript`), just not using its player-position
+  record for anything; the player's own spawn was still coming from the Phase-3-era standable-spot
+  search (or the level-1a-only `AUTHORED_SPAWN_PX` hardcode from the previous entry).
+- **Verification**: unpacked `data/new1.pin` (world 1) and decoded it standalone. Sublevel 0's
+  type-3 (player) entity record sits at file offset 74 with payload `[144, 80, 8]` — **X=144, Y=80,
+  byte-identical to the live DOSBox read**. This is conclusive: the authored spawn position is
+  genuine static level data, sitting in a file this port was already parsing, no emulator required
+  for any of the 8 levels.
+- **Fix**: removed the single-level `AUTHORED_SPAWN_PX` hardcode from `web/engine/real-terrain.js`.
+  `main.js`'s entity-spawn loop (which walks `scene.levelScript.entities`, already filtered to this
+  level's own pixel bounds) now picks out the first type-3 record as `authoredSpawnPx` and passes it
+  to `buildLevelPlayfield` for every level, generically — and, since that same type-3 record was
+  previously *also* being spawned into the live entity pool unfiltered, skips it there instead, which
+  fixes a latent duplicate-player bug (an inert, uncontrolled "ghost" player-shaped pool entity
+  sitting on top of the real one at the same spawn point).
+- **Verified**: headless-browser run across levels 1a, 1b, 2a, and 4a — all load with zero JS
+  errors, each settling at a distinct, world-appropriate spawn position (no more silent fallback to
+  level 1a's hardcoded value or the generic standable-spot search for the other 7 levels).
+
+### Follow-up — fully reverse-engineering the .pin level-script format
+
+User asked to fully reverse-engineer the `.pin` level-data files (`docs/formats/pin-level-script.md`
+had three explicit open questions left over from the format's initial discovery). Pure
+Ghidra/analysis pass, no port code changes. Full writeup lives in
+`docs/formats/pin-level-script.md` — summary:
+
+- **The nine special-opcode entity types are now fully decoded field-by-field** from
+  `Entity_SpawnFromQueuedEvent`'s raw disassembly (not the decompiled pseudo-C, which hid the exact
+  `BX` pointer arithmetic). Bonus finding: **seven of the nine never appear in real level data at
+  all** — confirmed empirically across all 3811 entity records in the six shipped `.pin` files.
+  Four of those seven (`0x11/0x1d/0x25/0x2f`) are provably runtime-only: their payload word is read
+  directly as a live entity pointer, which a static file can't encode. This also proves the
+  existing decoder (which infers record length purely from the file's own `BX` layout-selector
+  word, ignoring `type`) was already byte-exact for every type that can legally appear in a file —
+  closes that open question with proof instead of "it hasn't broken yet."
+- **The "negative/out-of-frame X/Y noise band" turned out not to be noise.** It's tile-row-aligned,
+  plausible-X content for *other rooms* sharing the same per-world byte stream — found a
+  room/checkpoint-warp dispatcher (`FUN_1000_59a9`) that matches the "camera position" globals
+  against a small table of trigger anchors in the same coordinate range and re-enters the level
+  script from a different pointer per match. Validates that `main.js`'s existing pixel-bounds
+  filter on spawned entities (added pragmatically, not as a proven-correct model) is structurally
+  the right approach, not a workaround. Full per-room coordinate mapping remains open — would need
+  either a live DOSBox read per room or locating the runtime source of `[0x8bbb]`/`[0x8bbd]`'s
+  backing table (already known to be populated at runtime, not static file bytes, from the previous
+  entry).
+- **Attempted, inconclusive**: mapping non-AI entity types (items/pickups/decoration) to their
+  gameplay role by cross-referencing a full 52-type census against known pickup-collection tags.
+  No direct match found in the static payload; most likely the "is this a pickup" tag is set at
+  runtime by the entity's own AI script, not authored in the file. Left as an open item for
+  `docs/enemies.md`, not this format doc.
+- No `web/` code changes this pass — this was purely closing out the format's own documentation.
+
+### Follow-up — closing out the remaining .pin open questions
+
+Continued the previous entry's work per a direct request to keep going until the format is fully
+understood. Two more of the three remaining soft/open items got real progress; again, pure
+Ghidra/data analysis, no `web/` code changes.
+
+- **RESOLVED (in the negative), definitively — pickups/bonus items are never level-authored.**
+  `docs/engine.md` already had the real answer sitting in it: `Entity_ChooseAndSpawnBonusItem`'s
+  decompile names the exact ten collectible/reward-item type values (`0x35–0x3d, 0x3f`), all
+  spawned via the *runtime* dynamic queue (`Entity_PushSpawnEvent`, fired from a periodic timer +
+  difficulty counters) — never from the level-script interpreter. Checked all six `.pin` files'
+  full entity census against that exact set: **zero matches, anywhere.** This closes the previous
+  entry's "inconclusive" pickup-mapping attempt outright — it wasn't inconclusive because the data
+  was ambiguous, it was inconclusive because it was looking in the wrong layer (a spawned entity's
+  `+10` field, which turns out to be initialized from the shape-descriptor table and mutate further
+  at runtime, not an authored static tag). Real items simply don't exist as level-script records —
+  confirms `web/engine/bonus-economy.js`'s existing runtime-driven approach to bonus spawns is the
+  structurally correct model, not a placeholder standing in for undecoded level data.
+- **Follow-up on the 13-sub-level-entry question**: built a live-DOSBox-free geometry fit test — for
+  each sub-level's entity list, what fraction land on a non-solid real-collision cell in each
+  candidate `.pap` map (reusing `real-terrain.js`'s own collision grid). World 1 gives a weak but
+  directionally correct signal that independently supports the ordinal `1a→sub-level 0, 1b→
+  sub-level 1` mapping `level-registry.js` already assumes (sub-level 0 best-fits `level1a.pap`,
+  matching the earlier live-read-confirmed spawn; sub-level 1 best-fits `level1b.pap`). Sub-levels
+  2–12 don't cleanly resolve to either map — read as further support for the checkpoint-reuse
+  hypothesis (same one or two rooms, revisited via scripted re-entry points) rather than 11 more
+  distinct undiscovered rooms. World 2 shows a cleaner alternating split between its two maps.
+  Not strong enough to assert a definitive per-entry mapping; documented as a soft lead, not a
+  closed answer.
+- Everything else from the previous entry's "PARTIALLY RESOLVED"/open items (the exact per-room
+  coordinate origins behind the negative-XY room-warp mechanism, and full semantic labeling of the
+  ~40 remaining non-AI, non-bonus entity types as decoration vs. hazard vs. set-dressing) would need
+  either further live-DOSBox ground-truth per room or substantially more per-function Ghidra tracing
+  than is warranted by this port's actual needs — the format's *structure* (every byte's meaning,
+  every record's exact length for every type that can appear) is now fully closed; what's left is
+  gameplay-semantic labeling, which is `docs/enemies.md`'s territory, not this format's.
+
+### Follow-up fix — walking back "every level's spawn is real authored data"
+
+User reported the player still spawns "in the wall" for world 1a, and that every other world looked
+wrong too, with a sharp hypothesis: "if the player position within the level is correct, the
+level's position within the world isn't." That hypothesis pointed straight at the bug.
+
+- **Root cause, found by testing the hypothesis directly**: re-ran the `.pin` type-3 (player)
+  record extraction across *every* sub-level of all six shipped `.pin` files (not just level 1a's,
+  which is all the previous pass checked). Every single one reads the exact same payload: **X=144,
+  Y=80, with zero exceptions, in every level of every world.** A real per-level spawn position
+  cannot be a hardcoded constant — this is level-authoring-tool boilerplate (almost certainly a
+  template/placeholder value the tool always emits for the player marker), not real per-room data.
+  The earlier pass's "proof" — that level 1a's `.pin` value byte-matched a live DOSBox read — was
+  real and correct, but the generalization to "so the `.pin` file is the real source for every
+  level" was wrong: it was independently confirmed for 1a specifically (world 1's zero-offset home
+  screen), and that coincided with the boilerplate constant by chance, not because the constant is
+  meaningful anywhere else.
+- **Traced the real mechanism, but couldn't fully close it**: the actual per-room position comes
+  from `Level_InitStateForSublevel`'s "camera position" globals (`[0x8bbb]`/`[0x8bbd]`), populated
+  at runtime from a two-level indirection through a table at the very start of the resident data
+  segment (`6de3:0000`) that reads as all-zero in the static EXE image. Traced its consumer
+  (disassembled `Level_InitStateForSublevel` in full) and confirmed there's no addition/offset
+  logic anywhere in the entity-spawn path itself (`Entity_SpawnFromQueuedEvent` writes the raw
+  payload X/Y directly, no combination with the camera-position globals) — so the real fix would
+  need either a live DOSBox read per level, or locating whatever copies data into that zero-image
+  table at boot (searched for a direct write/xref to it; none found — it's written through a
+  computed pointer, not a fixed address Ghidra's static xref index can see). Neither done this
+  pass; a real DOSBox bridge wasn't connected to test further.
+- **Fix applied given that**: `web/main.js` now only trusts the `.pin` type-3 record's position for
+  level `'1a'` specifically (the one level with independent live-read confirmation); every other
+  level passes `null` and falls back to `web/engine/real-terrain.js`'s generic real-collision
+  standable-spot search, same as before the `.pin`-spawn feature existed. This removes the false
+  confidence, not just the visual symptom.
+- **Bonus fix, independent of the above**: `real-terrain.js`'s authored-spawn snapping used a plain
+  "nearest non-solid cell, no floor or headroom required" BFS, which can land in a floor-less or
+  three-walls-tight pocket and visibly look wedged into rock even when technically not stuck. It
+  now prefers a genuinely standable spot (solid floor + headroom), relaxing headroom from 2 → 1 → 0
+  before finally falling back to "any non-solid cell." Each headroom tier gets a **tight** search
+  radius (not unbounded) — an early attempt at just relaxing headroom over an unbounded search
+  found level 1a's nearest *full*-headroom standable spot 33 tiles away, which would have thrown
+  away the real authored position's whole point. Radius-capped-per-tier keeps 1a's result at its
+  previous, already-verified (160, 80)-settling snap while still preferring more headroom when it's
+  genuinely nearby.
+- **Verified**: headless-browser run across all 8 levels — all load with zero JS errors, all show
+  real per-level-appropriate spawn positions (no more identical/near-identical values across
+  worlds), and a hold-right-for-2-seconds movement test on five levels (1a, 1b, 2b, 3b, 4b) shows
+  real net displacement on every one (nobody frozen in place). Screenshots of 1a and 2b confirm the
+  player visibly stands in open space, not embedded in wall art.
+- **Still open**: levels other than 1a use a generic (not real) spawn point — getting their real
+  authored positions needs the camera-position table's runtime source, which remains unresolved.
+
+### Follow-up deep-dive — walking back level 1a's spawn too, and why
+
+User reported the fix above still wasn't right, with the same "level position within the world"
+framing, and asked for a real deep dive using DOSBox to double-check. Connected live
+(`dosbox-mcp`) to the user's already-running instance to re-verify from scratch, more carefully
+this time.
+
+- **First live read, reproduced**: paused mid-play at world 1/sublevel 1 (confirmed via
+  `[0x8b89]`/`[0x8b8b]`), found the entity-pointer-array slot at index 1 (`0x93da`) with class 3,
+  type 3, X=144, Y=80 — exactly reproducing the previous session's reading. Re-read the surrounding
+  "camera position" globals `[0x8bbb]`/`[0x8bbd]` at the same moment: **(-80, -832)**, not (0, 0) —
+  already a red flag, since the previous session's reasoning assumed level 1a's offset was zero.
+- **The reproduction was the wrong entity, caught by testing persistence over time**: resumed
+  emulation for real (not just single-stepping) and re-read the same "player" entity (slot 1,
+  `0x93da`) after visible, active gameplay — a moving enemy on screen, then later a scene change and
+  the score climbing from empty to 500 to 9200. Its X/Y **never changed**, not once, across all of
+  that. A real player-controlled or even demo-driven avatar cannot stay frozen through minutes of
+  active play. This entity is a static template/reference marker, not the live position.
+- **Found the actual live-tracked entity**: entity slot 0 (`0x9398`, type 1, class 1) DOES move —
+  its X/Y exactly mirrors `[0x8bbb]`/`[0x8bbd]` at every read, both before and after movement (X
+  went -80 → -160 → -596 across the session while Y tracked separately). This is almost certainly
+  the real camera/position tracker; slot 1 (the one every previous session, including this port's
+  own docs, assumed was "the player") is not it.
+- **Why this session's readings can't be trusted as ground truth for real gameplay**: score jumped
+  from 500 to 9200 with no meaningful correlation to the deliberate key presses sent (`KBD_right`
+  held, `KBD_esc`), and the visible scene changed completely between two ~1.5s-apart pauses. This
+  is almost certainly `Game_StartAttractDemoAndRunLoop`'s attract-mode demo replay, not a real
+  controlled session — DOSBox was left idle before this investigation started. A scripted demo's
+  own "camera position" trace doesn't tell us anything about a real game's initial spawn state.
+- **Tried to cross-reference the moving entity's coordinate space against real `.pap` tile data**:
+  rendered level 1a's full 4096×2048 tile map via the port's own pipeline (`buildLevelScene`,
+  screenshotted through Playwright) to visually locate where in the tile grid the live DOSBox
+  screenshot's terrain pattern actually sits, as an alternative to trusting the raw camera-position
+  numbers. Inconclusive within this pass's time budget — the visible terrain is repetitive enough
+  that a confident visual match wasn't reached, and the moving entity's values (consistently
+  negative, -80 to -596) don't fall inside the `.pap` grid's own natural 0–4096×0–2048 pixel range
+  at all, meaning either its coordinate origin doesn't align with the `.pap`'s top-left the way this
+  port assumes, or it's a pure scroll-delta rather than an absolute position. Not resolved this
+  pass.
+- **Fix applied given all of this**: removed 1a's special-casing entirely. `web/main.js` no longer
+  extracts an "authored" spawn from the level-script for any level; `web/engine/real-terrain.js`'s
+  `buildLevelPlayfield` dropped the `authoredSpawnPx` parameter and the now-dead
+  `snapToStandableNear`/`nearestMatchingCell` BFS-with-relaxed-headroom machinery entirely — every
+  level, 1a included, uses the same generic standable-spot search uniformly. This is a deliberate
+  step back from "level 1a has real data" to "no level has real data (yet)", which is the honest
+  state given the above.
+- **Verified**: headless-browser run across all 8 levels, zero JS errors; a hold-right-for-2-seconds
+  movement test on five levels shows real net displacement everywhere (nobody frozen).
+- **What a real fix needs**: a **definitely-not-attract-mode** live session — the user deliberately
+  starting a new game from the title screen (not resuming/finding an already-idle instance) and
+  pausing at a clearly-defined moment (e.g. immediately after the level-start transition, before any
+  input) — reading entity slot 0 (not slot 1) at that exact moment, for each of the 8 levels. Even
+  then, the coordinate-space mismatch against `.pap` tile pixels would need solving before the
+  number is directly usable.
+
 ### Phase 8 — Polish / parity pass
 - Diff against DOSBox for the specific behaviors that were "confirmed structure, guessed
   semantics" during reverse-engineering (anything tagged `guess` rather than `verified` in
@@ -515,7 +726,7 @@ instance again and read the REAL spawn position out of guest memory.
 - **Behavioral correctness**: for anything not already nailed down to "verified" in
   `symbols/gameu.json`, prefer a live DOSBox A/B comparison over guessing — the workflow and
   gotchas are already written up in `docs/dosbox-debugging.md` from this project's prior sessions.
-- **Regression baseline**: `tools/viewer.html` + `build/` stay as a cheap, fast, no-simulation
+- **Regression baseline**: `level.html` + `build/` stay as a cheap, fast, no-simulation
   reference for "does this level/sprite/palette look right" — much faster to iterate on than
   booting the full engine, so keep using it for that narrow purpose throughout.
 

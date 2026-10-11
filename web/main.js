@@ -13,6 +13,13 @@
 
 'use strict';
 
+// `?engine` hands over to the ported engine (the real entity/AI/collision rules, booted from the
+// game's own files); without it this is still the older placeholder prototype below.
+if (new URLSearchParams(location.search).has('engine')) {
+  location.replace("/demo.html?game&intro"); // the full flow: logo, intro, world intro, level
+  await new Promise(() => {});
+}
+
 import { sourceFromFileList, sourceFromFetch } from './loader/asset-source.js';
 import { AssetCache } from './loader/asset-cache.js';
 import { WORLD_PALETTES } from './core/palette.js';
@@ -23,7 +30,7 @@ import { Input } from './engine/input.js';
 import { MainLoop } from './engine/loop.js';
 import { EntityPool } from './engine/entity-pool.js';
 import { Player } from './engine/player.js';
-import { buildLevelPlayfield, AUTHORED_SPAWN_PX } from './engine/real-terrain.js';
+import { buildLevelPlayfield } from './engine/real-terrain.js';
 import { attachAiIfKnown, tickAllAi, isGateType } from './engine/entity-ai.js';
 import { chooseWorld1BonusType, spawnBonusItem } from './engine/bonus-economy.js';
 import { LEVELS, findLevel, nextLevel } from './engine/level-registry.js';
@@ -121,10 +128,27 @@ async function loadLevel(id) {
     let spawned = 0;
     let gateCount = 0;
     let aiCount = 0;
+    // The player itself is ALSO a type-3 entity record in the level script -- but its payload is
+    // the exact same hardcoded (144, 80) in literally every sub-level of every world (verified
+    // across all six .pin files), so it's level-authoring-tool boilerplate, not a real per-level
+    // position. NOT used as a spawn source at all, for ANY level, not even 1a: a live DOSBox
+    // session that looked like it confirmed 1a's (144, 80) as real turned out to be reading the
+    // wrong entity -- entity slot 1 (this same type-3/class-3 one) stayed completely frozen
+    // through minutes of live, visibly-progressing gameplay (score climbing, scenery scrolling
+    // far away), while a DIFFERENT entity (slot 0, type 1/class 1) was the one actually tracking
+    // movement. See docs/port-plan.md's follow-up entry for the full session. Every level now uses
+    // the generic real-collision standable-spot search uniformly -- still just skip spawning this
+    // record into the live pool, so it isn't a second, uncontrolled pool entity.
+    let foundPlayerRecord = false;
     for (const e of scene.levelScript.entities) {
-      if (spawned >= initialSpawnCap) break;
+      if (spawned >= initialSpawnCap && foundPlayerRecord) break;
       if (e.x === undefined || e.y === undefined) continue;
       if (e.x < 0 || e.x > scene.widthPx || e.y < 0 || e.y > scene.heightPx) continue;
+      if (e.type === PLAYER_TYPE) {
+        foundPlayerRecord = true;
+        continue;
+      }
+      if (spawned >= initialSpawnCap) continue;
       const slot = pool.spawnFromLevelScriptRecord(e);
       if (slot === -1) continue;
       spawned++;
@@ -135,11 +159,11 @@ async function loadLevel(id) {
       }
     }
 
-    // Real ground collision + spawn/pickups/exit, all on the level's own real geometry -- see
-    // engine/real-terrain.js for what's real (the collision, and level 1a's spawn point -- read
-    // live out of a running DOSBox instance) vs. placeholder (which exact standable spots get
-    // used for pickups/exit, and the spawn search used for every other level).
-    const playfield = buildLevelPlayfield(scene.pap, AUTHORED_SPAWN_PX[levelEntry.id] || null);
+    // Real ground collision, every level, from the actual .pap tile data -- see
+    // engine/real-terrain.js. Spawn/pickups/exit are all placeholder still: a generic
+    // standable-spot search, not real per-level authored positions (see that module's header for
+    // why the level-script's own type-3/player record can't be used for this).
+    const playfield = buildLevelPlayfield(scene.pap, levelEntry.world);
     const collisionGrid = playfield;
     const spawnX = playfield.spawnCol * TILE_WIDTH;
     const spawnY = playfield.spawnRow * TILE_HEIGHT;
@@ -306,6 +330,18 @@ async function loadLevel(id) {
       },
     });
     activeLoop = loop;
+    if (new URLSearchParams(location.search).has('debug')) {
+      window.__mp = {
+        loop,
+        stepTicks: (n = 1) => { loop.step(n); return window.__mp.snap(); },
+        snap: () => ({
+          frame: loop.frameCount,
+          rng: loop.rng.state,
+          player: { x: player.x, y: player.y, vx: player.vx, vy: player.vy, onGround: player.onGround, score: player.score },
+          camera: { x: camera.x, y: camera.y },
+        }),
+      };
+    }
     loop.start();
     sharedSound?.startMusic();
   } catch (err) {
@@ -323,18 +359,6 @@ async function startSession(cache) {
 }
 
 picker.addEventListener('change', () => {
-    if (new URLSearchParams(location.search).has('debug')) {
-      window.__mp = {
-        loop,
-        stepTicks: (n = 1) => { loop.step(n); return window.__mp.snap(); },
-        snap: () => ({
-          frame: loop.frameCount,
-          rng: loop.rng.state,
-          player: { x: player.x, y: player.y, vx: player.vx, vy: player.vy, onGround: player.onGround, score: player.score },
-          camera: { x: camera.x, y: camera.y },
-        }),
-      };
-    }
   const source = sourceFromFileList(picker.files);
   startSession(new AssetCache(source));
 });

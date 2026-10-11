@@ -1,0 +1,102 @@
+{{Music Infobox
+ | Type = MIDI
+ | Instruments = OPL / Roland, depending on bank
+ | NumTracks = 1
+ | NumPatterns = 0
+ | NumOrders = 0
+ | Tags = None
+ | Games =
+   {{Game|Magic Pockets}}
+}}
+
+Music and many sound effects in [[Magic Pockets]] are MIDI sequences inside <tt>.pin</tt> cue banks. Decompress the [[Magic Pockets RNC Compression|RNC method 1]] wrapper first. Some cues have a second compression layer: a dictionary of two-byte words.
+
+{|class="wikitable"
+!File!!Entries!!Plain MIDI!!Dictionary MIDI!!Decompressed bytes
+|-
+|<tt>adlib.pin</tt>||82||78||4: IDs 11, 52, 59, 69||20655
+|-
+|<tt>adlib2.pin</tt>||1||0||1: ID 0||10328
+|-
+|<tt>adlib3.pin</tt>||1||0||1: ID 0||10328
+|-
+|<tt>roland.pin</tt>||82||81||1: ID 19||8028
+|-
+|<tt>roland2.pin</tt>||1||1||0||17201
+|-
+|<tt>soundbnk.pin</tt>||1||1||0||17320
+|}
+
+All 168 sequences in this collection have format-0, one-track MIDI headers after the dictionary entries are expanded. This is a property of the checked files, not a restriction that can replace parsing the MIDI header. The basic viewer/extractor exposes only the 161 plain entries; the newer RE checks and original-driver playback also recognise compressed entries.
+
+The name <tt>soundbnk.pin</tt> does not establish that all of its contents are MIDI: data follows the short sequence and remains unclassified. Likewise, the program and screen that use <tt>adlib2.pin</tt> and <tt>adlib3.pin</tt> are not established; the GAMEU loader does not select them.
+
+== File format ==
+
+=== Container ===
+
+{|class="wikitable"
+!Data type!!Name!!Description
+|-
+|UINT16LE||count||Number of cue entries
+|-
+|UINT32LE[count]||offsets||Offsets from the start of the decompressed bank
+|-
+|UINT16LE||pad||0x0080 in the checked files
+|-
+|BYTE[]||data||Cue data and any additional payload
+|}
+
+The table index is the zero-based cue ID. Entries have a fixed four-byte stride; missing or compressed entries must not be removed from the numbering. The verified AdLib driver reads the complete 32-bit offset. The older RE notes' offset/flags/tempo interpretation applies to a different backend path and should not replace this layout.
+
+The first cue is at byte 332 for an 82-entry bank and byte 8 for the ordinary single-entry banks. <tt>soundbnk.pin</tt> has an additional UINT32LE at byte 8, with value 61; its MIDI begins at byte 12. The 49-byte MIDI ends at byte 61, followed by 17259 bytes whose interpretation is unknown. The extra word's wider purpose is not established.
+
+Offsets provide a containing interval up to the next entry or EOF, but the actual SMF ends at its declared track-chunk boundary. Do not export trailing bank data as part of a MIDI sequence.
+
+=== Entries ===
+
+Plain entries begin with <tt>MThd</tt> and contain normal big-endian MIDI chunk lengths, division values and variable-length event deltas. AdLib cues use 420 ticks per quarter note; the checked Roland bank uses divisions 96 and 192, <tt>roland2.pin</tt> uses 96, and <tt>soundbnk.pin</tt> uses 192.
+
+AdLib source tracks omit the End-of-Track meta event. The original sequencer stops at the declared track length. For standalone export, append a zero-delta <tt>FF 2F 00</tt> event to a track that lacks it and update that track's chunk length.
+
+=== AdLib instrument events ===
+
+The AdLib sequencer reads a proprietary sequencer-specific meta event:
+
+ FF 7F <variable-length payload length> 00 00 3F <type: UINT16BE> <argument> ...
+
+Type 1 defines an OPL2 voice: the argument is a voice number followed by 28 timbre bytes, making a 34-byte payload. Types 2 and 3 are single-argument driver commands. Program-change messages alone do not describe these instruments. A generic MIDI synthesizer can play the notes while producing different timbres from the original AdLib driver.
+
+=== Compressed entries ===
+
+{|class="wikitable"
+!Data type!!Name!!Description
+|-
+|UINT8||tag||ASCII C (0x43) or c (0x63)
+|-
+|UINT16LE[256]||dictionary||256 pairs of output bytes
+|-
+|UINT8[]||codes||One dictionary index per output pair
+|}
+
+For each code ''n'', append the low then high byte of <tt>dictionary[n]</tt>. With tag <tt>c</tt>, discard the first output byte; with <tt>C</tt>, keep it. Dictionary indices start at offset <tt>0x201</tt> relative to the tagged cue.
+
+The expanded result starts with <tt>MThd</tt>. Its chunk lengths determine the meaningful output extent; there is no separate decoded-length field in this dictionary wrapper. AdLib IDs 11, 52 and 59 use <tt>c</tt>, ID 69 uses <tt>C</tt>; Roland ID 19 uses <tt>C</tt> and the two single-cue AdLib song banks use <tt>c</tt>.
+
+These compressed cues were once labelled possible hardware-reset streams in the older notes. That classification is superseded by dictionary expansion and the original-driver analysis.
+
+== Source code ==
+
+From [[Magic Pockets#Tools|re-magicpockets]], the open-source browser port and reverse-engineering project:
+
+* [https://github.com/VorticonCmdr/re-magicpockets/blob/main/web/core/pin-sound.js web/core/pin-sound.js] – plain-MIDI bank decoder and End-of-Track repair
+* [https://github.com/VorticonCmdr/re-magicpockets/blob/main/web/core/midi.js web/core/midi.js] – MIDI event parser
+* [https://github.com/VorticonCmdr/re-magicpockets/blob/main/tools/extract-pin.js tools/extract-pin.js] – legacy MIDI exporter
+* [https://github.com/VorticonCmdr/re-magicpockets/blob/main/web/verify/checks.js web/verify/checks.js] – dictionary expansion in decodeCue and original-driver checks
+* [https://github.com/VorticonCmdr/re-magicpockets/blob/main/web/audio/pin-driver.js web/audio/pin-driver.js] – original driver command interface
+* [https://github.com/VorticonCmdr/re-magicpockets/blob/main/docs/formats/pin-sound.md docs/formats/pin-sound.md] – newer AdLib and dictionary findings
+* [https://github.com/VorticonCmdr/re-magicpockets/blob/main/docs/formats/pin.md docs/formats/pin.md] – bank layout and historical hypotheses
+
+== Credits ==
+
+This file format was reverse engineered by [[User:VorticonCmdr|VorticonCmdr]]. Please credit this work in projects that use it; a link back to this wiki is appreciated.

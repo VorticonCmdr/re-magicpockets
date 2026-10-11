@@ -1,0 +1,64 @@
+Several <tt>.pin</tt> files in [[Magic Pockets]] are loadable real-mode 8086 sound drivers. They are executable code, not MIDI banks or a waveform format. Each has an [[Magic Pockets RNC Compression|RNC method 1]] wrapper.
+
+{|class="wikitable"
+!File!!Decompressed bytes!!Role
+|-
+|<tt>player.pin</tt>||12064||Sound sequencer; the AdLib path consumes adlib.pin and writes OPL2 registers
+|-
+|<tt>beeper.pin</tt>||6438||PC speaker driver module
+|-
+|<tt>tandy.pin</tt>||6344||Tandy sound driver module
+|}
+
+The <tt>sblaster.pin</tt> payload is described separately in [[Magic Pockets Sound Blaster Data Format]]: it has not been established to use this module layout.
+
+== File format ==
+
+The decompressed bytes are raw 8086 code and embedded driver state. There is no MZ executable header or common directory that should be interpreted as asset records. <tt>player.pin</tt> begins with register-save instructions; <tt>beeper.pin</tt> and <tt>tandy.pin</tt> begin with two <tt>CALL rel16; RETF</tt> trampolines.
+
+The game loads the driver into its own segment and invokes a far entry point. For the verified AdLib path, <tt>player.pin</tt> is entered at offset 0 with the command in AH.
+
+=== AdLib command interface ===
+
+{|class="wikitable"
+!AH!!Command!!Arguments
+|-
+|0||Initialise||AX=1 selects the AdLib backend; DX=bank segment, CX=bank offset
+|-
+|1||Play cue||AL=cue ID, with bit 7 as a loop flag; BL=voice/channel offset
+|-
+|2||Tick||Advance the sequencer by one driver tick
+|-
+|3||Stop all||Stop active cues
+|-
+|4||Stop cue||AL=cue ID
+|}
+
+This interface is established for the AdLib backend; do not apply it to every PIN driver without checking its entry code. GAMEU's play wrapper forces AH=1, so AH is not a caller-supplied priority. BL is added to MIDI channel numbers to distribute overlapping sounds. The sequencer has nine cue-state slots.
+
+GAMEU programs PIT channel 0 with divisor <tt>0x5CEC</tt>, giving approximately 50.159 interrupts per second. The sequencer's time conversion assumes units of <tt>0x5D38</tt> PIT counts. A player must reproduce driver ticks rather than tying sequencing to browser refreshes.
+
+=== Related bank format ===
+
+The AdLib backend reads [[Magic Pockets Music Format|MIDI cue banks]], including dictionary-compressed cues and proprietary timbre events. It generates writes to ports <tt>0x388</tt>/<tt>0x389</tt>; the bank is not itself a list of OPL register writes.
+
+== Notes ==
+
+* The browser port can execute the original player bytes with a small 8086 interpreter and feed their register writes to an OPL2 chip model.
+* The repository compares that register stream with a DOSBox capture. This validates command sequencing and register writes, not sample-for-sample audio equivalence of the chip model.
+* The Beeper/Tandy backend has different calling behaviour. In particular, the cue-ID increment described by older notes is not part of the AdLib path.
+
+== Source code ==
+
+From [[Magic Pockets#Tools|re-magicpockets]], the open-source browser port and reverse-engineering project:
+
+* [https://github.com/VorticonCmdr/re-magicpockets/blob/main/web/audio/x86-lite.js web/audio/x86-lite.js] – real-mode interpreter used for the original driver
+* [https://github.com/VorticonCmdr/re-magicpockets/blob/main/web/audio/pin-driver.js web/audio/pin-driver.js] – far-call command wrapper
+* [https://github.com/VorticonCmdr/re-magicpockets/blob/main/web/audio/opl-player.js web/audio/opl-player.js] – driver-backed audio playback
+* [https://github.com/VorticonCmdr/re-magicpockets/blob/main/web/audio/opl2-chip.js web/audio/opl2-chip.js] – register-level OPL2 model
+* [https://github.com/VorticonCmdr/re-magicpockets/blob/main/docs/formats/pin-sound.md docs/formats/pin-sound.md] – AdLib loading, commands and timing
+* [https://github.com/VorticonCmdr/re-magicpockets/blob/main/docs/formats/pin.md docs/formats/pin.md] – Beeper/Tandy code signatures
+
+== Credits ==
+
+This file format was reverse engineered by [[User:VorticonCmdr|VorticonCmdr]]. Please credit this work in projects that use it; a link back to this wiki is appreciated.

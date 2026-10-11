@@ -1,0 +1,29 @@
+The <tt>sblaster.pin</tt> asset in [[Magic Pockets]] has a verified [[Magic Pockets RNC Compression|RNC method 1]] wrapper, but its inner format remains unknown. This page records the established byte-level facts rather than assigning a speculative format.
+
+== File format ==
+
+After RNC decompression, the checked payload is 59699 bytes. Its first 16 bytes are:
+
+ 01 00 7A 00 08 00 FF 78 07 00 00 00 02 5F 01 01
+
+These are a byte dump, not a decoded header definition.
+
+The payload is not currently decoded. Its leading bytes do not match the ordinary MIDI-bank header used by <tt>adlib.pin</tt> and <tt>roland.pin</tt>. The file's name suggests a relationship to Sound Blaster support, but neither a PCM sample layout nor a driver-code layout has been established for this file.
+
+The older notes' suggestion that it might contain a raw OPL stream was a hypothesis, not a decoded format. GAMEU's verified Sound Blaster-compatible loading path uses <tt>player.pin</tt> and <tt>adlib.pin</tt>; that does not explain this separate file. Do not claim this payload is playable MIDI, PCM or OPL data based on its name.
+
+== Notes ==
+
+The wrapper's decoded-size and checksum fields validate extraction of the payload. They do not validate an interpretation of the bytes inside it. This file shares the <tt>.pin</tt> extension with [[Magic Pockets Music Format|MIDI banks]], [[Magic Pockets Level Script Format|level scripts]], [[Magic Pockets Demo Format|demo input]] and [[Magic Pockets Sound Driver Format|8086 driver modules]], which have different layouts.
+
+== Source code ==
+
+From [[Magic Pockets#Tools|re-magicpockets]], the open-source browser port and reverse-engineering project:
+
+* [https://github.com/VorticonCmdr/re-magicpockets/blob/main/docs/formats/pin.md docs/formats/pin.md] – unresolved payload inventory and historical hypotheses
+* [https://github.com/VorticonCmdr/re-magicpockets/blob/main/web/core/rnc.js web/core/rnc.js] – verified outer decompression
+* [https://github.com/VorticonCmdr/re-magicpockets/blob/main/docs/formats/pin-sound.md docs/formats/pin-sound.md] – newer findings that supersede the broad raw-OPL hypothesis
+
+== Credits ==
+
+Research on this file format was carried out by [[User:VorticonCmdr|VorticonCmdr]]. Please credit this work in projects that use it; a link back to this wiki is appreciated.

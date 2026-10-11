@@ -1,0 +1,29 @@
+The <tt>extra_2.pin</tt> asset in [[Magic Pockets]] has a verified [[Magic Pockets RNC Compression|RNC method 1]] wrapper, but its inner format remains unknown. This page records the established byte-level facts rather than assigning a speculative format.
+
+== File format ==
+
+After RNC decompression, the checked payload is 38400 bytes. Its first 16 bytes are:
+
+ F0 0F C0 03 80 01 00 00 00 00 00 00 01 80 03 C0
+
+These are a byte dump, not a decoded header definition.
+
+The payload is unclassified in the RE notes and has no verified consumer or decoder. Its size alone is not enough to identify it as a sprite bank: several different planar tile layouts have the same total length, and the extension does not determine the format.
+
+Preserve the bytes as opaque data. A reconstruction of its internal layout requires identifying the original load site and consumer, then verifying the interpretation against the file or a live game trace.
+
+== Notes ==
+
+The wrapper's decoded-size and checksum fields validate extraction of the payload. They do not validate an interpretation of the bytes inside it. This file shares the <tt>.pin</tt> extension with [[Magic Pockets Music Format|MIDI banks]], [[Magic Pockets Level Script Format|level scripts]], [[Magic Pockets Demo Format|demo input]] and [[Magic Pockets Sound Driver Format|8086 driver modules]], which have different layouts.
+
+== Source code ==
+
+From [[Magic Pockets#Tools|re-magicpockets]], the open-source browser port and reverse-engineering project:
+
+* [https://github.com/VorticonCmdr/re-magicpockets/blob/main/docs/formats/pin.md docs/formats/pin.md] – unresolved payload inventory and historical hypotheses
+* [https://github.com/VorticonCmdr/re-magicpockets/blob/main/web/core/rnc.js web/core/rnc.js] – verified outer decompression
+* [https://github.com/VorticonCmdr/re-magicpockets/blob/main/docs/formats/pin-sound.md docs/formats/pin-sound.md] – newer findings that supersede the broad raw-OPL hypothesis
+
+== Credits ==
+
+Research on this file format was carried out by [[User:VorticonCmdr|VorticonCmdr]]. Please credit this work in projects that use it; a link back to this wiki is appreciated.

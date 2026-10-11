@@ -1,0 +1,79 @@
+{{Image Infobox
+ | Hardware1 = EGA
+ | Hardware2 = VGA
+ | Depth = 4-bit (EGA)
+ | MinSize = 320&times;64
+ | MaxSize = 320&times;200
+ | Palette = Internal and external
+ | NumPlanes = 4
+ | HasTransparency = N
+ | HasHitmap = No
+ | Games =
+   {{Game|Magic Pockets}}
+}}
+
+Full-screen pictures in [[Magic Pockets]] are stored in <tt>.pip</tt> files, compressed with [[Magic Pockets RNC Compression|RNC method 1]]. After decompression they have an Atari ST DEGAS low-resolution layout, with word-interleaved bitplanes. The short <tt>intro5.pip</tt> caption-font resource uses the same header and pixel organisation but only 64 rows.
+
+== File format ==
+
+The ordinary 320&times;200 files are 32066 bytes:
+
+{|class="wikitable"
+!Offset!!Data type!!Name!!Description
+|-
+|<tt>0x0000</tt>||UINT16BE||resolution||DEGAS resolution word; low-resolution pictures use 0
+|-
+|<tt>0x0002</tt>||UINT16BE[16]||palette||16 Atari ST palette words
+|-
+|<tt>0x0022</tt>||BYTE[32000]||bitmap||200 rows of 160 bytes each
+|-
+|<tt>0x7D22</tt>||BYTE[32]||cycling||DEGAS Elite colour-cycle data; fields not interpreted by the repo
+|}
+
+<tt>intro5.pip</tt> is 10274 bytes: the 34-byte header and 10240 bitmap bytes for 64 rows. It has no 32-byte cycle trailer. There is no additional height field; choose the known resource layout or derive the short bitmap size from its length.
+
+=== Palette ===
+
+Each palette entry is a big-endian <tt>0x0RGB</tt> word with three bits per component. These embedded colours are metadata, not necessarily the palette actually displayed by the DOS game. <tt>INTROU.EXE</tt> uses its own palette banks at <tt>DS:BC9E</tt>; the game pictures use executable-resident world palettes. Use the relevant runtime palette to reproduce the original screen.
+
+=== Bitmap ===
+
+Each row contains 20 groups of 16 pixels. Each group is eight bytes: a big-endian 16-bit word for plane 0, then planes 1, 2 and 3. Plane ''k'' supplies colour-index bit ''k''; bit 15 is the group's leftmost pixel.
+
+ word offset = 0x22 + y * 160 + floor(x / 16) * 8 + plane * 2
+ bit number = 15 - (x % 16)
+
+There is no mask plane or transparent colour rule. Do not interpret the plane words as little-endian: that swaps the two eight-pixel halves of each group.
+
+=== Displayed height ===
+
+<tt>GAMEU.EXE</tt> draws 192 rows of <tt>new.pip</tt> and <tt>endscrn.pip</tt>, leaving eight stored rows unused. <tt>INTROU.EXE</tt> uploads all 200 rows of the ordinary intro pictures. The 1312 bytes once described as unexplained trailing data are eight bitmap rows plus the 32-byte cycle trailer.
+
+== Files ==
+
+{|class="wikitable"
+!File!!Stored image!!Use
+|-
+|<tt>new.pip</tt>||320×200||World-selection / game picture; GAMEU draws 192 rows
+|-
+|<tt>endscrn.pip</tt>||320×200||Ending screen; GAMEU draws 192 rows
+|-
+|<tt>intro0.pip</tt> through <tt>intro4.pip</tt>||320×200||Pictures used by INTROU
+|-
+|<tt>intro5.pip</tt>||320×64||Intro caption font
+|}
+
+The earlier RE notes' unexplained header and plane-permutation hypotheses were superseded by the DEGAS identification and palette corrections.
+
+== Source code ==
+
+From [[Magic Pockets#Tools|re-magicpockets]], the open-source browser port and reverse-engineering project:
+
+* [https://github.com/VorticonCmdr/re-magicpockets/blob/main/web/core/pip.js web/core/pip.js] – game-picture decoder, drawing 192 rows
+* [https://github.com/VorticonCmdr/re-magicpockets/blob/main/web/engine/intro.js web/engine/intro.js] – intro decoder and runtime palettes
+* [https://github.com/VorticonCmdr/re-magicpockets/blob/main/tools/extract-pip.js tools/extract-pip.js] – legacy image exporter
+* [https://github.com/VorticonCmdr/re-magicpockets/blob/main/docs/formats/pip.md docs/formats/pip.md] – DEGAS correction and live-picture evidence
+
+== Credits ==
+
+This file format was reverse engineered by [[User:VorticonCmdr|VorticonCmdr]]. Please credit this work in projects that use it; a link back to this wiki is appreciated.
