@@ -72,7 +72,7 @@ export function collectDraws(m, o = {}) {
     }
     const first = cmds.length;
     drawEntity(m, p, type, cls, pan, cmds, o);
-    if (type === 3 && cls === 3 && m.u16(0x8c38) !== 0) heldOverlay(m, p, pan, cmds); // 1000:772C, drawn right after the hero
+    if (type === 3 && cls === 3 && overlayFrame(m) !== 0) heldOverlay(m, p, pan, cmds); // 1000:772C, drawn right after the hero
     // The entity is blitted at x + ([8B69]&15) into the 352-wide buffer, and the hardware pan shifts the
     // visible window by the same [8B69]&15, so the on-screen x is the record's x. [PROVEN]: with [8B69]=0x1C
     // a live DOSBox frame matches only for a net offset of 0 (2681 of 2764 sprite pixels; pan 4/8/12 match ~450).
@@ -87,11 +87,14 @@ export function collectDraws(m, o = {}) {
  * (`[PROVEN]` on the fire-release frame: hero frame 97, [8C38] = 73 -> bank 2 tile 36 at (144, 81), 394 of 394 pixels equal the DOSBox frame).
  * The branch for [hero+0x10] == 0x2B (the carry pose, 7739) is not ported: it positions the layer differently and no live frame of it was fitted.
  */
+/** [8C38] as the draw saw it: stepIteration clears it in call 3 right after the draw, so the page reads the copy kept by renderConsumes. */
+function overlayFrame(m) { return m.renderOverlay !== undefined ? m.renderOverlay : m.u16(0x8c38); }
+
 function heldOverlay(m, p, pan, cmds) {
   if (m.u16(p + 0x10) === 0x2b) return;
   const frame = m.u16(p + 0xa);
   const dy = m.u8(0xf4f9 + (frame - 0x1f) * 2 + 1);
-  const bx = m.u16(TABLE_E4FA + 2 * m.u16(0x8c38));
+  const bx = m.u16(TABLE_E4FA + 2 * overlayFrame(m));
   const x = s16(m, p + 6), y = s16(m, p + 8);
   const mirror = m.u16(p + 0x14) !== 8; // B42E: the player's mirrored bank when facing left
   for (let r = 0; r < 2; r++) {

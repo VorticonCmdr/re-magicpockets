@@ -71,6 +71,8 @@ export function demoPlaybackInput(m) {
  */
 /** Call #3 (1000:73A5): drawing the weapon overlay consumes [8C38]; nothing else it does is sampled. */
 export function renderConsumes(m) {
+  // The real draw happens before this clear; the page draws after the step, so keep the value the draw would have seen.
+  m.renderOverlay = m.u16(0x8c38);
   if (m.u16(0x8c38) !== 0) m.w16(0x8c38, 0);
   // 1000:77C0: the scroll-mode word [8C34]. 0 draws normally, a negative value skips the redraw, 0x63 and
   // 0x16 start the palette routines (not modelled); any other positive value requests one full redraw and
