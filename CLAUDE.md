@@ -21,6 +21,8 @@ Two things live side by side here:
 2. **A browser port** (`web/`) that reimplements the decoded engine in vanilla JS/Canvas, plus an
    **asset explorer/viewer** (`viewer.html`, `level.html`) for inspecting decoded assets.
 
+The published repo also leaves out the DOSBox screenshots the checks compare against (`tools/sprite-video/*.json.gz`, `tools/front-capture/intro.capture.json.gz`; gitignored, `npm run verify` skips those comparisons with a note when they are absent). Regenerate them with the recipes in `tools/sprite-video-compare.mjs` and `tools/front-capture/import-intro.mjs`.
+
 Original game files (`game/`, `data/`) are **not committed** — gitignored by design, kept locally
 only. Never assume they're present; code must tolerate their absence (folder-picker fallback).
 
