@@ -151,6 +151,11 @@ export async function startGame({ exe, fetchBytes, canvas, setStatus, params: gi
     if (!g.demo) {
       if (m.u8(0x8c33) !== 0) { // the level-code screen: one action per key press (the scancode path), digit keys type into the cell
         m.w8(0x8b5d, 0); m.w8(0x8b58, 0);
+        // page convenience: a fresh prompt (all four cells still blank) gets the expected code filled in, so Enter alone passes
+        if ([1, 2, 3, 4].every((k) => m.u8(0xe70f + k) === 0xbb || m.u8(0xe70f + k) === 0xc8)) {
+          const code = String(m.u16(0x8bc1)).padStart(4, '0');
+          for (let k = 0; k < 4; k++) m.w8(0xe70f + 1 + k, (+code[k]) * 2);
+        }
         if (typedDigit >= 0) typeCodeDigit(m, typedDigit); else if (scan) m.w8(0x8b60, scan);
       } else { m.w8(0x8b5d, keyState()); m.w8(0x8b58, keyState()); }
       scan = 0; typedDigit = -1;
@@ -236,7 +241,7 @@ export async function startGame({ exe, fetchBytes, canvas, setStatus, params: gi
     } else {
       drawPlay();
       const m = g.m;
-      setStatus(m.u8(0x8c33) !== 0 && !g.demo ? `LEVEL CODE ${String.fromCharCode(m.u8(0x8bbf))}${m.u8(0x8bc0)}: the code is ${String(m.u16(0x8bc1)).padStart(4, '0')} (the original asks you to look it up in the manual's code wheel; a wrong code just picks a new prompt). Type the four digits (or Up/Down to change a digit, Left/Right to move), then Enter  -  world ${m.u16(0x8b89)} sub-level ${m.u16(0x8b8b)}` : `${g.demo ? 'attract demo' : 'playing'}: world ${m.u16(0x8b89)} sub-level ${m.u16(0x8b8b)}  iteration ${g.iterations}  score ${m.u16(0x8b75)}  unported: ${[...g.sim.unported].join(', ') || 'none'}`);
+      setStatus(m.u8(0x8c33) !== 0 && !g.demo ? `LEVEL CODE ${String.fromCharCode(m.u8(0x8bbf))}${m.u8(0x8bc0)}: the code ${String(m.u16(0x8bc1)).padStart(4, '0')} is already entered (the original asks you to look it up in the manual's code wheel): press Enter. You can still retype the digits or use Up/Down/Left/Right  -  world ${m.u16(0x8b89)} sub-level ${m.u16(0x8b8b)}` : `${g.demo ? 'attract demo' : 'playing'}: world ${m.u16(0x8b89)} sub-level ${m.u16(0x8b8b)}  iteration ${g.iterations}  score ${m.u16(0x8b75)}  unported: ${[...g.sim.unported].join(', ') || 'none'}`);
     }
   }
 
