@@ -7,6 +7,7 @@
   "scripts": {
     "dev": "vite --host 127.0.0.1",
     "build": "vite build",
+    "build:pages": "vite build --config vite.pages.config.mjs",
     "preview": "vite preview --host 127.0.0.1",
     "extract": "node tools/build-all.js",
     "lint": "node tools/lint-checks.mjs",

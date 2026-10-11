@@ -22,6 +22,7 @@
   header a:hover { color:var(--ink); }
   header .spacer { flex:1; }
   #status { font-size:11px; color:var(--dim); min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  html:not(.debug) #status:not(.error):not(.show) { display:none; }
   #status.error { color:var(--bad); white-space:normal; }
   button.primary { background:#5a3f12; border-color:var(--accent); color:#ffe2b0; cursor:pointer; }
   select, button { background:#221f2b; color:var(--ink); border:1px solid var(--line); padding:.35rem .5rem; font:inherit; font-size:12px; border-radius:4px; }
@@ -44,8 +45,8 @@
   <input type="file" id="inpFolder" webkitdirectory multiple hidden>
   <span id="status">starting…</span>
   <div class="spacer"></div>
-  <a href="./viewer.html" title="the decoded-asset explorer">assets</a>
-  <a href="./level.html" title="the level viewer">levels</a>
+  <a class="debug-only" href="./viewer.html" title="the decoded-asset explorer">assets</a>
+  <a class="debug-only" href="./level.html" title="the level viewer">levels</a>
   <label>scale
     <select id="scale">
       <option value="1">1x</option><option value="2">2x</option><option value="3">3x</option><option value="4">4x</option>

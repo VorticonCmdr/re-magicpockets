@@ -13,7 +13,8 @@ import { makeFetchBytes, servedHere, mapFolder, missingFiles } from './files.js'
 
 const $ = (id) => document.getElementById(id);
 const statusEl = $('status');
-const setStatus = (msg, err = false) => { statusEl.textContent = msg; statusEl.className = err ? 'error' : ''; log(msg); };
+// Outside ?debug only errors and lines passed with show = true (things the player must act on) are visible; the running tick/score line is not.
+const setStatus = (msg, err = false, show = false) => { statusEl.textContent = msg; statusEl.className = err ? 'error' : show ? 'show' : ''; log(msg); };
 const history = [];
 let lastKey = '';
 function log(msg) { const key = msg.replace(/[0-9]+/g, '#'); if (key !== lastKey) { lastKey = key; history.push(msg); if (history.length > 40) history.shift(); const el = $('log'); if (el) el.textContent = history.join('\n'); } }
@@ -46,7 +47,7 @@ async function chooseSource() {
   if (!params.has('pick') && await servedHere()) return { fetchBytes: makeFetchBytes(null) }; // ?pick forces the folder picker even when the files are served
   const btn = $('btnFolder'), input = $('inpFolder');
   btn.hidden = false;
-  setStatus('Pick the folder with your copy of Magic Pockets (it holds GAMEU.EXE, INTROU.EXE, KLOGOPOU.EXE and the data/ files). Nothing is uploaded.');
+  setStatus('Pick the folder with your copy of Magic Pockets (it holds GAMEU.EXE, INTROU.EXE, KLOGOPOU.EXE and the data/ files). Nothing is uploaded.', false, true);
   btn.onclick = () => input.click();
   return new Promise((resolve) => {
     input.onchange = () => {

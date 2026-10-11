@@ -97,7 +97,7 @@ export async function startGame({ exe, fetchBytes, canvas, setStatus, params: gi
     note: '', demo: false, drawn: null,
   };
   // ?sound: AdLib sound (web/demo/sound.js). The main loop's sound requests reach g.sim.sound; absent = silent, engine behaviour unchanged.
-  if (params.has('sound')) { try { await (await import('./sound.js')).enableSound(g.sim, fetchBytes); setStatus('sound on: press a key or click once to start audio'); } catch (err) { setStatus(`?sound: ${err.message}`); } }
+  if (params.has('sound')) { try { await (await import('./sound.js')).enableSound(g.sim, fetchBytes); setStatus('sound on: press a key or click once to start audio', false, true); } catch (err) { setStatus(`?sound: ${err.message}`); } }
   let jump = null; { const mm = /^(\d)\.(\d+)$/.exec(params.get('level') || ''); if (mm) jump = { world: +mm[1], sub: +mm[2] }; }
   const held = new Set();
   const down = new Set(); // every key currently down (KLOGOPOU ends its hold on any key)
@@ -237,11 +237,11 @@ export async function startGame({ exe, fetchBytes, canvas, setStatus, params: gi
       setStatus(`world ${g.fs.world} intro: ${dr ? dr.phase : 'start'}, palette bank 0x${dr ? dr.bank.toString(16) : '--'}, tick ${g.fs.t}  (${g.fs.reason}; the original reads no key here)`);
     } else if (g.mode === 'ending') {
       paint(endPic.slice(0, VIEW_W * VIEW_H), WORLD_PALETTES.world4); // 06E3 sets no palette: the screen inherits world 4's (`[STATIC]`, docs/open-questions-history.md 26)
-      setStatus(`${g.note}: Enter starts a new game`);
+      setStatus(`${g.note}: Enter starts a new game`, false, true);
     } else {
       drawPlay();
       const m = g.m;
-      setStatus(m.u8(0x8c33) !== 0 && !g.demo ? `LEVEL CODE ${String.fromCharCode(m.u8(0x8bbf))}${m.u8(0x8bc0)}: the code ${String(m.u16(0x8bc1)).padStart(4, '0')} is already entered (the original asks you to look it up in the manual's code wheel): press Enter. You can still retype the digits or use Up/Down/Left/Right  -  world ${m.u16(0x8b89)} sub-level ${m.u16(0x8b8b)}` : `${g.demo ? 'attract demo' : 'playing'}: world ${m.u16(0x8b89)} sub-level ${m.u16(0x8b8b)}  iteration ${g.iterations}  score ${m.u16(0x8b75)}  unported: ${[...g.sim.unported].join(', ') || 'none'}`);
+      setStatus(m.u8(0x8c33) !== 0 && !g.demo ? `LEVEL CODE ${String.fromCharCode(m.u8(0x8bbf))}${m.u8(0x8bc0)}: the code ${String(m.u16(0x8bc1)).padStart(4, '0')} is already entered (the original asks you to look it up in the manual's code wheel): press Enter. You can still retype the digits or use Up/Down/Left/Right  -  world ${m.u16(0x8b89)} sub-level ${m.u16(0x8b8b)}` : `${g.demo ? 'attract demo' : 'playing'}: world ${m.u16(0x8b89)} sub-level ${m.u16(0x8b8b)}  iteration ${g.iterations}  score ${m.u16(0x8b75)}  unported: ${[...g.sim.unported].join(', ') || 'none'}`, false, m.u8(0x8c33) !== 0 && !g.demo);
     }
   }
 
