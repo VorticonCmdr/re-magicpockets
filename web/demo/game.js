@@ -236,7 +236,7 @@ export async function startGame({ exe, fetchBytes, canvas, setStatus, params: gi
     } else {
       drawPlay();
       const m = g.m;
-      setStatus(m.u8(0x8c33) !== 0 && !g.demo ? `LEVEL CODE: type the four digits (or Up/Down to change a digit, Left/Right to move), then Enter  -  world ${m.u16(0x8b89)} sub-level ${m.u16(0x8b8b)}` : `${g.demo ? 'attract demo' : 'playing'}: world ${m.u16(0x8b89)} sub-level ${m.u16(0x8b8b)}  iteration ${g.iterations}  score ${m.u16(0x8b75)}  unported: ${[...g.sim.unported].join(', ') || 'none'}`);
+      setStatus(m.u8(0x8c33) !== 0 && !g.demo ? `LEVEL CODE ${String.fromCharCode(m.u8(0x8bbf))}${m.u8(0x8bc0)}: the code is ${String(m.u16(0x8bc1)).padStart(4, '0')} (the original asks you to look it up in the manual's code wheel; a wrong code just picks a new prompt). Type the four digits (or Up/Down to change a digit, Left/Right to move), then Enter  -  world ${m.u16(0x8b89)} sub-level ${m.u16(0x8b8b)}` : `${g.demo ? 'attract demo' : 'playing'}: world ${m.u16(0x8b89)} sub-level ${m.u16(0x8b8b)}  iteration ${g.iterations}  score ${m.u16(0x8b75)}  unported: ${[...g.sim.unported].join(', ') || 'none'}`);
     }
   }
 
