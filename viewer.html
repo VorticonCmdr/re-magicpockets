@@ -9,7 +9,7 @@
 </head>
 <body>
   <aside class="sidebar">
-    <a class="brand" href="/viewer.html"><span class="brand-mark">MP</span><span>Magic Pockets<small>ASSET EXPLORER</small></span></a>
+    <a class="brand" href="./viewer.html"><span class="brand-mark">MP</span><span>Magic Pockets<small>ASSET EXPLORER</small></span></a>
     <div class="eyebrow">COLLECTION</div>
     <nav id="categories" aria-label="Asset categories"></nav>
     <div class="sidebar-bottom">
@@ -17,7 +17,7 @@
       <button id="choose-folder" class="secondary">Choose asset folder</button>
       <input id="folder" type="file" webkitdirectory multiple hidden>
       <button id="reload" class="text-button">Reload local assets</button>
-      <div class="sidebar-links"><a href="/level.html">Classic level viewer ↗</a><a href="/web/index.html">Game prototype ↗</a></div>
+      <div class="sidebar-links"><a class="local-only" href="./level.html">Classic level viewer ↗</a><a href="./index.html">Play the port ↗</a></div>
       <p>Original files, decoded in your browser.<br>Folder selection stays on this device.</p>
     </div>
   </aside>
@@ -46,6 +46,7 @@
     <label class="player-option"><input id="autoplay" type="checkbox"> Auto-next</label><label class="player-option"><input id="loop-cue" type="checkbox"> Loop</label>
     <label class="volume">Volume <input id="volume" type="range" min="0" max="1" step="0.01" value="0.35" aria-label="Volume"></label><button id="stop" aria-label="Stop playback">✕</button>
   </div>
-  <script type="module" src="/web/viewer/main.js"></script>
+  <script>if (!/^(localhost|127\.0\.0\.1)$/.test(location.hostname)) document.querySelectorAll(".local-only").forEach((e) => e.remove()); // level.html needs the local build/ output</script>
+<script type="module" src="/web/viewer/main.js"></script>
 </body>
 </html>
