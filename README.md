@@ -45,9 +45,9 @@ disk. Nothing is uploaded, and nothing is ever written back.
 ## Asset explorer
 
 `viewer.html` (sprites, tiles, maps, pictures, level scripts and MIDI, all decoded in the browser),
-`level.html` (a classic level viewer using `npm run extract` output in `build/`) and
-`tools/midi-player.html` are the explorer pages. They read `data/` in the dev server or a picked
-folder; see `docs/viewer.md` for the controls and `docs/formats/` for the asset formats.
+`level.html` (the level viewer: map, tile sheet and entity placements) and
+`tools/midi-player.html` (the preserved MIDI player; it still needs `npm run extract` output in `build/`) are the explorer pages. The first two read `data/` in the dev server or a picked
+folder, so they work on the hosted site too; see `docs/viewer.md` for the controls and `docs/formats/` for the asset formats.
 
 ## Project layout
 
